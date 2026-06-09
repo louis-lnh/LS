@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "I": "minecraft:netherite_ingot",
+    "N": "minecraft:nautilus_shell",
+    "W": "minecraft:wither_skeleton_skull"
+  },
+  "pattern": [
+    "NIN",
+    "IWI",
+    "NIN"
+  ],
+  "result": {
+    "count": 1,
+    "id": "shd-lifesteal:heart"
+  }
+}

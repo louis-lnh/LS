@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "D": "minecraft:dragon_head",
+    "I": "minecraft:netherite_ingot",
+    "N": "minecraft:nautilus_shell"
+  },
+  "pattern": [
+    "NIN",
+    "IDI",
+    "NIN"
+  ],
+  "result": {
+    "count": 1,
+    "id": "shd-lifesteal:heart"
+  }
+}

@@ -1,0 +1,1049 @@
+import {
+  ActionRowBuilder,
+  AttachmentBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  Client,
+  ComponentType,
+  EmbedBuilder,
+  Events,
+  GatewayIntentBits,
+  PermissionFlagsBits
+} from 'discord.js';
+import { assertRuntimeConfig, config } from './config.js';
+import { statements } from './db.js';
+import { appealLog, modLog, audit, securityLog, staffAuditLog } from './logger.js';
+import { minecraftBan, minecraftKick, resolveMinecraftProfile, whitelistAdd, whitelistRemove } from './minecraft.js';
+import { calculateRisk, formatRiskReasons, refreshRisk } from './risk.js';
+import { currentRulesVersion, setRulesVersion } from './settings.js';
+import { handleRulesPanelCommand, handleRulesPanelInteraction } from './rule-panels.js';
+import { handlePanelCommand, handleTicketInteraction, handleTicketMessage } from './tickets.js';
+import { createVerification } from './verification.js';
+import { startWebServer } from './web.js';
+
+assertRuntimeConfig();
+
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ]
+});
+
+const staffCommands = new Set([
+  'whois',
+  'risk',
+  'risklist',
+  'panel',
+  'discord-rules-panel',
+  'lifesteal-rules-panel',
+  'alts',
+  'history',
+  'note',
+  'case',
+  'flag',
+  'approve',
+  'deny',
+  'sharedip',
+  'kick',
+  'ban',
+  'unlink',
+  'data'
+]);
+
+client.once(Events.ClientReady, (readyClient) => {
+  console.log(`Logged in as ${readyClient.user.tag}`);
+  startWebServer(client);
+});
+
+client.on(Events.InteractionCreate, async (interaction) => {
+  try {
+    if (await handleRulesPanelInteraction(interaction)) return;
+  } catch (error) {
+    console.error(error);
+    const payload = { content: `Error: ${error.message}`, ephemeral: true };
+    if (interaction.deferred || interaction.replied) await interaction.followUp(payload);
+    else await interaction.reply(payload);
+    return;
+  }
+
+  try {
+    if (await handleTicketInteraction(interaction)) return;
+  } catch (error) {
+    console.error(error);
+    const payload = { content: `Error: ${error.message}`, ephemeral: true };
+    if (interaction.deferred || interaction.replied) await interaction.followUp(payload);
+    else await interaction.reply(payload);
+    return;
+  }
+
+  if (!interaction.isChatInputCommand()) return;
+
+  try {
+    recordDiscordSnapshot(interaction.user);
+    if (staffCommands.has(interaction.commandName) && !hasStaffAccess(interaction)) {
+      return interaction.reply({ content: 'You do not have permission to use this staff command.', ephemeral: true });
+    }
+
+    switch (interaction.commandName) {
+      case 'verify':
+        await handleVerify(interaction);
+        break;
+      case 'whois':
+        await handleWhois(interaction);
+        break;
+      case 'risk':
+        await handleRisk(interaction);
+        break;
+      case 'risklist':
+        await handleRiskList(interaction);
+        break;
+      case 'signup':
+        await handleSignup(interaction);
+        break;
+      case 'rules':
+        await handleRules(interaction);
+        break;
+      case 'profile':
+        await handleProfile(interaction);
+        break;
+      case 'panel':
+        await handlePanelCommand(interaction);
+        break;
+      case 'discord-rules-panel':
+        await handleRulesPanelCommand(interaction, 'discord');
+        break;
+      case 'lifesteal-rules-panel':
+        await handleRulesPanelCommand(interaction, 'lifesteal');
+        break;
+      case 'appeal':
+        await handleAppeal(interaction);
+        break;
+      case 'alts':
+        await handleAlts(interaction);
+        break;
+      case 'history':
+        await handleHistory(interaction);
+        break;
+      case 'note':
+        await handleNote(interaction);
+        break;
+      case 'approve':
+        await handleApprove(interaction);
+        break;
+      case 'deny':
+        await handleDeny(interaction);
+        break;
+      case 'sharedip':
+        await handleSharedIp(interaction);
+        break;
+      case 'case':
+        await handleCase(interaction);
+        break;
+      case 'flag':
+        await handleFlag(interaction);
+        break;
+      case 'purge':
+        await handlePurge(interaction);
+        break;
+      case 'kick':
+        await handleKick(interaction);
+        break;
+      case 'ban':
+        await handleBan(interaction);
+        break;
+      case 'unlink':
+        await handleUnlink(interaction);
+        break;
+      case 'data':
+        await handleData(interaction);
+        break;
+      default:
+        await interaction.reply({ content: 'Unknown command.', ephemeral: true });
+    }
+  } catch (error) {
+    console.error(error);
+    const payload = { content: `Error: ${error.message}`, ephemeral: true };
+    if (interaction.deferred || interaction.replied) await interaction.followUp(payload);
+    else await interaction.reply(payload);
+  }
+});
+
+client.on(Events.MessageCreate, async (message) => {
+  try {
+    await handleTicketMessage(message);
+  } catch (error) {
+    console.error(error);
+    await message.reply(`Error: ${error.message}`).catch(() => null);
+  }
+});
+
+client.on(Events.ThreadDelete, async (thread) => {
+  try {
+    const ticket = statements.findTicketByThread.get(thread.id);
+    if (!ticket) {
+      return;
+    }
+
+    statements.closeTicketThread.run(thread.id);
+    audit('ticket.thread_deleted', {
+      discordId: ticket.discord_id,
+      minecraftUuid: ticket.minecraft_uuid,
+      data: {
+        type: ticket.type,
+        threadId: thread.id,
+        parentId: thread.parentId ?? ticket.channel_id
+      }
+    });
+    await modLog(client, 'Ticket Thread Deleted', [
+      { name: 'Type', value: ticket.type, inline: true },
+      { name: 'User', value: `<@${ticket.discord_id}>`, inline: true },
+      { name: 'Thread', value: thread.name ?? thread.id, inline: true }
+    ]);
+  } catch (error) {
+    console.error(error);
+  }
+});
+
+async function handleVerify(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const username = interaction.options.getString('minecraft_name', true);
+  const existing = statements.findLinkedByDiscord.get(interaction.user.id);
+  if (existing?.status === 'active') {
+    return interaction.editReply(`You are already linked to ${existing.minecraft_name}. Ask staff if you need this changed.`);
+  }
+
+  const profile = await resolveMinecraftProfile(username);
+  recordMinecraftSnapshot(profile);
+  const existingMinecraft = statements.findLinkedByMinecraft.get(profile.uuid);
+  if (existingMinecraft && existingMinecraft.discord_id !== interaction.user.id) {
+    return interaction.editReply('That Minecraft account is already linked to another Discord user. Ask staff if this is wrong.');
+  }
+
+  const verification = createVerification(interaction.user.id, profile);
+  await interaction.editReply([
+    `Open this link to finish linking **${profile.name}**:`,
+    verification.url,
+    '',
+    `When the Fabric bridge is installed, you can instead run this in Minecraft: **/link ${verification.linkCode}**`,
+    '',
+    'The page records a protected hash of your IP for duplicate-account checks. Raw IPs are not stored by this bot.'
+  ].join('\n'));
+}
+
+async function handleWhois(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const linked = await linkedFromOptions(interaction);
+
+  if (!linked) return interaction.editReply('No linked account found.');
+  const signup = statements.findSignupAnswers.get(linked.discord_id);
+  const rules = statements.findRulesAcceptance.get(linked.discord_id);
+  const risk = await refreshRisk(client, linked);
+
+  const embed = new EmbedBuilder()
+    .setTitle('Linked account')
+    .setColor(risk.score >= 80 ? 0xff4d4d : linked.suspicious ? 0xffb020 : 0x35b87f)
+    .addFields(
+      { name: 'Discord', value: `<@${linked.discord_id}> (${linked.discord_id})`, inline: false },
+      { name: 'Minecraft', value: `${linked.minecraft_name} (${linked.minecraft_uuid})`, inline: false },
+      { name: 'Status', value: linked.status, inline: true },
+      { name: 'Risk', value: `${risk.score} (${risk.band})`, inline: true },
+      { name: 'Rules', value: rules ? `${rules.rules_version} at <t:${Math.floor(rules.accepted_at / 1000)}:f>` : 'Not accepted', inline: false },
+      { name: 'Signup', value: signup ? compactSignup(signup) : 'No signup answers', inline: false },
+      { name: 'Suspicious', value: linked.suspicious ? linked.suspicious_reason || 'Yes' : 'No', inline: false },
+      { name: 'Verified', value: `<t:${Math.floor(linked.verified_at / 1000)}:f>`, inline: true }
+    );
+
+  await interaction.editReply({ embeds: [embed] });
+}
+
+async function handleRisk(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const linked = await linkedFromOptions(interaction);
+  if (!linked) return interaction.editReply('No linked account found.');
+
+  const risk = await refreshRisk(client, linked);
+  await syncSuspiciousRole(interaction.guild, linked.discord_id, risk);
+  const embed = new EmbedBuilder()
+    .setTitle('Risk score')
+    .setColor(risk.score >= 80 ? 0xff4d4d : risk.score >= 50 ? 0xffb020 : 0x35b87f)
+    .addFields(
+      { name: 'Account', value: `<@${linked.discord_id}> / ${linked.minecraft_name}`, inline: false },
+      { name: 'Score', value: `${risk.score}`, inline: true },
+      { name: 'Band', value: risk.band, inline: true },
+      { name: 'Reasons', value: formatRiskReasons(risk.reasons).slice(0, 1024), inline: false }
+    );
+  await interaction.editReply({ embeds: [embed] });
+}
+
+async function handleRiskList(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const threshold = interaction.options.getInteger('threshold', true);
+  const rows = [];
+  for (const linked of statements.findLinkedAccounts.all()) {
+    const risk = await refreshRisk(client, linked);
+    if (risk.score >= threshold) {
+      rows.push({ linked, risk });
+    }
+  }
+
+  rows.sort((a, b) => b.risk.score - a.risk.score);
+  const description = rows.slice(0, 20)
+    .map(({ linked, risk }) => `**${risk.score} ${risk.band}** - <@${linked.discord_id}> / ${linked.minecraft_name}`)
+    .join('\n') || 'No linked accounts at or above that threshold.';
+
+  await interaction.editReply({ embeds: [new EmbedBuilder().setTitle(`Risk list >= ${threshold}`).setColor(0xffb020).setDescription(description)] });
+}
+
+async function handleSignup(interaction) {
+  const subcommand = interaction.options.getSubcommand();
+  await interaction.deferReply({ ephemeral: true });
+  if (subcommand === 'submit') {
+    const linked = statements.findLinkedByDiscord.get(interaction.user.id);
+    const minecraftName = interaction.options.getString('minecraft_name') ?? linked?.minecraft_name ?? null;
+    let minecraftUuid = linked?.minecraft_uuid ?? null;
+    if (!minecraftUuid && minecraftName) {
+      const profile = await resolveMinecraftProfile(minecraftName);
+      minecraftUuid = profile.uuid;
+    }
+
+    statements.upsertSignupAnswers.run({
+      discordId: interaction.user.id,
+      minecraftUuid,
+      minecraftName,
+      lifestealExperience: interaction.options.getString('experience') ?? '',
+      foundServer: interaction.options.getString('found_server') ?? '',
+      timezone: interaction.options.getString('timezone') ?? '',
+      understandsPvp: interaction.options.getBoolean('understands_pvp') ?? false,
+      rulesAgreement: interaction.options.getBoolean('agree_rules') ?? false,
+      extra: interaction.options.getString('extra') ?? '',
+      submittedAt: Date.now()
+    });
+    audit('signup.submitted', { discordId: interaction.user.id, minecraftUuid, data: { minecraftName } });
+    return interaction.editReply('Signup answers saved.');
+  }
+
+  const target = interaction.options.getUser('user') ?? interaction.user;
+  if (target.id !== interaction.user.id && !interaction.memberPermissions.has(PermissionFlagsBits.ModerateMembers)) {
+    return interaction.editReply('You do not have permission to view another member signup.');
+  }
+  const signup = statements.findSignupAnswers.get(target.id);
+  await interaction.editReply(signup ? compactSignup(signup) : 'No signup answers found.');
+}
+
+async function handleRules(interaction) {
+  const subcommand = interaction.options.getSubcommand();
+  await interaction.deferReply({ ephemeral: true });
+  if (subcommand === 'version') {
+    return interaction.editReply(`Current rules version: ${currentRulesVersion()}`);
+  }
+  if (subcommand === 'accept') {
+    const linked = statements.findLinkedByDiscord.get(interaction.user.id);
+    statements.upsertRulesAcceptance.run({
+      discordId: interaction.user.id,
+      minecraftUuid: linked?.minecraft_uuid ?? null,
+      rulesVersion: currentRulesVersion(),
+      acceptedAt: Date.now(),
+      source: 'discord_command'
+    });
+    audit('rules.accepted', { discordId: interaction.user.id, minecraftUuid: linked?.minecraft_uuid ?? null, data: { version: currentRulesVersion() } });
+    return interaction.editReply(`Rules accepted for version ${currentRulesVersion()}.`);
+  }
+  if (!interaction.memberPermissions.has(PermissionFlagsBits.ModerateMembers)) {
+    return interaction.editReply('You do not have permission to bump rules.');
+  }
+  const version = interaction.options.getString('version', true);
+  setRulesVersion(version);
+  audit('rules.bumped', { discordId: interaction.user.id, data: { version } });
+  await interaction.editReply(`Rules version bumped to ${version}. Existing users must accept again before joining.`);
+}
+
+async function handleProfile(interaction) {
+  const subcommand = interaction.options.getSubcommand();
+  await interaction.deferReply({ ephemeral: true });
+
+  if (subcommand === 'set') {
+    const linked = statements.findLinkedByDiscord.get(interaction.user.id);
+    if (!linked) return interaction.editReply('You need to verify first.');
+    const updated = statements.updateProfile.run({
+      discordId: interaction.user.id,
+      region: interaction.options.getString('region'),
+      teamName: interaction.options.getString('team'),
+      eventInterest: interaction.options.getString('event_interest'),
+      publicStatsOptIn: interaction.options.getBoolean('public_stats')
+    });
+    audit('profile.updated', { discordId: interaction.user.id, minecraftUuid: linked.minecraft_uuid, data: profileSummary(updated) });
+    return interaction.editReply('Profile updated.');
+  }
+
+  const target = interaction.options.getUser('user') ?? interaction.user;
+  if (target.id !== interaction.user.id && !interaction.memberPermissions.has(PermissionFlagsBits.ModerateMembers)) {
+    return interaction.editReply('You do not have permission to view another member profile.');
+  }
+  const linked = statements.findLinkedByDiscord.get(target.id);
+  if (!linked) return interaction.editReply('No linked account found.');
+  await interaction.editReply(profileSummary(linked));
+}
+
+async function handleAppeal(interaction) {
+  const subcommand = interaction.options.getSubcommand();
+  await interaction.deferReply({ ephemeral: true });
+  if (subcommand === 'create') {
+    const linked = statements.findLinkedByDiscord.get(interaction.user.id);
+    const appeal = statements.createAppeal.run({
+      discordId: interaction.user.id,
+      minecraftUuid: linked?.minecraft_uuid ?? null,
+      reason: interaction.options.getString('reason', true),
+      createdAt: Date.now()
+    });
+    addCase('appeal', interaction.user.id, linked?.minecraft_uuid ?? null, interaction.user.id, `Appeal #${appeal.id} created`);
+    audit('appeal.created', { discordId: interaction.user.id, minecraftUuid: linked?.minecraft_uuid ?? null, data: { appealId: appeal.id } });
+    await appealLog(client, 'Appeal Created', [
+      { name: 'User', value: `<@${interaction.user.id}>`, inline: true },
+      { name: 'Minecraft', value: linked?.minecraft_name ?? 'Not linked', inline: true },
+      { name: 'Appeal', value: `#${appeal.id}`, inline: true }
+    ]);
+    return interaction.editReply(`Appeal #${appeal.id} created. The panel flow in #appeal-tickets is preferred because it creates a staff thread.`);
+  }
+
+  if (!interaction.memberPermissions.has(PermissionFlagsBits.ModerateMembers)) {
+    return interaction.editReply('You do not have permission to manage appeals.');
+  }
+  const appealId = interaction.options.getInteger('id', true);
+  const status = subcommand === 'accept' ? 'accepted' : subcommand === 'deny' ? 'denied' : 'closed';
+  const reason = interaction.options.getString('reason') || `${status} by staff`;
+  const appeal = statements.updateAppeal.run({ appealId, status, closedAt: Date.now(), closedBy: interaction.user.id, reason });
+  if (!appeal) return interaction.editReply('Appeal not found.');
+  addCase(`appeal_${status}`, appeal.discord_id, appeal.minecraft_uuid, interaction.user.id, reason);
+  audit(`appeal.${status}`, { discordId: appeal.discord_id, minecraftUuid: appeal.minecraft_uuid, data: { appealId, reason } });
+  await appealLog(client, `Appeal ${status}`, [
+    { name: 'Appeal', value: `#${appealId}`, inline: true },
+    { name: 'Target', value: `<@${appeal.discord_id}>`, inline: true },
+    { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true },
+    { name: 'Reason', value: reason }
+  ]);
+  await interaction.editReply(`Appeal #${appealId} ${status}.`);
+}
+
+async function handleAlts(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const iphash = interaction.options.getString('iphash');
+  let linked = iphash ? null : await linkedFromOptions(interaction);
+  if (!linked && !iphash) return interaction.editReply('No linked account found.');
+
+  const fullMatches = iphash
+    ? statements.findLinkedByIpAny.all(iphash)
+    : linked.ip_hash ? statements.findLinkedByIpAny.all(linked.ip_hash) : [];
+  const prefixMatches = linked?.ip_prefix_hash ? statements.findLinkedByPrefixAny.all(linked.ip_prefix_hash) : [];
+  const history = linked ? statements.findMinecraftHistory.all(linked.minecraft_uuid) : [];
+
+  const embed = new EmbedBuilder()
+    .setTitle('Alt investigation')
+    .setColor(0xffb020)
+    .addFields(
+      { name: 'Full IP hash matches', value: formatLinkedList(fullMatches), inline: false },
+      { name: 'Prefix hash matches', value: formatLinkedList(prefixMatches), inline: false },
+      { name: 'Minecraft UUID history', value: history.map((row) => `<@${row.discord_id}> at <t:${Math.floor(row.linked_at / 1000)}:f>`).join('\n') || 'None', inline: false }
+    );
+  await interaction.editReply({ embeds: [embed] });
+}
+
+async function handleHistory(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const linked = await linkedFromOptions(interaction);
+  if (!linked) return interaction.editReply('No linked account found.');
+  const timeline = buildTimeline(linked).slice(-20);
+  const description = timeline.map((item) => `<t:${Math.floor(item.at / 1000)}:f> **${item.type}** - ${item.text}`).join('\n') || 'No history.';
+  await interaction.editReply({ embeds: [new EmbedBuilder().setTitle(`History: ${linked.minecraft_name}`).setColor(0x2f7d67).setDescription(description.slice(0, 4096))] });
+}
+
+async function handleNote(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const subcommand = interaction.options.getSubcommand();
+
+  if (subcommand === 'delete') {
+    const noteId = interaction.options.getInteger('id', true);
+    const deleted = statements.deleteStaffNote.run(noteId);
+    if (!deleted) return interaction.editReply('Note not found.');
+    audit('staff.note_deleted', {
+      discordId: deleted.discord_id,
+      minecraftUuid: deleted.minecraft_uuid,
+      data: { noteId, moderatorId: interaction.user.id }
+    });
+    await modLog(client, 'Staff Note Deleted', [
+      { name: 'Target', value: `<@${deleted.discord_id}>`, inline: true },
+      { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true },
+      { name: 'Note', value: `#${noteId}`, inline: true }
+    ]);
+    return interaction.editReply(`Deleted note #${noteId}.`);
+  }
+
+  const user = interaction.options.getUser('user', true);
+  const linked = statements.findLinkedByDiscord.get(user.id);
+  if (!linked) return interaction.editReply('That Discord user is not linked.');
+
+  if (subcommand === 'list') {
+    const notes = statements.findNotesForAccount.all(user.id, linked.minecraft_uuid);
+    const text = notes.slice(-15)
+      .map((note) => `#${note.id} <t:${Math.floor(note.created_at / 1000)}:f> by <@${note.author_id}>: ${note.text}`)
+      .join('\n') || 'No notes.';
+    return interaction.editReply(text.slice(0, 1900));
+  }
+
+  const text = interaction.options.getString('text', true);
+  const note = statements.addStaffNote.run({
+    discordId: user.id,
+    minecraftUuid: linked.minecraft_uuid,
+    authorId: interaction.user.id,
+    text,
+    createdAt: Date.now()
+  });
+  addCase('staff_note', user.id, linked.minecraft_uuid, interaction.user.id, `Note #${note.id}: ${text}`);
+  audit('staff.note_added', { discordId: user.id, minecraftUuid: linked.minecraft_uuid, data: { noteId: note.id } });
+  await modLog(client, 'Staff Note Added', [
+    { name: 'Target', value: `<@${user.id}>`, inline: true },
+    { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true },
+    { name: 'Note', value: text }
+  ]);
+  await interaction.editReply(`Added note #${note.id}.`);
+}
+
+async function handleApprove(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const user = interaction.options.getUser('user', true);
+  const reason = interaction.options.getString('reason') || 'Approved by staff';
+  const linked = statements.findLinkedByDiscord.get(user.id);
+  if (!linked) return interaction.editReply('That Discord user is not linked.');
+
+  statements.setLinkedStatus.run({
+    discordId: user.id,
+    status: 'active',
+    suspicious: 0,
+    reason
+  });
+  await whitelistAdd(linked.minecraft_name).catch(() => null);
+
+  const member = await interaction.guild.members.fetch(user.id).catch(() => null);
+  if (member && config.suspiciousRoleId) {
+    await member.roles.remove(config.suspiciousRoleId, reason).catch(() => null);
+  }
+
+  addCase('approve', user.id, linked.minecraft_uuid, interaction.user.id, reason);
+  audit('moderation.approve', {
+    discordId: user.id,
+    minecraftUuid: linked.minecraft_uuid,
+    data: { reason, moderatorId: interaction.user.id }
+  });
+  await modLog(client, 'Linked Member Approved', [
+    { name: 'Target', value: `<@${user.id}>`, inline: true },
+    { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true },
+    { name: 'Minecraft', value: linked.minecraft_name, inline: true },
+    { name: 'Reason', value: reason }
+  ]);
+  await interaction.editReply(`Approved ${user.tag} and set the link active.`);
+}
+
+async function handleDeny(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const user = interaction.options.getUser('user', true);
+  const reason = interaction.options.getString('reason') || 'Denied by staff';
+  const linked = statements.findLinkedByDiscord.get(user.id);
+  if (!linked) return interaction.editReply('That Discord user is not linked.');
+  if (!await confirmAction(interaction, {
+    title: 'Confirm Deny',
+    body: `Deny ${user.tag} and mark their link banned?`,
+    confirmLabel: 'Deny'
+  })) return;
+
+  statements.setLinkedStatus.run({
+    discordId: user.id,
+    status: 'banned',
+    suspicious: 1,
+    reason
+  });
+  await whitelistRemove(linked.minecraft_name).catch(() => null);
+
+  addCase('deny', user.id, linked.minecraft_uuid, interaction.user.id, reason);
+  audit('moderation.deny', {
+    discordId: user.id,
+    minecraftUuid: linked.minecraft_uuid,
+    data: { reason, moderatorId: interaction.user.id }
+  });
+  await staffAuditLog(client, 'Denied Linked Member', [
+    { name: 'Target', value: `<@${user.id}>`, inline: true },
+    { name: 'Moderator', value: `<@${interaction.user.id}>`, inline: true },
+    { name: 'Minecraft', value: linked.minecraft_name, inline: true },
+    { name: 'Reason', value: reason }
+  ]);
+  await modLog(client, 'Linked Member Denied', [
+    { name: 'Target', value: `<@${user.id}>`, inline: true },
+    { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true },
+    { name: 'Minecraft', value: linked.minecraft_name, inline: true },
+    { name: 'Reason', value: reason }
+  ]);
+  await interaction.editReply(`Denied ${user.tag}; their link is now banned and removed from whitelist if RCON is enabled.`);
+}
+
+async function handleSharedIp(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const subcommand = interaction.options.getSubcommand();
+  const user = interaction.options.getUser('user', true);
+
+  if (subcommand === 'list') {
+    const exceptions = statements.findSharedIpExceptionsForUser.all(user.id);
+    const text = exceptions.map((row) => {
+      const other = row.discord_id_a === user.id ? row.discord_id_b : row.discord_id_a;
+      return `<@${other}> approved by <@${row.approved_by}> at <t:${Math.floor(row.approved_at / 1000)}:f>: ${row.reason}`;
+    }).join('\n') || 'No shared-IP exceptions.';
+    return interaction.editReply(text.slice(0, 1900));
+  }
+
+  const other = interaction.options.getUser('other_user', true);
+  if (user.id === other.id) return interaction.editReply('Pick two different users.');
+  const reason = interaction.options.getString('reason', true);
+  const userLinked = statements.findLinkedByDiscord.get(user.id);
+  const otherLinked = statements.findLinkedByDiscord.get(other.id);
+  if (!userLinked || !otherLinked) return interaction.editReply('Both users must be linked before approving a shared-IP exception.');
+
+  statements.addSharedIpException.run({
+    discordIdA: user.id,
+    discordIdB: other.id,
+    reason,
+    approvedBy: interaction.user.id,
+    approvedAt: Date.now()
+  });
+  await refreshRisk(client, userLinked);
+  await refreshRisk(client, otherLinked);
+
+  addCase('shared_ip_approve', user.id, userLinked.minecraft_uuid, interaction.user.id, `With ${other.id}: ${reason}`);
+  addCase('shared_ip_approve', other.id, otherLinked.minecraft_uuid, interaction.user.id, `With ${user.id}: ${reason}`);
+  audit('shared_ip.approved', {
+    discordId: user.id,
+    minecraftUuid: userLinked.minecraft_uuid,
+    data: { otherDiscordId: other.id, reason, moderatorId: interaction.user.id }
+  });
+  await modLog(client, 'Shared IP Exception Approved', [
+    { name: 'Users', value: `<@${user.id}> and <@${other.id}>`, inline: false },
+    { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true },
+    { name: 'Reason', value: reason }
+  ]);
+  await interaction.editReply(`Approved shared-IP exception between ${user.tag} and ${other.tag}.`);
+}
+
+async function handleCase(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const subcommand = interaction.options.getSubcommand();
+  if (subcommand !== 'close') return interaction.editReply('Unknown case command.');
+  const caseId = interaction.options.getInteger('id', true);
+  const reason = interaction.options.getString('reason') || 'Closed by staff';
+  const closed = statements.closeCase.run({ caseId, closedAt: Date.now(), closedBy: interaction.user.id, reason });
+  if (!closed) return interaction.editReply('Case not found.');
+  audit('case.closed', { discordId: closed.target_discord_id, minecraftUuid: closed.target_minecraft_uuid, data: { caseId, reason } });
+  await modLog(client, 'Case Closed', [
+    { name: 'Case', value: `#${caseId}`, inline: true },
+    { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true },
+    { name: 'Reason', value: reason }
+  ]);
+  await interaction.editReply(`Closed case #${caseId}.`);
+}
+
+async function handleFlag(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const user = interaction.options.getUser('user', true);
+  const suspicious = interaction.options.getBoolean('suspicious', true);
+  const reason = interaction.options.getString('reason') || (suspicious ? 'Manual staff flag' : 'Cleared by staff');
+
+  const linked = statements.findLinkedByDiscord.get(user.id);
+  if (!linked) return interaction.editReply('That Discord user is not linked.');
+
+  statements.setLinkedStatus.run({
+    discordId: user.id,
+    status: suspicious ? 'review' : 'active',
+    suspicious: suspicious ? 1 : 0,
+    reason
+  });
+
+  const guild = interaction.guild;
+  const member = await guild.members.fetch(user.id).catch(() => null);
+  if (member && config.suspiciousRoleId) {
+    if (suspicious) await member.roles.add(config.suspiciousRoleId, reason).catch(() => null);
+    else await member.roles.remove(config.suspiciousRoleId, reason).catch(() => null);
+  }
+
+  const refreshed = statements.findLinkedByDiscord.get(user.id);
+  if (refreshed) {
+    const risk = await refreshRisk(client, refreshed);
+    await syncSuspiciousRole(interaction.guild, user.id, risk);
+  }
+
+  addCase('flag', user.id, linked.minecraft_uuid, interaction.user.id, reason);
+  audit('moderation.flag', {
+    discordId: user.id,
+    minecraftUuid: linked.minecraft_uuid,
+    data: { suspicious, reason, moderatorId: interaction.user.id }
+  });
+  await modLog(client, suspicious ? 'Member Flagged' : 'Member Flag Cleared', [
+    { name: 'Target', value: `<@${user.id}>`, inline: true },
+    { name: 'Minecraft', value: linked.minecraft_name, inline: true },
+    { name: 'Reason', value: reason }
+  ]);
+  await securityLog(client, suspicious ? 'Security Flag Added' : 'Security Flag Cleared', [
+    { name: 'Target', value: `<@${user.id}>`, inline: true },
+    { name: 'Minecraft', value: linked.minecraft_name, inline: true },
+    { name: 'Reason', value: reason }
+  ]);
+
+  await interaction.editReply(`${suspicious ? 'Flagged' : 'Cleared'} ${user.tag}.`);
+}
+
+async function handlePurge(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const amount = interaction.options.getInteger('amount', true);
+  const deleted = await interaction.channel.bulkDelete(amount, true);
+  addCase('purge', null, null, interaction.user.id, `Deleted ${deleted.size} messages in #${interaction.channel.name}`);
+  audit('moderation.purge', {
+    discordId: interaction.user.id,
+    data: { channelId: interaction.channel.id, amount: deleted.size }
+  });
+  await interaction.editReply(`Deleted ${deleted.size} messages.`);
+}
+
+async function handleKick(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const user = interaction.options.getUser('user', true);
+  const reason = interaction.options.getString('reason') || 'No reason provided';
+  const includeMinecraft = interaction.options.getBoolean('minecraft') ?? false;
+  const member = await interaction.guild.members.fetch(user.id).catch(() => null);
+  if (!member) return interaction.editReply('That member is not in this server.');
+  if (!interaction.memberPermissions.has(PermissionFlagsBits.KickMembers)) {
+    return interaction.editReply('You do not have permission to kick members.');
+  }
+
+  const linked = statements.findLinkedByDiscord.get(user.id);
+  if (!await confirmAction(interaction, {
+    title: 'Confirm Kick',
+    body: `Kick ${user.tag}${includeMinecraft && linked ? ` and Minecraft account ${linked.minecraft_name}` : ''}?`,
+    confirmLabel: 'Kick'
+  })) return;
+
+  if (includeMinecraft && linked) await minecraftKick(linked.minecraft_name, reason);
+  await member.kick(reason);
+
+  addCase('kick', user.id, linked?.minecraft_uuid ?? null, interaction.user.id, reason);
+  audit('moderation.kick', {
+    discordId: user.id,
+    minecraftUuid: linked?.minecraft_uuid ?? null,
+    data: { reason, includeMinecraft, moderatorId: interaction.user.id }
+  });
+  await modLog(client, 'Member Kicked', [
+    { name: 'Target', value: `<@${user.id}>`, inline: true },
+    { name: 'Moderator', value: `<@${interaction.user.id}>`, inline: true },
+    { name: 'Minecraft', value: linked?.minecraft_name ?? 'Not linked', inline: true },
+    { name: 'Reason', value: reason }
+  ]);
+  await interaction.editReply(`Kicked ${user.tag}.`);
+}
+
+async function handleBan(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const user = interaction.options.getUser('user', true);
+  const reason = interaction.options.getString('reason') || 'No reason provided';
+  const includeMinecraft = interaction.options.getBoolean('minecraft') ?? false;
+  if (!interaction.memberPermissions.has(PermissionFlagsBits.BanMembers)) {
+    return interaction.editReply('You do not have permission to ban members.');
+  }
+
+  const linked = statements.findLinkedByDiscord.get(user.id);
+  if (!await confirmAction(interaction, {
+    title: 'Confirm Ban',
+    body: `Ban ${user.tag}${includeMinecraft && linked ? ` and Minecraft account ${linked.minecraft_name}` : ''}?`,
+    confirmLabel: 'Ban'
+  })) return;
+
+  if (includeMinecraft && linked) await minecraftBan(linked.minecraft_name, reason);
+  await interaction.guild.members.ban(user.id, { reason });
+  if (linked) {
+    statements.setLinkedStatus.run({
+      discordId: user.id,
+      status: 'banned',
+      suspicious: linked.suspicious,
+      reason: linked.suspicious_reason
+    });
+  }
+
+  addCase('ban', user.id, linked?.minecraft_uuid ?? null, interaction.user.id, reason);
+  audit('moderation.ban', {
+    discordId: user.id,
+    minecraftUuid: linked?.minecraft_uuid ?? null,
+    data: { reason, includeMinecraft, moderatorId: interaction.user.id }
+  });
+  await modLog(client, 'Member Banned', [
+    { name: 'Target', value: `<@${user.id}>`, inline: true },
+    { name: 'Moderator', value: `<@${interaction.user.id}>`, inline: true },
+    { name: 'Minecraft', value: linked?.minecraft_name ?? 'Not linked', inline: true },
+    { name: 'Reason', value: reason }
+  ]);
+  await interaction.editReply(`Banned ${user.tag}.`);
+}
+
+async function handleUnlink(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const user = interaction.options.getUser('user', true);
+  const reason = interaction.options.getString('reason') || 'Unlinked by staff';
+  const linked = statements.findLinkedByDiscord.get(user.id);
+  if (!linked) return interaction.editReply('That Discord user is not linked.');
+  if (!await confirmAction(interaction, {
+    title: 'Confirm Unlink',
+    body: `Unlink ${user.tag} from ${linked.minecraft_name}?`,
+    confirmLabel: 'Unlink'
+  })) return;
+
+  statements.setLinkedStatus.run({
+    discordId: user.id,
+    status: 'unlinked',
+    suspicious: linked.suspicious,
+    reason: linked.suspicious_reason
+  });
+  await whitelistRemove(linked.minecraft_name).catch(() => null);
+
+  addCase('unlink', user.id, linked.minecraft_uuid, interaction.user.id, reason);
+  audit('moderation.unlink', {
+    discordId: user.id,
+    minecraftUuid: linked.minecraft_uuid,
+    data: { reason, moderatorId: interaction.user.id }
+  });
+  await modLog(client, 'Member Unlinked', [
+    { name: 'Target', value: `<@${user.id}>`, inline: true },
+    { name: 'Minecraft', value: linked.minecraft_name, inline: true },
+    { name: 'Reason', value: reason }
+  ]);
+  await interaction.editReply(`Unlinked ${user.tag} from ${linked.minecraft_name}.`);
+}
+
+async function handleData(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const subcommand = interaction.options.getSubcommand();
+
+  if (subcommand === 'backup') {
+    const backupPath = statements.backup.run();
+  audit('data.backup_created', {
+      discordId: interaction.user.id,
+      data: { backupPath }
+    });
+    await modLog(client, 'Bot Data Backup Created', [
+      { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true },
+      { name: 'Path', value: backupPath }
+    ]);
+    await staffAuditLog(client, 'Bot Data Backup Created', [
+      { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true },
+      { name: 'Path', value: backupPath }
+    ]);
+    return interaction.editReply(`Backup created: ${backupPath}`);
+  }
+
+  const collection = interaction.options.getString('collection', true);
+  const snapshot = statements.snapshot.get();
+  const payload = collection === 'all' ? snapshot : snapshot[collection];
+  if (payload == null) {
+    return interaction.editReply('Unknown collection.');
+  }
+
+  const buffer = Buffer.from(JSON.stringify(payload, null, 2), 'utf8');
+  const attachment = new AttachmentBuilder(buffer, {
+    name: `lifesteal-${collection}-${new Date().toISOString().slice(0, 10)}.json`
+  });
+  audit('data.exported', {
+    discordId: interaction.user.id,
+    data: { collection }
+  });
+  await modLog(client, 'Bot Data Exported', [
+    { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true },
+    { name: 'Collection', value: collection, inline: true }
+  ]);
+  await interaction.editReply({
+    content: `Exported ${collection}.`,
+    files: [attachment]
+  });
+}
+
+async function linkedFromOptions(interaction) {
+  const user = interaction.options.getUser('user');
+  const minecraftName = interaction.options.getString('minecraft_name');
+
+  let linked = null;
+  if (user) linked = statements.findLinkedByDiscord.get(user.id);
+  if (!linked && minecraftName) {
+    const profile = await resolveMinecraftProfile(minecraftName);
+    recordMinecraftSnapshot(profile);
+    linked = statements.findLinkedByMinecraft.get(profile.uuid);
+  }
+  return linked;
+}
+
+function compactSignup(signup) {
+  return [
+    `Minecraft: ${signup.minecraft_name ?? 'Unknown'}`,
+    `Experience: ${signup.lifesteal_experience || 'Not answered'}`,
+    `Found server: ${signup.found_server || 'Not answered'}`,
+    `Timezone: ${signup.timezone || 'Not answered'}`,
+    `Understands PvP: ${signup.understands_pvp ? 'Yes' : 'No'}`,
+    `Rules agreement: ${signup.rules_agreement ? 'Yes' : 'No'}`,
+    signup.extra ? `Extra: ${signup.extra}` : null
+  ].filter(Boolean).join('\n').slice(0, 1024);
+}
+
+function profileSummary(linked) {
+  return [
+    `Minecraft: ${linked.minecraft_name ?? 'Unknown'}`,
+    `Role: ${linked.role ?? 'player'}`,
+    `Region/timezone: ${linked.region ?? 'Not set'}`,
+    `Team: ${linked.team_name ?? 'Not set'}`,
+    `Event interest: ${linked.event_interest ?? 'Not set'}`,
+    `Public stats opt-in: ${linked.public_stats_opt_in ? 'Yes' : 'No'}`,
+    `Status: ${linked.status}`,
+    `Risk: ${linked.risk_score ?? 0} (${linked.risk_band ?? 'low'})`
+  ].join('\n').slice(0, 1024);
+}
+
+function formatLinkedList(rows) {
+  if (!rows.length) return 'None';
+  return rows.slice(0, 15)
+    .map((row) => `<@${row.discord_id}> / ${row.minecraft_name} / ${row.status} / risk ${row.risk_score ?? 0}`)
+    .join('\n');
+}
+
+function buildTimeline(linked) {
+  const events = [];
+  for (const row of statements.findAuditForAccount.all(linked.discord_id, linked.minecraft_uuid)) {
+    events.push({ at: row.created_at, type: row.type, text: safeJsonSummary(row.data_json) });
+  }
+  for (const row of statements.findCasesForAccount.all(linked.discord_id, linked.minecraft_uuid)) {
+    events.push({ at: row.created_at, type: `case:${row.action}`, text: row.reason || `Case #${row.id}` });
+    if (row.closed_at) {
+      events.push({ at: row.closed_at, type: 'case.closed', text: row.close_reason || `Case #${row.id} closed` });
+    }
+  }
+  for (const row of statements.findAppealsForAccount.all(linked.discord_id, linked.minecraft_uuid)) {
+    events.push({ at: row.created_at, type: `appeal.${row.status}`, text: `Appeal #${row.id}: ${row.reason}` });
+    if (row.closed_at) {
+      events.push({ at: row.closed_at, type: `appeal.${row.status}`, text: row.decision_reason || `Appeal #${row.id}` });
+    }
+  }
+  for (const row of statements.findNotesForAccount.all(linked.discord_id, linked.minecraft_uuid)) {
+    events.push({ at: row.created_at, type: 'note', text: `#${row.id} by <@${row.author_id}>: ${row.text}` });
+  }
+  for (const row of statements.findDiscordNameHistory.all(linked.discord_id)) {
+    events.push({ at: row.last_seen_at, type: 'discord.name_seen', text: row.username });
+  }
+  for (const row of statements.findMinecraftNameHistory.all(linked.minecraft_uuid)) {
+    events.push({ at: row.last_seen_at, type: 'minecraft.name_seen', text: row.username });
+  }
+  return events.sort((a, b) => a.at - b.at);
+}
+
+function safeJsonSummary(json) {
+  try {
+    const value = JSON.parse(json || '{}');
+    const entries = Object.entries(value).filter(([, item]) => item != null && item !== '');
+    if (entries.length === 0) return 'No details';
+    return entries.slice(0, 3).map(([key, item]) => `${key}: ${String(item)}`).join(', ');
+  } catch (_error) {
+    return 'No details';
+  }
+}
+
+async function syncSuspiciousRole(guild, discordId, risk) {
+  if (!guild || !config.suspiciousRoleId) return;
+  const member = await guild.members.fetch(discordId).catch(() => null);
+  if (!member) return;
+  if (risk.score >= 50) await member.roles.add(config.suspiciousRoleId, `Risk ${risk.score}: ${risk.band}`).catch(() => null);
+  else await member.roles.remove(config.suspiciousRoleId, 'Risk below suspicious threshold').catch(() => null);
+}
+
+function addCase(action, targetDiscordId, targetMinecraftUuid, moderatorId, reason) {
+  statements.addCase.run({
+    action,
+    targetDiscordId,
+    targetMinecraftUuid,
+    moderatorId,
+    reason,
+    createdAt: Date.now()
+  });
+}
+
+async function confirmAction(interaction, { title, body, confirmLabel }) {
+  const confirmId = `confirm:${interaction.id}`;
+  const cancelId = `cancel:${interaction.id}`;
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(confirmId)
+      .setLabel(confirmLabel)
+      .setStyle(ButtonStyle.Danger),
+    new ButtonBuilder()
+      .setCustomId(cancelId)
+      .setLabel('Cancel')
+      .setStyle(ButtonStyle.Secondary)
+  );
+
+  const message = await interaction.editReply({
+    embeds: [new EmbedBuilder()
+      .setTitle(title)
+      .setColor(0xff5f56)
+      .setDescription(body)],
+    components: [row]
+  });
+
+  try {
+    const confirmation = await message.awaitMessageComponent({
+      componentType: ComponentType.Button,
+      time: 30_000,
+      filter: (componentInteraction) =>
+        componentInteraction.user.id === interaction.user.id &&
+        [confirmId, cancelId].includes(componentInteraction.customId)
+    });
+
+    await confirmation.deferUpdate();
+    if (confirmation.customId === cancelId) {
+      await interaction.editReply({ content: 'Cancelled.', embeds: [], components: [] });
+      return false;
+    }
+
+    await interaction.editReply({ content: 'Confirmed. Applying action...', embeds: [], components: [] });
+    return true;
+  } catch (_error) {
+    await interaction.editReply({ content: 'Confirmation expired. No action was taken.', embeds: [], components: [] });
+    return false;
+  }
+}
+
+function recordDiscordSnapshot(user) {
+  statements.recordDiscordName.run({
+    discordId: user.id,
+    username: user.tag ?? user.username,
+    seenAt: Date.now()
+  });
+}
+
+function recordMinecraftSnapshot(profile) {
+  statements.recordMinecraftName.run({
+    minecraftUuid: profile.uuid,
+    username: profile.name,
+    seenAt: Date.now()
+  });
+}
+
+function hasStaffAccess(interaction) {
+  if (interaction.memberPermissions?.has(PermissionFlagsBits.ModerateMembers)) {
+    return true;
+  }
+
+  if (config.staffRoleIds.length === 0) {
+    return false;
+  }
+
+  return config.staffRoleIds.some((roleId) => interaction.member?.roles?.cache?.has(roleId));
+}
+
+client.login(config.discordToken);

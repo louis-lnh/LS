@@ -1,0 +1,18 @@
+{
+  "required": true,
+  "package": "com.shd.lifesteal.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "CrafterBlockMixin",
+    "EnchantmentScreenHandlerMixin",
+    "ForgingScreenHandlerAccessor",
+    "ForgingScreenHandlerMixin",
+    "ItemStackMixin",
+    "ScreenHandlerMixin",
+    "SmithingScreenHandlerMixin",
+    "ZombieVillagerEntityInvoker"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
