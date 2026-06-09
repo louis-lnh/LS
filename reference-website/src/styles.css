@@ -652,11 +652,10 @@ tbody tr:hover {
 }
 
 .prestige-badge img {
-  width: 1.15rem;
-  height: 1.15rem;
+  width: 1.6rem;
+  height: 1.6rem;
   border-radius: 0.2rem;
   object-fit: contain;
-  image-rendering: pixelated;
 }
 
 .prestige-badge.owner,

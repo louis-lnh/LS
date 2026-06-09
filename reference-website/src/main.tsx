@@ -6,7 +6,7 @@ import dragonEggBadge from './assets/prestige/dragon-egg.png'
 import adminBadge from './assets/prestige/admin.png'
 import ownerBadge from './assets/prestige/owner.png'
 import maceBadge from './assets/prestige/mace.png'
-import shdteamBadge from './assets/prestige/shd-logo.png'
+import shdteamBadge from './assets/prestige/shd-logo-no-text.png'
 import moderatorBadge from './assets/prestige/moderator.png'
 import rulesMarkdown from './content/rules.md?raw'
 
