@@ -57,6 +57,8 @@ LIFESTEAL_DRAGON_EGG_GLOW_HOURS=48
 
 The shared secret must match the Discord bot's `API_SHARED_SECRET`. If the bot is offline or rejects the request, gameplay continues and the mod logs a warning.
 
+The sync payload includes `schemaVersion: 2`, server population, grace-period state, and per-player website-safe gameplay fields. Current synced player stats are `heartsCurrent`, `heartGains`, `heartLosses`, `killsTotal`, `deathsTotal`, `revivalsTotal`, `eliminated`, `twentyHearts`, `dragonEggHolder`, and `maceWielder`. Fields that require future dedicated tracking, such as `maceKills`, are sent as `null` until implemented.
+
 The dragon egg marker is a server-particle approximation of a beacon beam. A true solid beacon-style render can be upgraded later in the client/UI mod.
 
 ## Heart Item Assets

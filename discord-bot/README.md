@@ -207,6 +207,29 @@ GET /api/v1/overlays/lifesteal/player
 
 If `OVERLAY_PUBLIC_TOKEN` is configured, pass it as `?token=...` or `Authorization: Bearer <OVERLAY_PUBLIC_TOKEN>`.
 
+## Public Website API
+
+These read-only routes are safe for the public website and do not require `API_SHARED_SECRET`:
+
+```http
+GET /api/v1/public/status
+GET /api/v1/public/players
+GET /api/v1/public/players/:minecraftUuid
+GET /api/v1/public/players/by-name/:name
+GET /api/v1/public/players/:minecraftUuid/timeline
+GET /api/v1/public/leaderboard?sort=hearts|kills|deaths|revivals
+GET /api/v1/public/objectives
+GET /api/v1/public/season
+GET /api/v1/public/sync-health
+GET /api/v1/public/events
+```
+
+The public player list is populated by `/api/v1/gameplay/roles/sync`. Only linked, active players who opted into public stats through `/profile set public_stats:true` are published. Private Discord IDs, risk scores, IP hashes, moderation notes, appeals, and account-review state are never included.
+
+Public status includes online/max player counts, grace-period state, source update time, and snapshot age. Public sync health reports whether the snapshot is `live`, `stale`, `offline`, or `waiting`. Public players expose website-facing fields such as `hearts_current`, `kills_total`, `deaths_total`, `revivals_total`, `heart_gains`, `heart_losses`, and `mace_kills`, with `data_status` values so the website can distinguish synced stats from unavailable stats. Public objectives expose dragon egg holder, mace holders, and 20-heart counts separately from the player list.
+
+Public events are sanitized from Minecraft audit events and should only be used for public-safe event types or events explicitly marked with `"public": true` in their `data`.
+
 ## Gameplay Roles
 
 Optional role IDs:

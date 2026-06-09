@@ -1,4 +1,6 @@
 import express from 'express';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { z } from 'zod';
 import { config } from './config.js';
 import { statements } from './db.js';
@@ -24,7 +26,18 @@ const minecraftLinkSchema = z.object({
 const gameplayRoleSnapshotSchema = z.object({
   minecraftUuid: z.string().min(32).max(36).optional(),
   playerId: z.string().min(32).max(36).optional(),
+  heartsCurrent: z.number().int().min(1).max(20).nullable().optional(),
   hearts: z.number().int().min(1).max(20).optional(),
+  killsTotal: z.number().int().min(0).optional(),
+  kills: z.number().int().min(0).optional(),
+  deathsTotal: z.number().int().min(0).optional(),
+  deaths: z.number().int().min(0).optional(),
+  revivalsTotal: z.number().int().min(0).optional(),
+  revivals: z.number().int().min(0).optional(),
+  heartGains: z.number().int().min(0).nullable().optional(),
+  heartLosses: z.number().int().min(0).nullable().optional(),
+  maceKills: z.number().int().min(0).nullable().optional(),
+  playtimeSeconds: z.number().int().min(0).optional(),
   eliminated: z.boolean().default(false),
   twentyHearts: z.boolean().default(false),
   dragonEggHolder: z.boolean().default(false),
@@ -34,7 +47,19 @@ const gameplayRoleSnapshotSchema = z.object({
 });
 
 const gameplayRoleSyncSchema = z.object({
-  players: z.array(gameplayRoleSnapshotSchema).max(500)
+  schemaVersion: z.number().int().min(1).optional(),
+  source: z.string().min(1).max(80).optional(),
+  sentAt: z.string().min(1).max(80).optional(),
+  players: z.array(gameplayRoleSnapshotSchema).max(500),
+  status: z.object({
+    onlinePlayers: z.number().int().min(0).optional(),
+    maxPlayers: z.number().int().min(0).optional(),
+    grace: z.object({
+      active: z.boolean().default(false),
+      paused: z.boolean().default(false),
+      remainingSeconds: z.number().int().min(0).optional()
+    }).optional()
+  }).optional()
 });
 
 const minecraftEventSchema = z.object({
@@ -45,6 +70,24 @@ const minecraftEventSchema = z.object({
   message: z.string().min(1).max(1000),
   data: z.record(z.unknown()).optional()
 });
+
+const publicEventTypes = new Set([
+  'kill',
+  'elimination',
+  'revival',
+  'dragon_egg',
+  'mace',
+  'event'
+]);
+
+const publicSchemaVersion = 2;
+const verificationFaviconPath = join(process.cwd(), '..', 'reference-website', 'public', 'heart.png');
+const publicSeason = {
+  id: 'season-1',
+  name: 'Season 1',
+  starting_hearts: 10,
+  max_hearts: 20
+};
 
 const gameplayRoleMappings = [
   ['twentyHearts', 'twentyHearts'],
@@ -68,7 +111,8 @@ function page(title, body) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHtml(title)}</title>
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <title>${escapeHtml(title)} | SHD Lifesteal</title>
   <style>
     body { font-family: system-ui, sans-serif; margin: 0; background: #101418; color: #f7faf8; }
     main { max-width: 620px; margin: 12vh auto; padding: 32px; }
@@ -104,6 +148,14 @@ function minecraftUuidVariants(value) {
   return [...new Set([clean, compact])];
 }
 
+function configuredPrestigeBadges(minecraftUuid) {
+  for (const uuid of minecraftUuidVariants(minecraftUuid)) {
+    const badges = config.publicPrestigeBadges.get(uuid);
+    if (badges) return badges;
+  }
+  return [];
+}
+
 function findLinkedMinecraftAccount(minecraftUuid) {
   for (const uuid of minecraftUuidVariants(minecraftUuid)) {
     const linked = statements.findLinkedByMinecraft.get(uuid);
@@ -116,6 +168,346 @@ function sameMinecraftUuid(left, right) {
   if (!left || !right) return false;
   const wanted = new Set(minecraftUuidVariants(left));
   return minecraftUuidVariants(right).some((uuid) => wanted.has(uuid));
+}
+
+function formatPlaytime(seconds) {
+  if (seconds == null) return 'Hidden';
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  return `${hours}h ${String(minutes).padStart(2, '0')}m`;
+}
+
+function snapshotAgeSeconds(updatedAt) {
+  if (!updatedAt) return null;
+  return Math.max(0, Math.floor((Date.now() - updatedAt) / 1000));
+}
+
+function fieldStatus(value, available = true) {
+  return available && value != null ? 'synced' : 'unavailable';
+}
+
+function publicStatusFromSync(status, updatedAt) {
+  return {
+    online_players: status?.onlinePlayers ?? null,
+    max_players: status?.maxPlayers ?? null,
+    grace_active: Boolean(status?.grace?.active),
+    grace_paused: Boolean(status?.grace?.paused),
+    grace_remaining_seconds: status?.grace?.remainingSeconds ?? null,
+    source_updated_at: updatedAt,
+    snapshot_age_seconds: 0,
+    updated_at: updatedAt
+  };
+}
+
+function publicPlayersFromSnapshots(snapshots, updatedAt) {
+  const projected = [];
+
+  for (const snapshot of snapshots) {
+    const minecraftUuid = snapshot.minecraftUuid ?? snapshot.playerId;
+    const linked = findLinkedMinecraftAccount(minecraftUuid);
+    if (!linked || linked.status !== 'active' || !linked.public_stats_opt_in) {
+      continue;
+    }
+
+    const prestige = [...configuredPrestigeBadges(linked.minecraft_uuid)];
+    if (snapshot.dragonEggHolder) prestige.push('dragon-egg');
+    if (snapshot.maceWielder) prestige.push('mace-1');
+
+    const hearts = snapshot.heartsCurrent ?? snapshot.hearts ?? null;
+    const heartGains = snapshot.heartGains ?? null;
+    const heartLosses = snapshot.heartLosses ?? null;
+    const kills = snapshot.killsTotal ?? snapshot.kills ?? 0;
+    const deaths = snapshot.deathsTotal ?? snapshot.deaths ?? 0;
+    const revivals = snapshot.revivalsTotal ?? snapshot.revivals ?? 0;
+    const maceKills = snapshot.maceKills ?? null;
+    const publicPlayer = {
+      minecraft_uuid: linked.minecraft_uuid,
+      name: linked.minecraft_name ?? 'Unknown',
+      hearts_current: hearts,
+      heart_gains: heartGains,
+      heart_losses: heartLosses,
+      kills_total: kills,
+      deaths_total: deaths,
+      revivals_total: revivals,
+      mace_kills: maceKills,
+      playtime: formatPlaytime(snapshot.playtimeSeconds),
+      eliminated: snapshot.eliminated,
+      twenty_hearts: snapshot.twentyHearts,
+      dragon_egg_holder: snapshot.dragonEggHolder,
+      mace_wielder: snapshot.maceWielder,
+      prestige: [...new Set(prestige)],
+      status: snapshot.eliminated
+        ? 'Eliminated'
+        : hearts === 1
+          ? 'On Last Heart'
+          : snapshot.twentyHearts
+            ? 'Most Feared'
+            : null,
+      data_status: {
+        hearts_current: fieldStatus(hearts),
+        heart_gains: fieldStatus(heartGains),
+        heart_losses: fieldStatus(heartLosses),
+        kills_total: fieldStatus(kills),
+        deaths_total: fieldStatus(deaths),
+        revivals_total: fieldStatus(revivals),
+        mace_kills: fieldStatus(maceKills),
+        playtime: snapshot.playtimeSeconds == null ? 'unavailable' : 'synced',
+        objectives: 'synced'
+      },
+      source_updated_at: updatedAt,
+      // Legacy aliases for the first website integration pass.
+      hearts,
+      hearts_gained: heartGains,
+      hearts_lost: heartLosses,
+      kills,
+      deaths,
+      revivals,
+      updated_at: updatedAt
+    };
+
+    projected.push(publicPlayer);
+  }
+
+  return projected
+    .sort((first, second) =>
+      Number(second.hearts_current ?? 0) - Number(first.hearts_current ?? 0) ||
+      Number(second.kills_total ?? 0) - Number(first.kills_total ?? 0) ||
+      first.name.localeCompare(second.name)
+    )
+    .map((player, index) => ({ ...player, rank: index + 1 }));
+}
+
+function publicObjectivesFromPlayers(players, updatedAt) {
+  const dragonEggHolder = players.find((player) => player.dragon_egg_holder);
+  const maceWielders = players.filter((player) => player.mace_wielder);
+  const twentyHeartPlayers = players.filter((player) => Number(player.hearts_current ?? player.hearts ?? 0) >= publicSeason.max_hearts);
+
+  return {
+    dragon_egg: {
+      id: 'dragon_egg',
+      title: 'Dragon Egg',
+      owner: dragonEggHolder?.name ?? null,
+      owner_minecraft_uuid: dragonEggHolder?.minecraft_uuid ?? null,
+      state: dragonEggHolder ? 'held' : 'unclaimed',
+      data_status: 'synced',
+      source_updated_at: updatedAt,
+      updated_at: updatedAt
+    },
+    maces: [0, 1].map((index) => {
+      const holder = maceWielders[index] ?? null;
+      return {
+        id: `mace_${index + 1}`,
+        title: `Mace ${index + 1}`,
+        owner: holder?.name ?? null,
+        owner_minecraft_uuid: holder?.minecraft_uuid ?? null,
+        state: holder ? 'held' : 'unclaimed',
+        mace_identity_status: 'unavailable',
+        mace_kills: holder?.mace_kills ?? null,
+        data_status: {
+          holder: holder ? 'synced' : 'unavailable',
+          mace_identity: 'unavailable',
+          mace_kills: 'unavailable'
+        },
+        source_updated_at: updatedAt,
+        updated_at: updatedAt
+      };
+    }),
+    twenty_hearts: {
+      id: 'twenty_hearts',
+      title: '20 Hearts',
+      count: twentyHeartPlayers.length,
+      player_names: twentyHeartPlayers.map((player) => player.name),
+      data_status: 'synced',
+      source_updated_at: updatedAt,
+      updated_at: updatedAt
+    }
+  };
+}
+
+function normalizePublicPlayer(player, fallbackUpdatedAt) {
+  const updatedAt = player.source_updated_at ?? player.updated_at ?? fallbackUpdatedAt ?? null;
+  const hearts = player.hearts_current ?? player.hearts ?? null;
+  const heartGains = player.heart_gains ?? player.hearts_gained ?? null;
+  const heartLosses = player.heart_losses ?? player.hearts_lost ?? null;
+  const kills = player.kills_total ?? player.kills ?? 0;
+  const deaths = player.deaths_total ?? player.deaths ?? 0;
+  const revivals = player.revivals_total ?? player.revivals ?? 0;
+  const maceKills = player.mace_kills ?? null;
+
+  return {
+    ...player,
+    hearts_current: hearts,
+    heart_gains: heartGains,
+    heart_losses: heartLosses,
+    kills_total: kills,
+    deaths_total: deaths,
+    revivals_total: revivals,
+    mace_kills: maceKills,
+    data_status: {
+      hearts_current: fieldStatus(hearts),
+      heart_gains: fieldStatus(heartGains),
+      heart_losses: fieldStatus(heartLosses),
+      kills_total: fieldStatus(kills),
+      deaths_total: fieldStatus(deaths),
+      revivals_total: fieldStatus(revivals),
+      mace_kills: fieldStatus(maceKills),
+      playtime: player.playtime && player.playtime !== 'Hidden' ? 'synced' : 'unavailable',
+      objectives: 'synced',
+      ...(player.data_status ?? {})
+    },
+    source_updated_at: updatedAt,
+    // Legacy aliases for older consumers.
+    hearts,
+    hearts_gained: heartGains,
+    hearts_lost: heartLosses,
+    kills,
+    deaths,
+    revivals,
+    updated_at: player.updated_at ?? updatedAt
+  };
+}
+
+function normalizePublicSnapshot(snapshot) {
+  const updatedAt = snapshot?.updated_at ?? null;
+  const players = (snapshot?.players ?? []).map((player) => normalizePublicPlayer(player, updatedAt));
+  const status = {
+    online_players: snapshot?.status?.online_players ?? null,
+    max_players: snapshot?.status?.max_players ?? null,
+    grace_active: Boolean(snapshot?.status?.grace_active),
+    grace_paused: Boolean(snapshot?.status?.grace_paused),
+    grace_remaining_seconds: snapshot?.status?.grace_remaining_seconds ?? null,
+    source_updated_at: snapshot?.status?.source_updated_at ?? snapshot?.status?.updated_at ?? updatedAt,
+    snapshot_age_seconds: snapshotAgeSeconds(updatedAt),
+    updated_at: snapshot?.status?.updated_at ?? updatedAt
+  };
+
+  return {
+    schema_version: snapshot?.schema_version ?? publicSchemaVersion,
+    status,
+    players,
+    objectives: snapshot?.objectives ?? publicObjectivesFromPlayers(players, updatedAt),
+    season: snapshot?.season ?? publicSeason,
+    updated_at: updatedAt,
+    snapshot_age_seconds: snapshotAgeSeconds(updatedAt)
+  };
+}
+
+function latestGameplaySyncAudit() {
+  return statements.recentAudit.all(100)
+    .find((row) => row.type === 'gameplay.roles_sync') ?? null;
+}
+
+function publicSyncHealth(snapshot = normalizePublicSnapshot(statements.getPublicLifestealSnapshot.get())) {
+  const latestSync = latestGameplaySyncAudit();
+  const latestSyncData = latestSync ? JSON.parse(latestSync.data_json ?? '{}') : {};
+  const age = snapshot.snapshot_age_seconds;
+  const state = age == null
+    ? 'waiting'
+    : age <= 45
+      ? 'live'
+      : age <= 180
+        ? 'stale'
+        : 'offline';
+
+  return {
+    state,
+    fresh: state === 'live',
+    stale: state === 'stale',
+    waiting: state === 'waiting',
+    last_sync_at: snapshot.updated_at,
+    snapshot_age_seconds: age,
+    players_received: latestSyncData.received ?? null,
+    public_players_published: snapshot.players.length,
+    source: 'shd-lifesteal',
+    schema_version: snapshot.schema_version,
+    latest_audit_id: latestSync?.id ?? null
+  };
+}
+
+function publicPlayerByUuid(snapshot, minecraftUuid) {
+  return snapshot.players.find((player) => sameMinecraftUuid(player.minecraft_uuid, minecraftUuid)) ?? null;
+}
+
+function publicPlayerByName(snapshot, name) {
+  const normalized = String(name).toLowerCase();
+  return snapshot.players.find((player) => player.name.toLowerCase() === normalized) ?? null;
+}
+
+function publicLeaderboard(snapshot, sort = 'hearts') {
+  const sorters = {
+    hearts: (first, second) => Number(second.hearts_current ?? 0) - Number(first.hearts_current ?? 0),
+    kills: (first, second) => Number(second.kills_total ?? 0) - Number(first.kills_total ?? 0),
+    deaths: (first, second) => Number(second.deaths_total ?? 0) - Number(first.deaths_total ?? 0),
+    revivals: (first, second) => Number(second.revivals_total ?? 0) - Number(first.revivals_total ?? 0)
+  };
+  const sorter = sorters[sort] ?? sorters.hearts;
+
+  return [...snapshot.players]
+    .sort((first, second) =>
+      sorter(first, second) ||
+      Number(second.hearts_current ?? 0) - Number(first.hearts_current ?? 0) ||
+      Number(second.kills_total ?? 0) - Number(first.kills_total ?? 0) ||
+      first.name.localeCompare(second.name)
+    )
+    .map((player, index) => ({ ...player, rank: index + 1, leaderboard_sort: sorters[sort] ? sort : 'hearts' }));
+}
+
+function publicPlayerTimeline(player, limit = 25) {
+  return statements.recentAudit.all(200)
+    .filter((row) => {
+      if (!row.minecraft_uuid || !sameMinecraftUuid(row.minecraft_uuid, player.minecraft_uuid)) return false;
+      if (!row.type.startsWith('minecraft.event.')) return false;
+      const data = JSON.parse(row.data_json ?? '{}');
+      const type = row.type.replace('minecraft.event.', '');
+      return data.public === true || publicEventTypes.has(type);
+    })
+    .slice(0, limit)
+    .map((row) => {
+      const data = JSON.parse(row.data_json ?? '{}');
+      return {
+        id: row.id,
+        type: row.type.replace('minecraft.event.', ''),
+        message: data.message ?? row.type,
+        severity: data.severity ?? 'info',
+        created_at: row.created_at
+      };
+    });
+}
+
+function savePublicLifestealSnapshot(snapshots, status) {
+  const updatedAt = Date.now();
+  const players = publicPlayersFromSnapshots(snapshots, updatedAt);
+  const publicStatus = publicStatusFromSync(status, updatedAt);
+  const objectives = publicObjectivesFromPlayers(players, updatedAt);
+  statements.upsertPublicLifestealSnapshot.run({
+    schemaVersion: publicSchemaVersion,
+    status: publicStatus,
+    players,
+    objectives,
+    season: publicSeason,
+    updatedAt
+  });
+  return { status: publicStatus, players, objectives, updatedAt };
+}
+
+function publicEvents(limit = 20) {
+  return statements.recentAudit.all(100)
+    .filter((row) => row.type.startsWith('minecraft.event.'))
+    .map((row) => {
+      const data = JSON.parse(row.data_json ?? '{}');
+      const type = row.type.replace('minecraft.event.', '');
+      return { row, data, type };
+    })
+    .filter(({ data, type }) => data.public === true || publicEventTypes.has(type))
+    .slice(0, limit)
+    .map(({ row, data, type }) => ({
+      id: row.id,
+      type,
+      severity: data.severity ?? 'info',
+      message: data.message ?? type,
+      minecraft_name: data.minecraftName ?? null,
+      created_at: row.created_at
+    }));
 }
 
 function saveOverlayLifestealPlayer(snapshots) {
@@ -278,6 +670,11 @@ export function startWebServer(client) {
   app.use(express.json({ limit: '64kb' }));
   app.set('trust proxy', true);
 
+  app.get('/favicon.png', (_req, res) => {
+    if (!existsSync(verificationFaviconPath)) return res.sendStatus(404);
+    return res.sendFile(verificationFaviconPath);
+  });
+
   app.get('/health', (_req, res) => {
     res.json({ ok: true });
   });
@@ -339,6 +736,137 @@ export function startWebServer(client) {
       ok: true,
       configured: Boolean(config.overlay.lifestealPlayerUuid),
       player
+    });
+  });
+
+  app.get('/api/v1/public/status', (_req, res) => {
+    res.set('Access-Control-Allow-Origin', '*');
+    const snapshot = normalizePublicSnapshot(statements.getPublicLifestealSnapshot.get());
+    res.json({
+      ok: true,
+      schemaVersion: snapshot.schema_version,
+      status: snapshot.status,
+      snapshotAgeSeconds: snapshot.snapshot_age_seconds,
+      updatedAt: snapshot.updated_at
+    });
+  });
+
+  app.get('/api/v1/public/players', (_req, res) => {
+    res.set('Access-Control-Allow-Origin', '*');
+    const snapshot = normalizePublicSnapshot(statements.getPublicLifestealSnapshot.get());
+    res.json({
+      ok: true,
+      schemaVersion: snapshot.schema_version,
+      players: snapshot.players,
+      snapshotAgeSeconds: snapshot.snapshot_age_seconds,
+      updatedAt: snapshot.updated_at
+    });
+  });
+
+  app.get('/api/v1/public/players/:minecraftUuid', (req, res) => {
+    res.set('Access-Control-Allow-Origin', '*');
+    const snapshot = normalizePublicSnapshot(statements.getPublicLifestealSnapshot.get());
+    const player = publicPlayerByUuid(snapshot, req.params.minecraftUuid);
+    if (!player) return res.status(404).json({ ok: false, error: 'Public player was not found.' });
+    res.json({
+      ok: true,
+      schemaVersion: snapshot.schema_version,
+      player,
+      snapshotAgeSeconds: snapshot.snapshot_age_seconds,
+      updatedAt: snapshot.updated_at
+    });
+  });
+
+  app.get('/api/v1/public/players/by-name/:name', (req, res) => {
+    res.set('Access-Control-Allow-Origin', '*');
+    const snapshot = normalizePublicSnapshot(statements.getPublicLifestealSnapshot.get());
+    const player = publicPlayerByName(snapshot, req.params.name);
+    if (!player) return res.status(404).json({ ok: false, error: 'Public player was not found.' });
+    res.json({
+      ok: true,
+      schemaVersion: snapshot.schema_version,
+      player,
+      snapshotAgeSeconds: snapshot.snapshot_age_seconds,
+      updatedAt: snapshot.updated_at
+    });
+  });
+
+  app.get('/api/v1/public/players/:minecraftUuid/timeline', (req, res) => {
+    res.set('Access-Control-Allow-Origin', '*');
+    const snapshot = normalizePublicSnapshot(statements.getPublicLifestealSnapshot.get());
+    const player = publicPlayerByUuid(snapshot, req.params.minecraftUuid);
+    if (!player) return res.status(404).json({ ok: false, error: 'Public player was not found.' });
+    const limit = Math.max(1, Math.min(50, Number.parseInt(req.query.limit ?? '25', 10) || 25));
+    res.json({
+      ok: true,
+      schemaVersion: snapshot.schema_version,
+      player: {
+        minecraft_uuid: player.minecraft_uuid,
+        name: player.name
+      },
+      timeline: publicPlayerTimeline(player, limit),
+      snapshotAgeSeconds: snapshot.snapshot_age_seconds,
+      updatedAt: snapshot.updated_at
+    });
+  });
+
+  app.get('/api/v1/public/leaderboard', (req, res) => {
+    res.set('Access-Control-Allow-Origin', '*');
+    const snapshot = normalizePublicSnapshot(statements.getPublicLifestealSnapshot.get());
+    const sort = String(req.query.sort ?? 'hearts');
+    const limit = Math.max(1, Math.min(500, Number.parseInt(req.query.limit ?? '100', 10) || 100));
+    res.json({
+      ok: true,
+      schemaVersion: snapshot.schema_version,
+      sort: ['hearts', 'kills', 'deaths', 'revivals'].includes(sort) ? sort : 'hearts',
+      players: publicLeaderboard(snapshot, sort).slice(0, limit),
+      snapshotAgeSeconds: snapshot.snapshot_age_seconds,
+      updatedAt: snapshot.updated_at
+    });
+  });
+
+  app.get('/api/v1/public/objectives', (_req, res) => {
+    res.set('Access-Control-Allow-Origin', '*');
+    const snapshot = normalizePublicSnapshot(statements.getPublicLifestealSnapshot.get());
+    res.json({
+      ok: true,
+      schemaVersion: snapshot.schema_version,
+      objectives: snapshot.objectives,
+      snapshotAgeSeconds: snapshot.snapshot_age_seconds,
+      updatedAt: snapshot.updated_at
+    });
+  });
+
+  app.get('/api/v1/public/season', (_req, res) => {
+    res.set('Access-Control-Allow-Origin', '*');
+    const snapshot = normalizePublicSnapshot(statements.getPublicLifestealSnapshot.get());
+    res.json({
+      ok: true,
+      schemaVersion: snapshot.schema_version,
+      season: snapshot.season,
+      status: snapshot.status,
+      snapshotAgeSeconds: snapshot.snapshot_age_seconds,
+      updatedAt: snapshot.updated_at
+    });
+  });
+
+  app.get('/api/v1/public/sync-health', (_req, res) => {
+    res.set('Access-Control-Allow-Origin', '*');
+    const snapshot = normalizePublicSnapshot(statements.getPublicLifestealSnapshot.get());
+    res.json({
+      ok: true,
+      schemaVersion: snapshot.schema_version,
+      health: publicSyncHealth(snapshot),
+      updatedAt: snapshot.updated_at
+    });
+  });
+
+  app.get('/api/v1/public/events', (_req, res) => {
+    res.set('Access-Control-Allow-Origin', '*');
+    res.json({
+      ok: true,
+      events: publicEvents(),
+      updatedAt: Date.now()
     });
   });
 
@@ -465,15 +993,16 @@ export function startWebServer(client) {
     try {
       const body = gameplayRoleSyncSchema.parse(req.body);
       const overlay = saveOverlayLifestealPlayer(body.players);
+      const publicSnapshot = savePublicLifestealSnapshot(body.players, body.status);
       const stats = await syncGameplayRoles(client, body.players);
-      audit('gameplay.roles_sync', { data: { ...stats, overlay } });
-      res.json({ ok: true, overlay, ...stats });
+      audit('gameplay.roles_sync', { data: { ...stats, overlay, publicPlayers: publicSnapshot.players.length } });
+      res.json({ ok: true, overlay, publicPlayers: publicSnapshot.players.length, ...stats });
     } catch (error) {
       res.status(400).json({ ok: false, error: error.message });
     }
   });
 
-  app.listen(config.port, () => {
+  return app.listen(config.port, () => {
     console.log(`Verification/API server listening on http://localhost:${config.port}`);
   });
 }

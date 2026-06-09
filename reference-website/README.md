@@ -1,8 +1,8 @@
-# SHD Lifesteal Reference Website
+# SHD Lifesteal
 
-Static mock/reference website for `lifesteal.shd-esports.com`.
+Website for `lifesteal.shd-esports.com`.
 
-This version uses mock data only. It is meant as the visual and layout reference before a later v2 rebuild with live data/API wiring.
+The player list and landing population widget read live public data first, then fall back to mock data when the API is unavailable or empty.
 
 ## Run
 
@@ -15,6 +15,12 @@ The dev server defaults to Vite's local URL. During the initial review pass it w
 
 ```text
 http://127.0.0.1:5180
+```
+
+Optional live API target:
+
+```env
+VITE_LIFESTEAL_API_BASE_URL=http://localhost:3000/api/v1/public
 ```
 
 ## Mock Pages

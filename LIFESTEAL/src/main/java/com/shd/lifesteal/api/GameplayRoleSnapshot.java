@@ -9,6 +9,8 @@ public record GameplayRoleSnapshot(
         int kills,
         int deaths,
         int revivals,
+        int heartGains,
+        int heartLosses,
         boolean twentyHearts,
         boolean dragonEggHolder,
         boolean maceWielder

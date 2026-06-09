@@ -22,6 +22,27 @@ const initialState = {
   ticket_threads: [],
   app_settings: {},
   overlay_lifesteal_player: null,
+  public_lifesteal_snapshot: {
+    schema_version: 2,
+    status: {
+      online_players: null,
+      max_players: null,
+      grace_active: false,
+      grace_paused: false,
+      grace_remaining_seconds: null,
+      source_updated_at: null,
+      snapshot_age_seconds: null,
+      updated_at: null
+    },
+    players: [],
+    objectives: {
+      dragon_egg: null,
+      maces: [],
+      twenty_hearts: null
+    },
+    season: null,
+    updated_at: null
+  },
   nextCaseId: 1,
   nextAuditId: 1,
   nextAppealId: 1,
@@ -565,6 +586,24 @@ export const statements = {
         twenty_hearts: Boolean(row.twentyHearts),
         dragon_egg_holder: Boolean(row.dragonEggHolder),
         mace_wielder: Boolean(row.maceWielder),
+        updated_at: row.updatedAt
+      };
+      persist();
+    }
+  },
+  getPublicLifestealSnapshot: {
+    get() {
+      return structuredClone(state.public_lifesteal_snapshot);
+    }
+  },
+  upsertPublicLifestealSnapshot: {
+    run(row) {
+      state.public_lifesteal_snapshot = {
+        schema_version: row.schemaVersion ?? 2,
+        status: row.status,
+        players: row.players,
+        objectives: row.objectives,
+        season: row.season,
         updated_at: row.updatedAt
       };
       persist();

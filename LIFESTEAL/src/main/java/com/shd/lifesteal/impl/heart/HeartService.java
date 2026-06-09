@@ -66,7 +66,7 @@ public final class HeartService implements LifestealService {
     public HeartChangeResult setHearts(UUID playerId, int hearts, HeartChangeReason reason) {
         PlayerData current = getOrCreate(playerId);
         int clamped = Math.max(1, Math.min(config.maxHearts(), hearts));
-        PlayerData saved = repository.savePlayer(current.withHearts(clamped));
+        PlayerData saved = repository.savePlayer(current.withHeartChange(clamped, tracksHeartStats(reason)));
         PlayerHeartState state = toApiState(saved);
         uiBridgeManager.onPlayerHeartStateChanged(state);
         return new HeartChangeResult(playerId, current.hearts(), saved.hearts(), reason, current.hearts() != saved.hearts());
@@ -94,7 +94,7 @@ public final class HeartService implements LifestealService {
 
     public PlayerHeartState revive(UUID playerId) {
         PlayerData current = getOrCreate(playerId);
-        PlayerData saved = repository.savePlayer(current.withEliminated(false).withHearts(config.revivalHearts()));
+        PlayerData saved = repository.savePlayer(current.withRevivalAdded().withEliminated(false).withHearts(config.revivalHearts()));
         PlayerHeartState state = toApiState(saved);
         uiBridgeManager.onPlayerHeartStateChanged(state);
         return state;
@@ -142,7 +142,7 @@ public final class HeartService implements LifestealService {
             );
         }
 
-        PlayerData saved = repository.savePlayer(current.withDeathAdded().withHearts(current.hearts() - 1));
+        PlayerData saved = repository.savePlayer(current.withDeathAdded().withHeartChange(current.hearts() - 1, true));
         PlayerHeartState state = toApiState(saved);
         uiBridgeManager.onPlayerHeartStateChanged(state);
         Optional<UUID> validKiller = creditedKiller.filter(killerId -> !killerId.equals(victimId));
@@ -155,7 +155,7 @@ public final class HeartService implements LifestealService {
                 repository.savePlayer(killer.withKillAdded());
                 dropHeartItem = true;
             } else {
-                PlayerData savedKiller = repository.savePlayer(killer.withKillAdded().withHearts(killer.hearts() + 1));
+                PlayerData savedKiller = repository.savePlayer(killer.withKillAdded().withHeartChange(killer.hearts() + 1, true));
                 PlayerHeartState killerState = toApiState(savedKiller);
                 uiBridgeManager.onPlayerHeartStateChanged(killerState);
                 killerHeartResult = Optional.of(new HeartChangeResult(
@@ -202,6 +202,8 @@ public final class HeartService implements LifestealService {
                     playerData.kills(),
                     playerData.deaths(),
                     playerData.revivals(),
+                    playerData.heartGains(),
+                    playerData.heartLosses(),
                     playerData.hearts() >= config.maxHearts(),
                     false,
                     false
@@ -217,6 +219,8 @@ public final class HeartService implements LifestealService {
                     playerData.kills(),
                     playerData.deaths(),
                     playerData.revivals(),
+                    playerData.heartGains(),
+                    playerData.heartLosses(),
                     playerData.hearts() >= config.maxHearts(),
                     PlayerObjectiveInventoryScanner.carries(player, Items.DRAGON_EGG),
                     PlayerObjectiveInventoryScanner.carries(player, Items.MACE)
@@ -233,8 +237,17 @@ public final class HeartService implements LifestealService {
                 false,
                 0,
                 0,
+                0,
+                0,
                 0
         )));
+    }
+
+    private boolean tracksHeartStats(HeartChangeReason reason) {
+        return switch (reason) {
+            case DEATH, KILL_REWARD, HEART_ITEM, WITHDRAW -> true;
+            case ADMIN, REVIVAL, SEASON_RESET -> false;
+        };
     }
 
     private PlayerHeartState toApiState(PlayerData playerData) {

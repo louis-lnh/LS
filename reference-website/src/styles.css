@@ -213,6 +213,41 @@ p {
   line-height: 1.1;
 }
 
+.sync-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.35rem;
+  padding: 0.12rem 0.48rem;
+  border: 1px solid rgba(245, 242, 235, 0.13);
+  border-radius: 999px;
+  background: rgba(245, 242, 235, 0.055);
+  color: rgba(245, 242, 235, 0.74);
+  font-size: 0.7rem;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.sync-pill.live {
+  border-color: rgba(83, 211, 147, 0.45);
+  background: rgba(83, 211, 147, 0.11);
+  color: #abf1cb;
+}
+
+.sync-pill.stale,
+.sync-pill.waiting {
+  border-color: rgba(240, 217, 150, 0.38);
+  background: rgba(240, 217, 150, 0.09);
+  color: #ead49f;
+}
+
+.sync-pill.offline {
+  border-color: rgba(240, 105, 105, 0.4);
+  background: rgba(240, 105, 105, 0.1);
+  color: #ffb5b5;
+}
+
 .landing-live-card p {
   display: none;
 }

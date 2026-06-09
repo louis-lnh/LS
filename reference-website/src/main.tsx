@@ -33,15 +33,103 @@ type Player = {
   name: string
   prestige: PrestigeBadgeId[]
   hearts: number
-  heartsGained: number
-  heartsLost: number
+  heartsGained: number | null
+  heartsLost: number | null
   kills: number
   deaths: number
+  revivals?: number
+  maceKills: number | null
   playtime: string
   status?: string
   move: Move
   previousRank: number
   lastUpdated: string
+}
+
+type LiveStatus = {
+  online_players: number | null
+  max_players: number | null
+  grace_active: boolean
+  grace_paused: boolean
+  grace_remaining_seconds: number | null
+  source_updated_at?: number | null
+  snapshot_age_seconds?: number | null
+  updated_at: number | null
+}
+
+type PublicPlayer = {
+  rank?: number
+  minecraft_uuid?: string
+  name: string
+  prestige?: string[]
+  hearts_current?: number | null
+  hearts?: number | null
+  heart_gains?: number | null
+  hearts_gained?: number | null
+  heart_losses?: number | null
+  hearts_lost?: number | null
+  kills_total?: number
+  kills?: number
+  deaths_total?: number
+  deaths?: number
+  revivals_total?: number
+  revivals?: number
+  mace_kills?: number | null
+  playtime?: string
+  status?: string | null
+  eliminated?: boolean
+  source_updated_at?: number
+  updated_at?: number
+}
+
+type PublicObjectiveHolder = {
+  owner: string | null
+  owner_minecraft_uuid?: string | null
+  state: 'held' | 'unclaimed'
+  data_status?: string | Record<string, string>
+  mace_kills?: number | null
+  source_updated_at?: number | null
+  updated_at?: number | null
+}
+
+type PublicObjectives = {
+  dragon_egg?: PublicObjectiveHolder | null
+  maces?: PublicObjectiveHolder[]
+  twenty_hearts?: {
+    count: number
+    player_names: string[]
+    data_status?: string
+    source_updated_at?: number | null
+    updated_at?: number | null
+  } | null
+}
+
+type SyncHealth = {
+  state: 'live' | 'stale' | 'offline' | 'waiting'
+  fresh: boolean
+  stale: boolean
+  waiting: boolean
+  last_sync_at: number | null
+  snapshot_age_seconds: number | null
+  players_received: number | null
+  public_players_published: number
+  source: string
+  schema_version: number
+}
+
+type LiveData = {
+  status: LiveStatus | null
+  players: Player[]
+  objectives: PublicObjectives | null
+  health: SyncHealth | null
+  playersUpdatedAt: number | null
+  loaded: boolean
+}
+
+type RankHistory = {
+  currentUpdatedAt: number | null
+  currentRanks: Record<string, number>
+  moves: Record<string, { previousRank: number; changedAt: number }>
 }
 
 type EventItem = {
@@ -98,26 +186,9 @@ const priorityLinks: NavItem[] = [
   { id: 'players', label: 'Player List' },
 ]
 
-const players: Player[] = [
-  { rank: 1, name: 'Wemmbu', prestige: ['mace-1'], hearts: 20, heartsGained: 14, heartsLost: 4, kills: 37, deaths: 4, playtime: '18h 42m', status: 'Most Feared', move: 'same', previousRank: 1, lastUpdated: '12 min ago' },
-  { rank: 2, name: 'FlameFrags', prestige: ['dragon-egg'], hearts: 20, heartsGained: 13, heartsLost: 3, kills: 31, deaths: 7, playtime: '17h 06m', status: 'Most Wanted', move: 'up', previousRank: 4, lastUpdated: '12 min ago' },
-  { rank: 3, name: 'Ashswag', prestige: ['admin'], hearts: 19, heartsGained: 12, heartsLost: 3, kills: 26, deaths: 6, playtime: '16h 58m', status: 'Kill Streak x5+', move: 'down', previousRank: 2, lastUpdated: '12 min ago' },
-  { rank: 4, name: 'Parrot', prestige: ['shd-team'], hearts: 18, heartsGained: 11, heartsLost: 3, kills: 22, deaths: 8, playtime: '15h 33m', status: 'Event Winner', move: 'same', previousRank: 4, lastUpdated: '12 min ago' },
-  { rank: 5, name: 'Mapicc', prestige: [], hearts: 17, heartsGained: 10, heartsLost: 3, kills: 19, deaths: 9, playtime: '14h 51m', status: 'Bounty Target', move: 'up', previousRank: 7, lastUpdated: '12 min ago' },
-  { rank: 6, name: 'MinuteTech', prestige: ['mod'], hearts: 16, heartsGained: 9, heartsLost: 3, kills: 18, deaths: 10, playtime: '13h 24m', status: 'Kill Streak x5+', move: 'up', previousRank: 8, lastUpdated: '12 min ago' },
-  { rank: 7, name: 'Spoke', prestige: ['mace-2'], hearts: 15, heartsGained: 8, heartsLost: 3, kills: 16, deaths: 8, playtime: '12h 49m', move: 'same', previousRank: 7, lastUpdated: '12 min ago' },
-  { rank: 8, name: 'Zam', prestige: [], hearts: 14, heartsGained: 7, heartsLost: 3, kills: 14, deaths: 9, playtime: '12h 11m', status: 'Bounty Target', move: 'down', previousRank: 6, lastUpdated: '12 min ago' },
-  { rank: 9, name: 'ClownPierce', prestige: [], hearts: 13, heartsGained: 6, heartsLost: 3, kills: 13, deaths: 11, playtime: '11h 38m', status: 'Most Wanted', move: 'same', previousRank: 9, lastUpdated: '12 min ago' },
-  { rank: 10, name: 'Branzy', prestige: [], hearts: 12, heartsGained: 5, heartsLost: 3, kills: 11, deaths: 10, playtime: '10h 52m', move: 'up', previousRank: 12, lastUpdated: '12 min ago' },
-  { rank: 11, name: 'ChiefXD', prestige: [], hearts: 11, heartsGained: 4, heartsLost: 3, kills: 9, deaths: 12, playtime: '9h 47m', move: 'down', previousRank: 10, lastUpdated: '12 min ago' },
-  { rank: 12, name: 'Jaron', prestige: ['owner', 'shd-team'], hearts: 10, heartsGained: 4, heartsLost: 4, kills: 8, deaths: 13, playtime: '9h 02m', move: 'same', previousRank: 12, lastUpdated: '12 min ago' },
-  { rank: 13, name: 'PlanetLord', prestige: [], hearts: 9, heartsGained: 3, heartsLost: 4, kills: 7, deaths: 13, playtime: '8h 44m', move: 'up', previousRank: 15, lastUpdated: '12 min ago' },
-  { rank: 14, name: 'Redoons', prestige: [], hearts: 8, heartsGained: 3, heartsLost: 5, kills: 6, deaths: 14, playtime: '7h 55m', move: 'down', previousRank: 13, lastUpdated: '12 min ago' },
-  { rank: 15, name: 'Vort3x', prestige: [], hearts: 7, heartsGained: 2, heartsLost: 5, kills: 5, deaths: 15, playtime: '7h 21m', move: 'same', previousRank: 15, lastUpdated: '12 min ago' },
-  { rank: 16, name: 'Mysticat', prestige: [], hearts: 6, heartsGained: 2, heartsLost: 6, kills: 4, deaths: 15, playtime: '6h 40m', status: 'Eliminated', move: 'down', previousRank: 14, lastUpdated: '12 min ago' },
-  { rank: 17, name: 'Tango', prestige: [], hearts: 1, heartsGained: 1, heartsLost: 10, kills: 3, deaths: 16, playtime: '5h 12m', status: 'On Last Heart', move: 'same', previousRank: 17, lastUpdated: '12 min ago' },
-  { rank: 18, name: 'Ivory', prestige: [], hearts: 0, heartsGained: 1, heartsLost: 11, kills: 2, deaths: 17, playtime: '4h 38m', status: 'Eliminated', move: 'down', previousRank: 18, lastUpdated: '12 min ago' },
-]
+const publicApiBase = (import.meta.env.VITE_LIFESTEAL_API_BASE_URL ?? 'http://localhost:3000/api/v1/public').replace(/\/$/, '')
+const rankHistoryKey = 'shd-lifesteal-rank-history-v1'
+const rankMoveLifetimeMs = 24 * 60 * 60 * 1000
 
 const prestigeBadges: Record<PrestigeBadgeId, { label: string; shortLabel: string; image?: string }> = {
   owner: { label: 'Owner', shortLabel: 'OWN', image: ownerBadge },
@@ -141,21 +212,194 @@ const statusInfo: Record<string, { label: string; kind: StatusKind }> = {
 
 const prestigePriority: PrestigeBadgeId[] = ['owner', 'admin', 'mod', 'shd-team', 'dragon-egg', 'mace-1', 'mace-2']
 
+function isPrestigeBadgeId(value: string): value is PrestigeBadgeId {
+  return Object.prototype.hasOwnProperty.call(prestigeBadges, value)
+}
+
+function relativeTime(timestamp: number | null | undefined) {
+  if (!timestamp) return 'never'
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000))
+  if (seconds < 60) return 'just now'
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes} min ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  return `${days}d ago`
+}
+
+function playerRankKey(player: PublicPlayer) {
+  return (player.minecraft_uuid ?? player.name).toLowerCase()
+}
+
+function emptyRankHistory(): RankHistory {
+  return { currentUpdatedAt: null, currentRanks: {}, moves: {} }
+}
+
+function readRankHistory(): RankHistory {
+  try {
+    const raw = window.localStorage.getItem(rankHistoryKey)
+    if (!raw) return emptyRankHistory()
+    const parsed = JSON.parse(raw) as Partial<RankHistory>
+    return {
+      currentUpdatedAt: parsed.currentUpdatedAt ?? null,
+      currentRanks: parsed.currentRanks ?? {},
+      moves: parsed.moves ?? {},
+    }
+  } catch (_error) {
+    return emptyRankHistory()
+  }
+}
+
+function writeRankHistory(history: RankHistory) {
+  try {
+    window.localStorage.setItem(rankHistoryKey, JSON.stringify(history))
+  } catch (_error) {
+    // Rank movement is a progressive enhancement; private browsing can block storage.
+  }
+}
+
+function currentRanksFor(players: PublicPlayer[]) {
+  return Object.fromEntries(players.map((player, index) => [playerRankKey(player), player.rank ?? index + 1]))
+}
+
+function recentRankMoves(moves: RankHistory['moves']) {
+  const now = Date.now()
+  return Object.fromEntries(Object.entries(moves).filter(([, move]) => now - move.changedAt <= rankMoveLifetimeMs))
+}
+
+function rankHistoryFor(players: PublicPlayer[], updatedAt: number | null | undefined) {
+  const history = readRankHistory()
+  const currentRanks = currentRanksFor(players)
+  const moves = recentRankMoves(history.moves)
+  if (updatedAt && updatedAt !== history.currentUpdatedAt) {
+    for (const [key, rank] of Object.entries(currentRanks)) {
+      const previousRank = history.currentRanks[key]
+      if (previousRank != null && previousRank !== rank) {
+        moves[key] = { previousRank, changedAt: Date.now() }
+      }
+    }
+
+    const nextHistory = {
+      currentUpdatedAt: updatedAt,
+      currentRanks,
+      moves,
+    }
+    writeRankHistory(nextHistory)
+    return nextHistory
+  }
+
+  if (!history.currentUpdatedAt && players.length > 0) {
+    const nextHistory = { currentUpdatedAt: updatedAt ?? null, currentRanks, moves: {} }
+    writeRankHistory(nextHistory)
+    return nextHistory
+  }
+
+  return { ...history, moves }
+}
+
+function publicPlayerToPlayer(player: PublicPlayer, index: number, rankMoves: RankHistory['moves'] = {}): Player {
+  const rank = player.rank ?? index + 1
+  const previousRank = rankMoves[playerRankKey(player)]?.previousRank ?? rank
+  const move: Move = previousRank > rank ? 'up' : previousRank < rank ? 'down' : 'same'
+  const rawHearts = player.hearts_current ?? player.hearts ?? null
+  const hearts = player.eliminated ? Math.max(0, rawHearts ?? 0) : rawHearts ?? 10
+  const prestige = (player.prestige ?? []).filter(isPrestigeBadgeId)
+  const status = player.status ?? (player.eliminated ? 'Eliminated' : hearts === 1 ? 'On Last Heart' : undefined)
+  const updatedAt = player.source_updated_at ?? player.updated_at
+
+  return {
+    rank,
+    name: player.name,
+    prestige,
+    hearts,
+    heartsGained: player.heart_gains ?? player.hearts_gained ?? null,
+    heartsLost: player.heart_losses ?? player.hearts_lost ?? null,
+    kills: player.kills_total ?? player.kills ?? 0,
+    deaths: player.deaths_total ?? player.deaths ?? 0,
+    revivals: player.revivals_total ?? player.revivals ?? 0,
+    maceKills: player.mace_kills ?? null,
+    playtime: player.playtime ?? 'Hidden',
+    status,
+    move,
+    previousRank,
+    lastUpdated: relativeTime(updatedAt),
+  }
+}
+
+function useLiveData(): LiveData {
+  const [liveData, setLiveData] = useState<LiveData>({ status: null, players: [], objectives: null, health: null, playersUpdatedAt: null, loaded: false })
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadLiveData() {
+      try {
+        const [statusResponse, playersResponse, objectivesResponse, healthResponse] = await Promise.all([
+          fetch(`${publicApiBase}/status`),
+          fetch(`${publicApiBase}/players`),
+          fetch(`${publicApiBase}/objectives`).catch(() => null),
+          fetch(`${publicApiBase}/sync-health`).catch(() => null),
+        ])
+        if (!statusResponse.ok || !playersResponse.ok) {
+          if (!cancelled) setLiveData((current) => ({ ...current, loaded: true }))
+          return
+        }
+
+        const statusBody = await statusResponse.json() as { status?: LiveStatus; updatedAt?: number | null }
+        const playersBody = await playersResponse.json() as { players?: PublicPlayer[]; updatedAt?: number | null }
+        const objectivesBody = objectivesResponse?.ok
+          ? await objectivesResponse.json() as { objectives?: PublicObjectives; updatedAt?: number | null }
+          : { objectives: null }
+        const healthBody = healthResponse?.ok
+          ? await healthResponse.json() as { health?: SyncHealth; updatedAt?: number | null }
+          : { health: null }
+        if (cancelled) return
+
+        const publicPlayers = playersBody.players ?? []
+        const rankHistory = rankHistoryFor(publicPlayers, playersBody.updatedAt)
+
+        setLiveData({
+          status: statusBody.status ?? null,
+          players: publicPlayers.map((player, index) => publicPlayerToPlayer(player, index, rankHistory.moves)),
+          objectives: objectivesBody.objectives ?? null,
+          health: healthBody.health ?? null,
+          playersUpdatedAt: playersBody.updatedAt ?? null,
+          loaded: true,
+        })
+      } catch (_error) {
+        if (!cancelled) {
+          setLiveData((current) => ({ ...current, loaded: true }))
+        }
+      }
+    }
+
+    loadLiveData()
+    const interval = window.setInterval(loadLiveData, 30000)
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [])
+
+  return liveData
+}
+
 function isEliminated(player: Player) {
   return player.status === 'Eliminated' || player.hearts <= 0
 }
 
 function prestigeDetail(player: Player, badge: PrestigeBadgeId) {
   if (badge === 'dragon-egg') {
-    return 'Last pickup at 21:48'
+    return 'Current public Dragon Egg holder'
   }
 
   if (badge === 'mace-1') {
-    return 'Kills with Mace: 12'
+    return player.maceKills == null ? 'Mace kills not synced yet' : `Kills with Mace: ${player.maceKills}`
   }
 
   if (badge === 'mace-2') {
-    return 'Kills with Mace: 7'
+    return player.maceKills == null ? 'Mace kills not synced yet' : `Kills with Mace: ${player.maceKills}`
   }
 
   if (badge === 'owner') {
@@ -163,14 +407,14 @@ function prestigeDetail(player: Player, badge: PrestigeBadgeId) {
   }
 
   if (badge === 'admin') {
-    return 'Staff prefix: Admin'
+    return 'Staff badge: Admin'
   }
 
   if (badge === 'mod') {
-    return 'Staff prefix: Mod'
+    return 'Staff badge: Mod'
   }
 
-  return player.name === 'Jaron' ? 'SHD Team member' : 'Event staff team'
+  return 'SHD Team member'
 }
 
 function statusDetail(player: Player, status: string) {
@@ -187,11 +431,11 @@ function statusDetail(player: Player, status: string) {
   }
 
   if (status === 'Bounty Target') {
-    return 'Current bounty reward: 3 Hearts'
+    return 'Current bounty target'
   }
 
   if (status === 'Kill Streak x5+') {
-    return player.name === 'Ashswag' ? 'Current kill streak: 8' : 'Current kill streak: 5'
+    return `${player.kills} kills this season`
   }
 
   if (status === 'On Last Heart') {
@@ -227,78 +471,87 @@ function playerKdr(player: Player) {
   return player.deaths === 0 ? player.kills.toFixed(2) : (player.kills / player.deaths).toFixed(2)
 }
 
+function statValue(value: number | string | null | undefined) {
+  return value == null ? 'Not synced' : String(value)
+}
+
+function listValue(values: string[]) {
+  return values.length > 0 ? values.join(', ') : 'None'
+}
+
+function syncHealthLabel(health: SyncHealth | null) {
+  if (!health) return 'Waiting'
+  if (health.state === 'live') return 'Live'
+  if (health.state === 'stale') return 'Stale'
+  if (health.state === 'offline') return 'Offline'
+  return 'Waiting'
+}
+
+function syncHealthDetail(health: SyncHealth | null) {
+  if (!health?.last_sync_at) return 'No server sync yet'
+  return `Last sync ${relativeTime(health.last_sync_at)}`
+}
+
 function playerHeadUrl(player: Player) {
   return `https://minotar.net/avatar/${encodeURIComponent(player.name)}/128.png`
 }
 
 function profileStatsFor(player: Player): ProfileStatGroup[] {
-  if (player.name !== 'Wemmbu') {
-    return [
-      {
-        title: 'General',
-        stats: [
-          { label: 'Current Hearts', value: String(player.hearts) },
-          { label: 'Maximum Hearts Reached', value: String(Math.max(player.hearts, 10)) },
-          { label: 'Total Hearts Gained', value: String(player.heartsGained) },
-          { label: 'Total Hearts Lost', value: String(player.heartsLost) },
-          { label: 'Kill Count', value: String(player.kills) },
-          { label: 'Death Count', value: String(player.deaths) },
-          { label: 'KDR', value: playerKdr(player) },
-          { label: 'Playtime', value: player.playtime },
-        ],
-      },
-      {
-        title: 'Profile Mock',
-        stats: [
-          { label: 'Detailed Card', value: 'Coming Later' },
-          { label: 'Current Test Player', value: 'Wemmbu' },
-        ],
-      },
-    ]
-  }
+  const moveAmount = Math.abs(player.previousRank - player.rank)
+  const movement = player.move === 'same'
+    ? 'No change'
+    : `${player.move === 'up' ? '+' : '-'}${moveAmount} ${moveAmount === 1 ? 'rank' : 'ranks'}`
+  const objectiveBadges = [
+    player.prestige.includes('dragon-egg') ? 'Dragon Egg' : null,
+    player.prestige.includes('mace-1') ? 'Mace One' : null,
+    player.prestige.includes('mace-2') ? 'Mace Two' : null,
+  ].filter((value): value is string => Boolean(value))
+  const staffBadges = player.prestige
+    .filter((badge) => ['owner', 'admin', 'mod', 'shd-team'].includes(badge))
+    .map((badge) => prestigeBadges[badge].label)
 
   return [
     {
       title: 'General',
       stats: [
-        { label: 'Current Hearts', value: '20' },
-        { label: 'Maximum Hearts Reached', value: '20' },
-        { label: 'Total Hearts Gained', value: '14' },
-        { label: 'Total Hearts Lost', value: '4' },
-        { label: 'Kill Count', value: '37' },
-        { label: 'Death Count', value: '4' },
-        { label: 'KDR', value: '9.25' },
-        { label: 'Playtime', value: '18h 42m' },
+        { label: 'Current Hearts', value: String(player.hearts) },
+        { label: 'Highest Known Hearts', value: String(Math.max(player.hearts, 10)) },
+        { label: 'Season Rank', value: `#${player.rank}` },
+        { label: 'Previous Rank', value: `#${player.previousRank}` },
+        { label: 'Rank Movement', value: movement },
+        { label: 'Last Updated', value: player.lastUpdated },
+        { label: 'Playtime', value: player.playtime },
       ],
     },
     {
       title: 'Lifesteal',
       stats: [
-        { label: 'Hearts Withdrawn', value: '5' },
-        { label: 'Hearts Consumed', value: '9' },
-        { label: 'Hearts Crafted', value: '3' },
-        { label: 'Revivals Received', value: '1' },
-        { label: 'Revivals Performed', value: '2' },
-        { label: 'Times Eliminated', value: '0' },
+        { label: 'Total Hearts Gained', value: statValue(player.heartsGained) },
+        { label: 'Total Hearts Lost', value: statValue(player.heartsLost) },
+        { label: 'Net Heart Change', value: player.heartsGained == null || player.heartsLost == null ? 'Not synced' : String(player.heartsGained - player.heartsLost) },
+        { label: 'Revivals', value: String(player.revivals ?? 0) },
+        { label: 'Current State', value: isEliminated(player) ? 'Eliminated' : 'Active' },
+        { label: 'Status Label', value: player.status ?? 'None' },
       ],
     },
     {
       title: 'Combat',
       stats: [
-        { label: 'Longest Kill Streak', value: '11' },
-        { label: 'Current Kill Streak', value: '6' },
-        { label: 'Most Valuable Kill', value: 'FlameFrags' },
-        { label: 'Deaths While On Last Heart', value: '0' },
+        { label: 'Kill Count', value: String(player.kills) },
+        { label: 'Death Count', value: String(player.deaths) },
+        { label: 'KDR', value: playerKdr(player) },
+        { label: 'Mace Kills', value: statValue(player.maceKills) },
       ],
     },
     {
       title: 'Objectives',
       stats: [
-        { label: 'Dragon Egg Hold Time', value: '0h 00m' },
-        { label: 'Dragon Egg Pickups', value: '0' },
-        { label: 'Mace One Kills', value: '12' },
-        { label: 'Mace Two Kills', value: '0' },
-        { label: 'Objective Captures', value: '3' },
+        { label: 'Objective Badges', value: listValue(objectiveBadges) },
+        { label: 'Staff Badges', value: listValue(staffBadges) },
+        { label: 'Dragon Egg Holder', value: player.prestige.includes('dragon-egg') ? 'Yes' : 'No' },
+        { label: 'Mace Wielder', value: player.prestige.includes('mace-1') || player.prestige.includes('mace-2') ? 'Yes' : 'No' },
+        { label: 'Mace One Kills', value: player.prestige.includes('mace-1') ? statValue(player.maceKills) : 'Not holder' },
+        { label: 'Mace Two Kills', value: player.prestige.includes('mace-2') ? statValue(player.maceKills) : 'Not holder' },
       ],
     },
   ]
@@ -712,6 +965,7 @@ function pathForPage(page: PageId) {
 
 function App() {
   const [page, setPage] = useState<PageId>(() => pageFromPath())
+  const liveData = useLiveData()
   const current = useMemo(() => routeItems.find((item) => item.id === page) ?? routeItems[0], [page])
   const navigate = (nextPage: PageId) => {
     window.history.pushState(null, '', pathForPage(nextPage))
@@ -730,9 +984,9 @@ function App() {
       <Background />
       <Header current={page} onNavigate={navigate} />
       <main>
-        {page === 'landing' && <Landing onNavigate={navigate} />}
+        {page === 'landing' && <Landing liveHealth={liveData.health} liveLoaded={liveData.loaded} liveStatus={liveData.status} onNavigate={navigate} />}
         {page === 'rules' && <RulesPage />}
-        {page === 'players' && <PlayersPage />}
+        {page === 'players' && <PlayersPage liveHealth={liveData.health} liveLoaded={liveData.loaded} liveObjectives={liveData.objectives} livePlayers={liveData.players} liveUpdatedAt={liveData.playersUpdatedAt} />}
         {page === 'events' && <EventsPage />}
         {page === 'world' && <WorldPage />}
         {page === 'signup' && <SignupPage />}
@@ -770,7 +1024,19 @@ function Header({ current, onNavigate }: { current: PageId; onNavigate: (page: P
   )
 }
 
-function Landing({ onNavigate }: { onNavigate: (page: PageId) => void }) {
+function Landing({ liveHealth, liveLoaded, liveStatus, onNavigate }: { liveHealth: SyncHealth | null; liveLoaded: boolean; liveStatus: LiveStatus | null; onNavigate: (page: PageId) => void }) {
+  const hasLivePopulation = liveStatus?.online_players != null && liveStatus?.max_players != null
+  const population = hasLivePopulation
+    ? `${liveStatus.online_players} / ${liveStatus.max_players} Players`
+    : liveLoaded
+      ? 'Live status unavailable'
+      : 'Loading live data'
+  const populationNote = hasLivePopulation
+    ? `Updated ${relativeTime(liveStatus.updated_at)}`
+    : liveLoaded
+      ? 'Waiting for the next public server sync.'
+      : 'Connecting to the public live API.'
+
   return (
     <section className="landing-page page-frame">
       <div className="landing-copy">
@@ -779,8 +1045,9 @@ function Landing({ onNavigate }: { onNavigate: (page: PageId) => void }) {
         <p className="season-line">Season 1</p>
         <div className="landing-live-card" aria-label="Current server population">
           <span>Online Now</span>
-          <strong>18 / 50 Players</strong>
-          <p>Mock live count for the future server widget.</p>
+          <strong>{population}</strong>
+          {liveHealth && <em className={`sync-pill ${liveHealth.state}`}>{syncHealthLabel(liveHealth)}</em>}
+          <p>{populationNote}</p>
         </div>
         <div className="landing-actions">
           {priorityLinks.map((link, index) => (
@@ -855,19 +1122,59 @@ function RuleBlockView({ block }: { block: RuleBlock }) {
   return <p>{block.text}</p>
 }
 
-function PlayersPage() {
+function PlayersPage({ liveHealth, liveLoaded, liveObjectives, livePlayers, liveUpdatedAt }: { liveHealth: SyncHealth | null; liveLoaded: boolean; liveObjectives: PublicObjectives | null; livePlayers: Player[]; liveUpdatedAt: number | null }) {
   const [query, setQuery] = useState('')
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null)
   const normalizedQuery = query.trim().toLowerCase()
+  const players = livePlayers
+  const usingLiveObjectives = livePlayers.length > 0 && liveObjectives != null
+  const topPlayer = players[0]
+  const dragonEggHolder = players.find((player) => player.prestige.includes('dragon-egg'))
+  const maceWielders = players.filter((player) => player.prestige.includes('mace-1') || player.prestige.includes('mace-2'))
+  const mostKills = [...players].sort((first, second) => second.kills - first.kills)[0]
+  const mostPlaytime = [...players].sort((first, second) => second.playtime.localeCompare(first.playtime))[0]
+  const twentyHeartPlayers = usingLiveObjectives
+    ? liveObjectives?.twenty_hearts?.count ?? 0
+    : players.filter((player) => player.hearts >= 20).length
   const eliminatedPlayers = players.filter(isEliminated).length
   const activePlayers = players.length - eliminatedPlayers
+  const dragonEggOwner = usingLiveObjectives ? liveObjectives?.dragon_egg?.owner ?? null : dragonEggHolder?.name ?? null
+  const dragonEggDetail = usingLiveObjectives
+    ? (liveObjectives?.dragon_egg?.owner ? `Updated ${relativeTime(liveObjectives.dragon_egg.source_updated_at ?? liveObjectives.dragon_egg.updated_at)}` : 'No public holder synced')
+    : (dragonEggHolder ? `Updated ${dragonEggHolder.lastUpdated}` : 'No public holder synced')
+  const liveMaces = liveObjectives?.maces ?? []
+  const maceOneOwner = usingLiveObjectives ? liveMaces[0]?.owner ?? null : maceWielders[0]?.name ?? null
+  const maceTwoOwner = usingLiveObjectives ? liveMaces[1]?.owner ?? null : maceWielders[1]?.name ?? null
+  const maceOneKills = usingLiveObjectives ? liveMaces[0]?.mace_kills ?? null : maceWielders[0]?.maceKills ?? null
+  const maceTwoKills = usingLiveObjectives ? liveMaces[1]?.mace_kills ?? null : maceWielders[1]?.maceKills ?? null
+  const maceDetail = (owner: string | null, kills: number | null) => {
+    if (!owner) return 'No public wielder synced'
+    return kills == null ? 'Mace kills not synced yet' : `${kills} mace kills`
+  }
   const filteredPlayers = useMemo(() => {
     if (!normalizedQuery) {
       return players
     }
 
     return players.filter((player) => playerSearchText(player).includes(normalizedQuery))
-  }, [normalizedQuery])
+  }, [normalizedQuery, players])
+  const openProfile = (player: Player) => {
+    const params = new URLSearchParams(window.location.search)
+    params.set('profile', player.name)
+    window.history.replaceState(null, '', `${pathForPage('players')}?${params.toString()}`)
+    setSelectedPlayer(player)
+  }
+  const closeProfile = () => {
+    window.history.replaceState(null, '', pathForPage('players'))
+    setSelectedPlayer(null)
+  }
+
+  useEffect(() => {
+    const profileName = new URLSearchParams(window.location.search).get('profile')
+    if (!profileName || selectedPlayer) return
+    const profile = players.find((player) => player.name.toLowerCase() === profileName.toLowerCase())
+    if (profile) setSelectedPlayer(profile)
+  }, [players, selectedPlayer])
 
   useEffect(() => {
     if (!selectedPlayer) {
@@ -876,7 +1183,7 @@ function PlayersPage() {
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setSelectedPlayer(null)
+        closeProfile()
       }
     }
 
@@ -892,27 +1199,31 @@ function PlayersPage() {
     <section className="content-page page-frame">
       <div className={selectedPlayer ? 'players-content is-muted' : 'players-content'}>
         <PageIntro label="Players" title="Player List">
-          Leaderboard-style roster view for every season player, objective holders, combat stats, and player profiles later.
+          Leaderboard-style roster view for every season player, objective holders, combat stats, and live player profiles.
         </PageIntro>
         <div className="objective-row player-objectives">
-          <Objective title="Dragon Egg" owner="FlameFrags" detail="Last pickup at 21:48" />
-          <Objective title="Mace One" owner="Wemmbu" detail="Kills with Mace: 12" />
-          <Objective title="Mace Two" owner="Spoke" detail="Kills with Mace: 7" />
-          <Objective title="20 Hearts" owner="2 Players" detail="Number of players who reached 20 hearts" />
+          <Objective title="Dragon Egg" owner={dragonEggOwner ?? 'Unclaimed'} detail={dragonEggDetail} />
+          <Objective title="Mace One" owner={maceOneOwner ?? 'Unclaimed'} detail={maceDetail(maceOneOwner, maceOneKills)} />
+          <Objective title="Mace Two" owner={maceTwoOwner ?? 'Unclaimed'} detail={maceDetail(maceTwoOwner, maceTwoKills)} />
+          <Objective title="20 Hearts" owner={`${twentyHeartPlayers} Players`} detail="Number of players who reached 20 hearts" />
         </div>
         <div className="objective-row player-highlights">
-          <Objective title="Most Kills" owner="Wemmbu" detail="37 confirmed kills" />
-          <Objective title="Highest Streak" owner="Ashswag" detail="Current kill streak: 8" />
-          <Objective title="Most Playtime" owner="Wemmbu" detail="18h 42m active this season" />
-          <Objective title="Bounty Target" owner="Mapicc" detail="Reward pool: 3 Hearts" />
+          <Objective title="Most Kills" owner={mostKills?.name ?? 'Pending'} detail={`${mostKills?.kills ?? 0} confirmed kills`} />
+          <Objective title="Top Hearts" owner={topPlayer?.name ?? 'Pending'} detail={`${topPlayer?.hearts ?? 0} current hearts`} />
+          <Objective title="Most Playtime" owner={mostPlaytime?.name ?? 'Pending'} detail={`${mostPlaytime?.playtime ?? 'Hidden'} active this season`} />
+          <Objective title="Bounty Target" owner="Pending" detail="Reward pool opens during public bounty windows" />
         </div>
         <div className="leaderboard-tools">
           <div>
-            <span>Leaderboard</span>
-            <strong>{normalizedQuery ? `${filteredPlayers.length} Matching Players` : `${players.length} Total Players`}</strong>
+            <span>{livePlayers.length > 0 ? 'Live Leaderboard' : 'Loading Leaderboard'}</span>
+            <strong>{normalizedQuery ? `${filteredPlayers.length} Matching Players` : liveLoaded ? `${players.length} Total Players` : 'Loading Players'}</strong>
             <div className="leaderboard-counts" aria-label="Season player counts">
               <span>{activePlayers} Active</span>
               <span>{eliminatedPlayers} Eliminated</span>
+              {!liveLoaded && <span>Connecting to live API</span>}
+              {liveLoaded && livePlayers.length === 0 && <span>No public players synced yet</span>}
+              {livePlayers.length > 0 && <span>Updated {relativeTime(liveUpdatedAt)}</span>}
+              {livePlayers.length > 0 && liveHealth && <span className={`sync-pill ${liveHealth.state}`}>{syncHealthLabel(liveHealth)} · {syncHealthDetail(liveHealth)}</span>}
             </div>
           </div>
           <label className="player-search">
@@ -940,11 +1251,11 @@ function PlayersPage() {
                 <tr
                   className="player-row"
                   key={player.name}
-                  onClick={() => setSelectedPlayer(player)}
+                  onClick={() => openProfile(player)}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault()
-                      setSelectedPlayer(player)
+                      openProfile(player)
                     }
                   }}
                   role="button"
@@ -971,14 +1282,14 @@ function PlayersPage() {
               ))}
               {filteredPlayers.length === 0 && (
                 <tr>
-                  <td className="empty-row" colSpan={9}>No players found.</td>
+                  <td className="empty-row" colSpan={9}>{liveLoaded ? 'No players found.' : 'Loading live players...'}</td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
-      {selectedPlayer && <PlayerProfileModal player={selectedPlayer} onClose={() => setSelectedPlayer(null)} />}
+      {selectedPlayer && <PlayerProfileModal player={selectedPlayer} onClose={closeProfile} />}
     </section>
   )
 }
@@ -990,8 +1301,8 @@ function HeartValue({ player }: { player: Player }) {
       <span className="hover-card heart-card" role="tooltip">
         <strong>Heart Breakdown</strong>
         <span>Current Hearts: {player.hearts}</span>
-        <span>Hearts Gained: {player.heartsGained}</span>
-        <span>Hearts Lost: {player.heartsLost}</span>
+        <span>Hearts Gained: {statValue(player.heartsGained)}</span>
+        <span>Hearts Lost: {statValue(player.heartsLost)}</span>
       </span>
     </span>
   )
@@ -999,15 +1310,15 @@ function HeartValue({ player }: { player: Player }) {
 
 function MoveIndicator({ player }: { player: Player }) {
   const amount = Math.abs(player.previousRank - player.rank)
-  const symbol = player.move === 'up' ? '▲' : player.move === 'down' ? '▼' : '-'
+  const symbol = player.move === 'up' ? '+' : player.move === 'down' ? '-' : '-'
   const label = player.move === 'same' ? '-' : `${symbol} ${amount}`
-  const title = player.move === 'same' ? 'No rank change in the last 24 hours' : `Moved ${player.move} ${amount} ${amount === 1 ? 'position' : 'positions'} in the last 24 hours`
+  const title = player.move === 'same' ? 'No rank change since the previous live snapshot' : `Moved ${player.move} ${amount} ${amount === 1 ? 'position' : 'positions'} since the previous live snapshot`
 
   return (
     <span className="hover-wrap" tabIndex={0}>
       <span className={`move ${player.move}`}>{label}</span>
       <span className="hover-card move-card" role="tooltip">
-        <strong>Position Change (24h)</strong>
+        <strong>Position Change</strong>
         <span>{title}</span>
         <span>Rank #{player.previousRank} {'->'} #{player.rank}</span>
         <span>Updated {player.lastUpdated}</span>
@@ -1075,7 +1386,7 @@ function ProfileSummaryStat({ label, value }: { label: string; value: string }) 
 
 function StatusBadge({ player }: { player: Player }) {
   if (!player.status) {
-    return <span className="muted-value">-</span>
+    return null
   }
 
   const meta = statusInfo[player.status] ?? { label: player.status, kind: 'achievement' as StatusKind }
@@ -1485,7 +1796,7 @@ function Footer({ current, onNavigate }: { current: string; onNavigate: (page: P
   return (
     <footer className="footer">
       <strong>SHD LIFESTEAL</strong>
-      <p>© 2026 SHD Esports. Public Lifesteal season website. Current mock page: {current}.</p>
+      <p>© 2026 SHD Esports. Public Lifesteal season website. Current page: {current}.</p>
       <nav aria-label="Legal navigation">
         {footerLegalItems.map((item) => (
           <button key={item.id} onClick={() => onNavigate(item.id)} type="button">

@@ -11,6 +11,42 @@ function int(name, fallback) {
   return Number.isFinite(value) ? value : fallback;
 }
 
+const publicPrestigeBadgeIds = new Set([
+  'owner',
+  'admin',
+  'mod',
+  'shd-team',
+  'dragon-egg',
+  'mace-1',
+  'mace-2'
+]);
+
+function normalizeMinecraftUuid(value) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function publicPrestigeBadges() {
+  const raw = process.env.PUBLIC_PRESTIGE_BADGES ?? '';
+  const badgesByUuid = new Map();
+
+  for (const entry of raw.split(';')) {
+    const [uuidValue, badgesValue] = entry.split(':');
+    const uuid = normalizeMinecraftUuid(uuidValue);
+    if (!uuid || !badgesValue) continue;
+
+    const badges = badgesValue
+      .split(',')
+      .map((value) => value.trim().toLowerCase().replaceAll('_', '-'))
+      .filter((value) => publicPrestigeBadgeIds.has(value));
+
+    if (badges.length === 0) continue;
+    badgesByUuid.set(uuid, [...new Set(badges)]);
+    badgesByUuid.set(uuid.replaceAll('-', ''), [...new Set(badges)]);
+  }
+
+  return badgesByUuid;
+}
+
 const heartRoleEnvNames = [
   '',
   'ONE_HEARTS_ROLE_ID',
@@ -65,6 +101,7 @@ export const config = {
     eliminated: process.env.ELIMINATED_ROLE_ID ?? '',
     hearts: heartRoleIds()
   },
+  publicPrestigeBadges: publicPrestigeBadges(),
   overlay: {
     lifestealPlayerUuid: (process.env.OVERLAY_LIFESTEAL_PLAYER_UUID ?? '').toLowerCase(),
     publicToken: process.env.OVERLAY_PUBLIC_TOKEN ?? ''

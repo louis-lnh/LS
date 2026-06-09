@@ -41,9 +41,13 @@ public final class SqliteLifestealRepository implements LifestealRepository {
                         kills INTEGER NOT NULL DEFAULT 0,
                         deaths INTEGER NOT NULL DEFAULT 0,
                         revivals INTEGER NOT NULL DEFAULT 0,
+                        heart_gains INTEGER NOT NULL DEFAULT 0,
+                        heart_losses INTEGER NOT NULL DEFAULT 0,
                         updated_at INTEGER NOT NULL
                     )
                     """);
+            ensureColumn(connection, "heart_gains", "INTEGER NOT NULL DEFAULT 0");
+            ensureColumn(connection, "heart_losses", "INTEGER NOT NULL DEFAULT 0");
             ShdLifestealMod.LOGGER.info("Lifesteal SQLite store ready at {}", databasePath.toAbsolutePath());
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed to initialize lifesteal SQLite store", exception);
@@ -53,7 +57,7 @@ public final class SqliteLifestealRepository implements LifestealRepository {
     @Override
     public Optional<PlayerData> findPlayer(UUID playerId) {
         String sql = """
-                SELECT player_id, hearts, eliminated, kills, deaths, revivals
+                SELECT player_id, hearts, eliminated, kills, deaths, revivals, heart_gains, heart_losses
                 FROM players
                 WHERE player_id = ?
                 """;
@@ -77,7 +81,7 @@ public final class SqliteLifestealRepository implements LifestealRepository {
     @Override
     public List<PlayerData> findPlayers() {
         String sql = """
-                SELECT player_id, hearts, eliminated, kills, deaths, revivals
+                SELECT player_id, hearts, eliminated, kills, deaths, revivals, heart_gains, heart_losses
                 FROM players
                 """;
 
@@ -97,14 +101,16 @@ public final class SqliteLifestealRepository implements LifestealRepository {
     @Override
     public PlayerData savePlayer(PlayerData playerData) {
         String sql = """
-                INSERT INTO players (player_id, hearts, eliminated, kills, deaths, revivals, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO players (player_id, hearts, eliminated, kills, deaths, revivals, heart_gains, heart_losses, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(player_id) DO UPDATE SET
                     hearts = excluded.hearts,
                     eliminated = excluded.eliminated,
                     kills = excluded.kills,
                     deaths = excluded.deaths,
                     revivals = excluded.revivals,
+                    heart_gains = excluded.heart_gains,
+                    heart_losses = excluded.heart_losses,
                     updated_at = excluded.updated_at
                 """;
 
@@ -116,7 +122,9 @@ public final class SqliteLifestealRepository implements LifestealRepository {
             statement.setInt(4, playerData.kills());
             statement.setInt(5, playerData.deaths());
             statement.setInt(6, playerData.revivals());
-            statement.setLong(7, System.currentTimeMillis());
+            statement.setInt(7, playerData.heartGains());
+            statement.setInt(8, playerData.heartLosses());
+            statement.setLong(9, System.currentTimeMillis());
             statement.executeUpdate();
             return playerData;
         } catch (SQLException exception) {
@@ -138,6 +146,21 @@ public final class SqliteLifestealRepository implements LifestealRepository {
         return DriverManager.getConnection(jdbcUrl);
     }
 
+    private void ensureColumn(Connection connection, String columnName, String definition) throws SQLException {
+        try (Statement statement = connection.createStatement();
+             ResultSet result = statement.executeQuery("PRAGMA table_info(players)")) {
+            while (result.next()) {
+                if (columnName.equals(result.getString("name"))) {
+                    return;
+                }
+            }
+        }
+
+        try (Statement statement = connection.createStatement()) {
+            statement.executeUpdate("ALTER TABLE players ADD COLUMN " + columnName + " " + definition);
+        }
+    }
+
     private PlayerData readPlayer(ResultSet result) throws SQLException {
         return new PlayerData(
                 UUID.fromString(result.getString("player_id")),
@@ -145,7 +168,9 @@ public final class SqliteLifestealRepository implements LifestealRepository {
                 result.getInt("eliminated") != 0,
                 result.getInt("kills"),
                 result.getInt("deaths"),
-                result.getInt("revivals")
+                result.getInt("revivals"),
+                result.getInt("heart_gains"),
+                result.getInt("heart_losses")
         );
     }
 }
