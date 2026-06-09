@@ -1,0 +1,28 @@
+{
+  "linked_accounts": [],
+  "verification_tokens": [],
+  "moderation_cases": [],
+  "audit_events": [],
+  "minecraft_link_history": [],
+  "minecraft_name_history": [],
+  "discord_name_history": [
+    {
+      "discord_id": "1248919319967039498",
+      "username": "vlt_luigi",
+      "first_seen_at": 1779975418414,
+      "last_seen_at": 1779975424483
+    }
+  ],
+  "rules_acceptances": [],
+  "signup_answers": [],
+  "appeals": [],
+  "staff_notes": [],
+  "shared_ip_exceptions": [],
+  "ticket_threads": [],
+  "app_settings": {},
+  "nextCaseId": 1,
+  "nextAuditId": 1,
+  "nextAppealId": 1,
+  "nextNoteId": 1,
+  "nextTicketId": 1
+}

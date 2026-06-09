@@ -1,0 +1,243 @@
+{
+  "linked_accounts": [
+    {
+      "discord_id": "1248919319967039498",
+      "minecraft_uuid": "6ad0d6d1-90ca-49aa-b5aa-d4c7e197b60e",
+      "minecraft_name": "PrimeLuigi",
+      "discord_username": "vlt_luigi",
+      "ip_hash": "c4ab756b34ed5854fdd46b9cc7811bd76c7153d3354a96a37ce0c2699dd139bf",
+      "ip_prefix_hash": "c4ab756b34ed5854fdd46b9cc7811bd76c7153d3354a96a37ce0c2699dd139bf",
+      "verified_at": 1779975583460,
+      "last_seen_at": 1779975583460,
+      "status": "active",
+      "suspicious": 0,
+      "suspicious_reason": "",
+      "risk_score": 0,
+      "risk_band": "low",
+      "risk_reasons": [],
+      "role": "player",
+      "public_stats_opt_in": false,
+      "region": null,
+      "team_name": null,
+      "event_interest": null
+    }
+  ],
+  "verification_tokens": [
+    {
+      "token": "UDg6n9_IADO1y1xigPXAZHwPTDNAnSwm",
+      "link_code": "19C3086C",
+      "discord_id": "1248919319967039498",
+      "minecraft_uuid": "6ad0d6d1-90ca-49aa-b5aa-d4c7e197b60e",
+      "minecraft_name": "PrimeLuigi",
+      "created_at": 1779975444482,
+      "expires_at": 1779976344482,
+      "used_at": 1779975583460
+    }
+  ],
+  "moderation_cases": [
+    {
+      "id": 1,
+      "action": "appeal_closed",
+      "target_discord_id": "1248919319967039498",
+      "target_minecraft_uuid": "6ad0d6d1-90ca-49aa-b5aa-d4c7e197b60e",
+      "moderator_id": "1248919319967039498",
+      "reason": "closed by staff",
+      "created_at": 1779976175210,
+      "closed_at": null,
+      "closed_by": null,
+      "close_reason": null
+    }
+  ],
+  "audit_events": [
+    {
+      "id": 1,
+      "type": "data.backup_created",
+      "discord_id": "1248919319967039498",
+      "minecraft_uuid": null,
+      "ip_hash": null,
+      "data_json": "{\"backupPath\":\"B:\\\\LS\\\\discord-bot\\\\data\\\\backups\\\\lifesteal-bot-2026-05-28T13-37-04-822Z.json\"}",
+      "created_at": 1779975424823,
+      "previous_hash": null,
+      "event_hash": "a8151d7565d90fb71c19eab402f8aa79f180f043314abb0b83eeb13cedab7a1d"
+    },
+    {
+      "id": 2,
+      "type": "verification.completed",
+      "discord_id": "1248919319967039498",
+      "minecraft_uuid": "6ad0d6d1-90ca-49aa-b5aa-d4c7e197b60e",
+      "ip_hash": "c4ab756b34ed5854fdd46b9cc7811bd76c7153d3354a96a37ce0c2699dd139bf",
+      "data_json": "{\"minecraftName\":\"PrimeLuigi\",\"suspicious\":false,\"suspiciousReason\":\"\",\"rulesVersion\":\"v1\",\"riskScore\":0,\"riskBand\":\"low\"}",
+      "created_at": 1779975583462,
+      "previous_hash": "a8151d7565d90fb71c19eab402f8aa79f180f043314abb0b83eeb13cedab7a1d",
+      "event_hash": "db261245ae51c139c9ad0ace4a6f5343d8e73a8d9ca982799f4d976b7e206a6b"
+    },
+    {
+      "id": 3,
+      "type": "data.exported",
+      "discord_id": "1248919319967039498",
+      "minecraft_uuid": null,
+      "ip_hash": null,
+      "data_json": "{\"collection\":\"linked_accounts\"}",
+      "created_at": 1779975717062,
+      "previous_hash": "db261245ae51c139c9ad0ace4a6f5343d8e73a8d9ca982799f4d976b7e206a6b",
+      "event_hash": "a13432a669e942be03b0342246a49d8bc27a667b45351fca070abacd80946fc3"
+    },
+    {
+      "id": 4,
+      "type": "appeal.ticket_created",
+      "discord_id": "1248919319967039498",
+      "minecraft_uuid": "6ad0d6d1-90ca-49aa-b5aa-d4c7e197b60e",
+      "ip_hash": null,
+      "data_json": "{\"appealId\":1,\"banId\":\"test\",\"threadId\":\"1509552664415830057\"}",
+      "created_at": 1779975801570,
+      "previous_hash": "a13432a669e942be03b0342246a49d8bc27a667b45351fca070abacd80946fc3",
+      "event_hash": "2ef0050b2115e144b88a15575e93ae49b3080c07a636203eba92491c37405029"
+    },
+    {
+      "id": 5,
+      "type": "signup.ticket_created",
+      "discord_id": "1248919319967039498",
+      "minecraft_uuid": null,
+      "ip_hash": null,
+      "data_json": "{\"threadId\":\"1509552705100714058\"}",
+      "created_at": 1779975811291,
+      "previous_hash": "2ef0050b2115e144b88a15575e93ae49b3080c07a636203eba92491c37405029",
+      "event_hash": "64a765b99ddd28f838da9631aa2711f15546fc23babe9f03c7716095ac69fc8b"
+    },
+    {
+      "id": 6,
+      "type": "signup.ticket_completed",
+      "discord_id": "1248919319967039498",
+      "minecraft_uuid": "6ad0d6d1-90ca-49aa-b5aa-d4c7e197b60e",
+      "ip_hash": null,
+      "data_json": "{\"threadId\":\"1509552705100714058\",\"minecraftName\":\"PrimeLuigi\"}",
+      "created_at": 1779976091300,
+      "previous_hash": "64a765b99ddd28f838da9631aa2711f15546fc23babe9f03c7716095ac69fc8b",
+      "event_hash": "69626870a81ed31c79efc359f6118026097ca77e5e1b5c3f06d25c7facd0d14c"
+    },
+    {
+      "id": 7,
+      "type": "appeal.closed",
+      "discord_id": "1248919319967039498",
+      "minecraft_uuid": "6ad0d6d1-90ca-49aa-b5aa-d4c7e197b60e",
+      "ip_hash": null,
+      "data_json": "{\"appealId\":1,\"reason\":\"closed by staff\"}",
+      "created_at": 1779976175210,
+      "previous_hash": "69626870a81ed31c79efc359f6118026097ca77e5e1b5c3f06d25c7facd0d14c",
+      "event_hash": "12ac40ece2bb57a61a15f3b2335380f101a2ec334840030c62e166bb8d54da9a"
+    }
+  ],
+  "minecraft_link_history": [
+    {
+      "discord_id": "1248919319967039498",
+      "minecraft_uuid": "6ad0d6d1-90ca-49aa-b5aa-d4c7e197b60e",
+      "minecraft_name": "PrimeLuigi",
+      "linked_at": 1779975479605
+    },
+    {
+      "discord_id": "1248919319967039498",
+      "minecraft_uuid": "6ad0d6d1-90ca-49aa-b5aa-d4c7e197b60e",
+      "minecraft_name": "PrimeLuigi",
+      "linked_at": 1779975583460
+    }
+  ],
+  "minecraft_name_history": [
+    {
+      "minecraft_uuid": "6ad0d6d1-90ca-49aa-b5aa-d4c7e197b60e",
+      "username": "PrimeLuigi",
+      "first_seen_at": 1779975444481,
+      "last_seen_at": 1779975583460
+    }
+  ],
+  "discord_name_history": [
+    {
+      "discord_id": "1248919319967039498",
+      "username": "vlt_luigi",
+      "first_seen_at": 1779975418414,
+      "last_seen_at": 1779976174759
+    }
+  ],
+  "rules_acceptances": [
+    {
+      "discord_id": "1248919319967039498",
+      "minecraft_uuid": "6ad0d6d1-90ca-49aa-b5aa-d4c7e197b60e",
+      "rules_version": "v1",
+      "accepted_at": 1779975583460,
+      "source": "verification_page"
+    }
+  ],
+  "signup_answers": [
+    {
+      "discord_id": "1248919319967039498",
+      "minecraft_uuid": "6ad0d6d1-90ca-49aa-b5aa-d4c7e197b60e",
+      "minecraft_name": "PrimeLuigi",
+      "lifesteal_experience": "yes",
+      "found_server": "I created It",
+      "timezone": "Europe",
+      "understands_pvp": true,
+      "rules_agreement": true,
+      "extra": "fuck the staff",
+      "submitted_at": 1779976091300
+    }
+  ],
+  "appeals": [
+    {
+      "id": 1,
+      "discord_id": "1248919319967039498",
+      "minecraft_uuid": "6ad0d6d1-90ca-49aa-b5aa-d4c7e197b60e",
+      "ban_id": "test",
+      "reason": "testing",
+      "status": "closed",
+      "created_at": 1779975801570,
+      "closed_at": 1779976175209,
+      "closed_by": "1248919319967039498",
+      "decision_reason": "closed by staff"
+    }
+  ],
+  "staff_notes": [],
+  "shared_ip_exceptions": [],
+  "ticket_threads": [
+    {
+      "id": 1,
+      "type": "appeal",
+      "thread_id": "1509552664415830057",
+      "channel_id": "1509175379753959614",
+      "discord_id": "1248919319967039498",
+      "minecraft_uuid": "6ad0d6d1-90ca-49aa-b5aa-d4c7e197b60e",
+      "minecraft_name": "PrimeLuigi",
+      "status": "open",
+      "step": 0,
+      "answers": {},
+      "created_at": 1779975801569,
+      "closed_at": null
+    },
+    {
+      "id": 2,
+      "type": "join",
+      "thread_id": "1509552705100714058",
+      "channel_id": "1509175449593315328",
+      "discord_id": "1248919319967039498",
+      "minecraft_uuid": "6ad0d6d1-90ca-49aa-b5aa-d4c7e197b60e",
+      "minecraft_name": "PrimeLuigi",
+      "status": "open",
+      "step": 7,
+      "answers": {
+        "minecraft_name": "PrimeLuigi",
+        "lifesteal_experience": "yes",
+        "found_server": "I created It",
+        "timezone": "Europe",
+        "understands_pvp": true,
+        "rules_agreement": true,
+        "extra": "fuck the staff"
+      },
+      "created_at": 1779975811290,
+      "closed_at": null
+    }
+  ],
+  "app_settings": {},
+  "nextCaseId": 2,
+  "nextAuditId": 8,
+  "nextAppealId": 2,
+  "nextNoteId": 1,
+  "nextTicketId": 3
+}

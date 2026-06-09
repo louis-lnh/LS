@@ -6,6 +6,7 @@ import dragonEggBadge from './assets/prestige/dragon-egg.png'
 import adminBadge from './assets/prestige/admin.png'
 import ownerBadge from './assets/prestige/owner.png'
 import maceBadge from './assets/prestige/mace.png'
+import shdteamBadge from './assets/prestige/shd-logo.png'
 import moderatorBadge from './assets/prestige/moderator.png'
 import rulesMarkdown from './content/rules.md?raw'
 
@@ -122,7 +123,7 @@ const prestigeBadges: Record<PrestigeBadgeId, { label: string; shortLabel: strin
   owner: { label: 'Owner', shortLabel: 'OWN', image: ownerBadge },
   admin: { label: 'Admin', shortLabel: 'ADM', image: adminBadge },
   mod: { label: 'Mod', shortLabel: 'MOD', image: moderatorBadge },
-  'shd-team': { label: 'SHD Team', shortLabel: 'SHD' },
+  'shd-team': { label: 'SHD Team', shortLabel: 'SHD', image: shdteamBadge },
   'dragon-egg': { label: 'Dragon Egg Holder', shortLabel: 'EGG', image: dragonEggBadge },
   'mace-1': { label: 'Mace Wielder #1', shortLabel: 'M1', image: maceBadge },
   'mace-2': { label: 'Mace Wielder #2', shortLabel: 'M2', image: maceBadge },
