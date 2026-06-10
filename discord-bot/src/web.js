@@ -1,12 +1,13 @@
 import express from 'express';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import crypto from 'node:crypto';
 import { z } from 'zod';
 import { config } from './config.js';
 import { statements } from './db.js';
 import { clientIp, ipHashes } from './privacy.js';
 import { completeMinecraftLink, completeVerification } from './verification.js';
-import { audit, minecraftLog, securityLog } from './logger.js';
+import { audit, logToChannel, minecraftLog, securityLog } from './logger.js';
 import { refreshRisk } from './risk.js';
 import { currentRulesVersion } from './settings.js';
 
@@ -71,6 +72,25 @@ const minecraftEventSchema = z.object({
   data: z.record(z.unknown()).optional()
 });
 
+const supportRulesAckSchema = z.object({
+  project: z.enum(['lifesteal']).default('lifesteal')
+});
+
+const supportLifestealSignupSchema = z.object({
+  rulesCode: z.string().min(8).max(40),
+  discordUsername: z.string().min(2).max(80),
+  discordId: z.string().min(5).max(32).optional().nullable(),
+  minecraftName: z.string().min(3).max(16),
+  age: z.string().max(20).optional().nullable(),
+  region: z.string().min(1).max(80),
+  timezone: z.string().max(80).optional().nullable(),
+  foundLifesteal: z.string().min(2).max(1000),
+  experience: z.string().min(10).max(2000),
+  motivation: z.string().min(10).max(2000),
+  team: z.string().max(1000).optional().nullable(),
+  content: z.string().max(2000).optional().nullable()
+});
+
 const publicEventTypes = new Set([
   'kill',
   'elimination',
@@ -88,6 +108,7 @@ const publicSeason = {
   starting_hearts: 10,
   max_hearts: 20
 };
+const supportRulesAckLifetimeMs = 24 * 60 * 60 * 1000;
 
 const gameplayRoleMappings = [
   ['twentyHearts', 'twentyHearts'],
@@ -140,6 +161,45 @@ function requireOverlayToken(req, res, next) {
   const queryToken = req.query.token ?? '';
   if (header === `Bearer ${config.overlay.publicToken}` || queryToken === config.overlay.publicToken) return next();
   return res.status(401).json({ error: 'Unauthorized' });
+}
+
+function setPublicCors(res) {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+}
+
+function normalizeSupportCode(value) {
+  return String(value ?? '').trim().toUpperCase();
+}
+
+function randomCode(prefix) {
+  const value = crypto.randomBytes(4).toString('base64url').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+  return `${prefix}-${value}`;
+}
+
+function createUniqueCode(prefix, finder) {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const code = randomCode(prefix);
+    if (!finder.get(code)) return code;
+  }
+  throw new Error('Could not create a unique support code.');
+}
+
+function supportApplicationStaffFields(application, extra = []) {
+  return [
+    { name: 'Application', value: `#${application.id} / ${application.code}`, inline: true },
+    { name: 'Status', value: application.status, inline: true },
+    { name: 'Discord', value: application.discord_id_verified ? `<@${application.discord_id_verified}>` : application.discord_username, inline: true },
+    { name: 'Minecraft', value: application.minecraft_name, inline: true },
+    { name: 'Rules', value: `${application.rules_version} / ${application.rules_code}`, inline: true },
+    ...extra,
+    { name: 'Found Lifesteal', value: application.answers.foundLifesteal },
+    { name: 'Experience', value: application.answers.experience },
+    { name: 'Motivation', value: application.answers.motivation },
+    application.answers.team ? { name: 'Team', value: application.answers.team } : null,
+    application.answers.content ? { name: 'Extra', value: application.answers.content } : null
+  ].filter(Boolean);
 }
 
 function minecraftUuidVariants(value) {
@@ -870,6 +930,107 @@ export function startWebServer(client) {
     });
   });
 
+  app.options('/api/v1/public/rules/acknowledge', (_req, res) => {
+    setPublicCors(res);
+    res.sendStatus(204);
+  });
+
+  app.post('/api/v1/public/rules/acknowledge', (req, res) => {
+    setPublicCors(res);
+    try {
+      const body = supportRulesAckSchema.parse(req.body ?? {});
+      const now = Date.now();
+      const code = createUniqueCode('SHD-RULES', statements.findSupportRuleAcknowledgementByCode);
+      const ack = statements.createSupportRuleAcknowledgement.run({
+        code,
+        project: body.project,
+        rulesVersion: currentRulesVersion(),
+        createdAt: now,
+        expiresAt: now + supportRulesAckLifetimeMs
+      });
+      audit('support.rules_ack_created', {
+        data: {
+          project: ack.project,
+          rulesVersion: ack.rules_version,
+          expiresAt: ack.expires_at
+        }
+      });
+      res.json({
+        ok: true,
+        code: ack.code,
+        project: ack.project,
+        rulesVersion: ack.rules_version,
+        expiresAt: ack.expires_at
+      });
+    } catch (error) {
+      res.status(400).json({ ok: false, error: error.message });
+    }
+  });
+
+  app.options('/api/v1/public/support/lifesteal-signup', (_req, res) => {
+    setPublicCors(res);
+    res.sendStatus(204);
+  });
+
+  app.post('/api/v1/public/support/lifesteal-signup', async (req, res) => {
+    setPublicCors(res);
+    try {
+      const body = supportLifestealSignupSchema.parse(req.body);
+      const rulesCode = normalizeSupportCode(body.rulesCode);
+      const ack = statements.findSupportRuleAcknowledgementByCode.get(rulesCode);
+      if (!ack) return res.status(404).json({ ok: false, error: 'Rules acknowledgement code was not found.' });
+      if (ack.project !== 'lifesteal') return res.status(400).json({ ok: false, error: 'Rules acknowledgement code is for a different project.' });
+      if (ack.rules_version !== currentRulesVersion()) return res.status(409).json({ ok: false, error: `Rules code is for ${ack.rules_version}; current rules version is ${currentRulesVersion()}.` });
+      if (ack.used_at) return res.status(409).json({ ok: false, error: 'Rules acknowledgement code was already used for an application.' });
+      if (Date.now() > ack.expires_at) return res.status(410).json({ ok: false, error: 'Rules acknowledgement code expired. Please acknowledge the rules again.' });
+
+      const applicationCode = createUniqueCode('SHD-APP', statements.findSupportApplicationByCode);
+      const application = statements.createSupportApplication.run({
+        code: applicationCode,
+        project: 'lifesteal',
+        game: 'minecraft',
+        formType: 'lifesteal_signup',
+        rulesAckId: ack.id,
+        rulesCode: ack.code,
+        rulesVersion: ack.rules_version,
+        discordUsername: body.discordUsername.trim(),
+        discordIdClaimed: body.discordId?.trim() || null,
+        minecraftName: body.minecraftName.trim(),
+        answers: {
+          age: body.age?.trim() || null,
+          region: body.region.trim(),
+          timezone: body.timezone?.trim() || null,
+          foundLifesteal: body.foundLifesteal.trim(),
+          experience: body.experience.trim(),
+          motivation: body.motivation.trim(),
+          team: body.team?.trim() || null,
+          content: body.content?.trim() || null
+        },
+        createdAt: Date.now()
+      });
+      audit('support.application_submitted', {
+        data: {
+          applicationId: application.id,
+          applicationCode: application.code,
+          project: application.project,
+          game: application.game,
+          formType: application.form_type
+        }
+      });
+      await logToChannel(client, config.supportApplicationLogChannelId, 'Support Application Submitted', supportApplicationStaffFields(application, [
+        { name: 'Next Step', value: 'Applicant must post the application code in their Discord ticket.' }
+      ]));
+      res.status(201).json({
+        ok: true,
+        applicationId: application.id,
+        applicationCode: application.code,
+        status: application.status
+      });
+    } catch (error) {
+      res.status(400).json({ ok: false, error: error.message });
+    }
+  });
+
   app.post('/api/v1/minecraft/join', requireApiSecret, async (req, res) => {
     const body = minecraftJoinSchema.parse(req.body);
     statements.recordMinecraftName.run({
@@ -994,9 +1155,31 @@ export function startWebServer(client) {
       const body = gameplayRoleSyncSchema.parse(req.body);
       const overlay = saveOverlayLifestealPlayer(body.players);
       const publicSnapshot = savePublicLifestealSnapshot(body.players, body.status);
-      const stats = await syncGameplayRoles(client, body.players);
+      let stats;
+      try {
+        stats = await syncGameplayRoles(client, body.players);
+      } catch (error) {
+        stats = {
+          configuredRoles: 0,
+          received: body.players.length,
+          linked: 0,
+          members: 0,
+          added: 0,
+          removed: 0,
+          clearedMissing: 0,
+          skipped: body.players.length,
+          errors: body.players.length,
+          roleSyncError: error.message
+        };
+      }
       audit('gameplay.roles_sync', { data: { ...stats, overlay, publicPlayers: publicSnapshot.players.length } });
-      res.json({ ok: true, overlay, publicPlayers: publicSnapshot.players.length, ...stats });
+      res.json({
+        ok: true,
+        overlay,
+        publicPlayers: publicSnapshot.players.length,
+        roleSyncOk: !stats.roleSyncError,
+        ...stats
+      });
     } catch (error) {
       res.status(400).json({ ok: false, error: error.message });
     }

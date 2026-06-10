@@ -521,6 +521,39 @@ th {
   background: rgba(245, 242, 235, 0.1);
 }
 
+.rules-acknowledgement {
+  display: grid;
+  gap: 0.8rem;
+  margin-top: 2rem;
+  padding: 1.15rem;
+  border: 1px solid rgba(234, 212, 159, 0.26);
+  border-radius: 8px;
+  background: rgba(14, 14, 16, 0.72);
+}
+
+.rules-acknowledgement span {
+  color: #ead49f;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.rules-acknowledgement strong {
+  width: fit-content;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid rgba(245, 242, 235, 0.14);
+  border-radius: 6px;
+  background: rgba(245, 242, 235, 0.055);
+  color: #fffaf1;
+  font-size: 1.25rem;
+  letter-spacing: 0.08em;
+}
+
+.rules-acknowledgement-error {
+  color: #ffb5b5;
+}
+
 .table-panel {
   overflow: visible;
   border: 1px solid rgba(245, 242, 235, 0.13);

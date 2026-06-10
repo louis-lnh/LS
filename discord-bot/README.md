@@ -230,6 +230,42 @@ Public status includes online/max player counts, grace-period state, source upda
 
 Public events are sanitized from Minecraft audit events and should only be used for public-safe event types or events explicitly marked with `"public": true` in their `data`.
 
+## Support Signup Flow
+
+The support portal uses a two-key flow for Lifesteal applications:
+
+1. The player reads the Lifesteal rules and creates a rules acknowledgement key:
+
+```http
+POST /api/v1/public/rules/acknowledge
+Content-Type: application/json
+
+{
+  "project": "lifesteal"
+}
+```
+
+2. The support signup form submits that key with the application answers:
+
+```http
+POST /api/v1/public/support/lifesteal-signup
+Content-Type: application/json
+
+{
+  "rulesCode": "SHD-RULES-ABC123",
+  "discordUsername": "player_name",
+  "discordId": "optional_discord_id",
+  "minecraftName": "PlayerName",
+  "region": "EU",
+  "foundLifesteal": "Friend invited me",
+  "experience": "Application answer",
+  "motivation": "Application answer",
+  "team": "Optional team name or teammates"
+}
+```
+
+The bot returns an application key such as `SHD-APP-ABC123`. The player posts that key inside their Discord ticket. The bot verifies the rules key/application relationship, checks the Discord identity, marks the application as `ticket_verified`, replies in the ticket, and sends a staff review embed to `SUPPORT_APPLICATION_LOG_CHANNEL_ID` or the ticket/mod log fallback.
+
 ## Gameplay Roles
 
 Optional role IDs:

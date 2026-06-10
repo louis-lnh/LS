@@ -114,6 +114,7 @@ export const config = {
   staffAuditChannelId: process.env.STAFF_AUDIT_CHANNEL_ID ?? '',
   ticketNotifyChannelId: process.env.TICKET_NOTIFY_CHANNEL_ID ?? '',
   ticketArchiveChannelId: process.env.TICKET_ARCHIVE_CHANNEL_ID ?? '',
+  supportApplicationLogChannelId: process.env.SUPPORT_APPLICATION_LOG_CHANNEL_ID ?? '',
   rcon: {
     enabled: bool('MINECRAFT_RCON_ENABLED', false),
     host: process.env.MINECRAFT_RCON_HOST ?? '127.0.0.1',

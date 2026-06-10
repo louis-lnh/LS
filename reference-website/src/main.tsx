@@ -906,8 +906,8 @@ const legalPages: Record<string, LegalPageContent> = {
       { title: 'Project Owner', body: 'SHD Esports, represented by Louis Lenhartz.' },
       { title: 'Business Address', body: 'Louis Lenhartz, An der Burg Suelz 27a, 53797 Lohmar, Nordrhein-Westfalen, Germany.' },
       { title: 'Website Purpose', body: 'This website provides public information about the Lifesteal season, including rules, players, events, support flows, and server information.' },
-      { title: 'External Services', body: 'The website and season flow may use Discord for community communication, Minecraft/Microsoft account information for player identity, and the Lifesteal Support Portal at lifesteal-support.shd-esports.com for applications, appeals, and staff review.' },
-      { title: 'Contact', body: 'Preferred contact path: Lifesteal Support Portal at lifesteal-support.shd-esports.com. Before public launch, activate support@shd-esports.com for direct email contact.' },
+      { title: 'External Services', body: 'The website and season flow may use Discord for community communication, Minecraft/Microsoft account information for player identity, and the SHD Support Portal at support.shd-esports.com for applications, appeals, and staff review.' },
+      { title: 'Contact', body: 'Preferred contact path: SHD Support Portal at support.shd-esports.com. Before public launch, activate support@shd-esports.com for direct email contact.' },
     ],
   },
   privacy: {
@@ -922,7 +922,7 @@ const legalPages: Record<string, LegalPageContent> = {
       { title: 'External Services', body: 'The project may use Discord, Minecraft/Microsoft account identifiers, SHD-owned support systems, server hosting, website hosting, and future database or form systems required for applications and appeals.' },
       { title: 'Public Data', body: 'Public pages may show player names, hearts, kills, deaths, playtime, status labels, objective holders, event results, and online player counts. Internal OBS widgets are not intended as public data sources.' },
       { title: 'Retention', body: 'Applications are generally kept for the relevant season, roughly 3 to 4 months. Server logs are generally kept for the season. Appeals and punishment records may be kept long-term so staff can review repeat cases and historical decisions.' },
-      { title: 'Requests and Rights', body: 'Players may request access, correction, or deletion through the Lifesteal Support Portal at lifesteal-support.shd-esports.com. Before public launch, activate privacy@shd-esports.com for privacy requests and support@shd-esports.com for general support.' },
+      { title: 'Requests and Rights', body: 'Players may request access, correction, or deletion through the SHD Support Portal at support.shd-esports.com. Before public launch, activate privacy@shd-esports.com for privacy requests and support@shd-esports.com for general support.' },
     ],
   },
   terms: {
@@ -934,7 +934,7 @@ const legalPages: Record<string, LegalPageContent> = {
       { title: 'Use of the Website', body: 'This website is intended for players and viewers of the SHD Lifesteal season. Abuse, scraping, impersonation, or attempts to disrupt services may be restricted.' },
       { title: 'Server Participation', body: 'Joining the server may require application approval, rules acceptance, Discord verification, Minecraft account verification, and compliance with moderation decisions.' },
       { title: 'Content Accuracy', body: 'Stats, holders, schedules, and support states may be delayed or corrected if backend data changes or staff review requires adjustments.' },
-      { title: 'Applications and Appeals', body: 'Applications and punishment appeals may be handled through lifesteal-support.shd-esports.com. Submitting false, abusive, duplicated, or spam content may result in denied requests or further restrictions.' },
+      { title: 'Applications and Appeals', body: 'Applications and punishment appeals may be handled through support.shd-esports.com. Submitting false, abusive, duplicated, or spam content may result in denied requests or further restrictions.' },
       { title: 'Moderation', body: 'Staff may warn, mute, kick, ban, remove items, reverse actions, or issue other moderation actions when rules, event integrity, or server security require it.' },
       { title: 'Third-Party Services', body: 'Discord, Minecraft, Microsoft, hosting providers, and other external services are operated by their respective providers and are not controlled by SHD Esports.' },
       { title: 'Changes', body: 'Rules, features, website pages, support processes, event details, and public data displays may change during the season as the project evolves.' },
@@ -948,7 +948,7 @@ const legalPages: Record<string, LegalPageContent> = {
     sections: [
       { title: 'Responsible Entity', body: 'SHD Esports, represented by Louis Lenhartz.' },
       { title: 'Address', body: 'Louis Lenhartz, An der Burg Suelz 27a, 53797 Lohmar, Nordrhein-Westfalen, Germany.' },
-      { title: 'Contact', body: 'Preferred contact path: Lifesteal Support Portal at lifesteal-support.shd-esports.com. Before public launch, activate support@shd-esports.com for email contact.' },
+      { title: 'Contact', body: 'Preferred contact path: SHD Support Portal at support.shd-esports.com. Before public launch, activate support@shd-esports.com for email contact.' },
       { title: 'Editorial Responsibility', body: 'Louis Lenhartz is responsible for the website content unless a different responsible editor is named later.' },
     ],
   },
@@ -1090,8 +1090,48 @@ function RulesPage() {
           {parsedRules.blocks.map((block, index) => (
             <RuleBlockView block={block} key={`${block.type}-${index}`} />
           ))}
+          <RulesAcknowledgement />
         </article>
       </div>
+    </section>
+  )
+}
+
+function RulesAcknowledgement() {
+  const [code, setCode] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const acknowledge = async () => {
+    if (loading) return
+    setLoading(true)
+    setError('')
+    try {
+      const response = await fetch(`${publicApiBase}/rules/acknowledge`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ project: 'lifesteal' }),
+      })
+      const body = await response.json() as { ok?: boolean; code?: string; error?: string }
+      if (!response.ok || !body.ok || !body.code) {
+        throw new Error(body.error ?? 'Could not create rules key.')
+      }
+      setCode(body.code)
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Could not create rules key.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <section className="rules-acknowledgement">
+      <span>Application Step</span>
+      <h2>Rules Acknowledgement</h2>
+      <p>Generate a rules key after reading the rules. You will need this key for the SHD Support signup form.</p>
+      {code && <strong>{code}</strong>}
+      {error && <p className="rules-acknowledgement-error">{error}</p>}
+      <button className="primary-action" onClick={acknowledge} type="button">{loading ? 'Creating Key...' : 'I Read And Understand The Rules'}</button>
     </section>
   )
 }
@@ -1607,7 +1647,7 @@ function SignupPage() {
   return (
     <section className="content-page page-frame">
       <PageIntro label="Apply" title="Season 1 Applications">
-        Public application hub for joining the Lifesteal season, receiving an Application ID, and opening a clean Discord review ticket.
+        Public application hub for joining the Lifesteal season with a rules key, support form, and Discord ticket verification.
       </PageIntro>
       <div className="apply-page">
         <article className="apply-hero">
@@ -1615,24 +1655,24 @@ function SignupPage() {
             <span className="apply-status">Applications Open</span>
             <h2>Apply for the whitelist</h2>
             <p>
-              Applications will be handled through the SHD application portal. After submitting, you receive an Application ID
-              that staff can use inside your Discord ticket.
+              Read the Lifesteal rules first and generate your rules key at the bottom of the rules page. The SHD Support
+              portal uses that key before creating your application key for Discord ticket verification.
             </p>
           </div>
           <div className="apply-portal-card">
             <span>Portal</span>
-            <strong>lifesteal-support.shd-esports.com</strong>
-            <p>Temporary Season 1 support portal for applications, appeals, and staff review.</p>
-            <a className="primary-action" href="https://lifesteal-support.shd-esports.com">Open Support Portal</a>
+            <strong>support.shd-esports.com</strong>
+            <p>SHD support portal for applications, appeals, reports, and staff review.</p>
+            <a className="primary-action" href="https://support.shd-esports.com/applications">Open Support Portal</a>
           </div>
         </article>
 
         <div className="apply-flow" aria-label="Application review flow">
-          <ApplyStep number="01" title="Read Rules" detail="Know the Lifesteal rules before applying." />
-          <ApplyStep number="02" title="Submit Form" detail="Fill out the Season 1 application portal." />
-          <ApplyStep number="03" title="Get ID" detail="Save your generated Application ID." />
-          <ApplyStep number="04" title="Open Ticket" detail="Send the ID through the Discord ticket form." />
-          <ApplyStep number="05" title="Staff Review" detail="Staff marks the application accepted, pending, waitlisted, or denied." />
+          <ApplyStep number="01" title="Read Rules" detail="Read the Lifesteal rules and generate your SHD-RULES key." />
+          <ApplyStep number="02" title="Submit Form" detail="Open SHD Support, select Minecraft, and complete MC - Signup." />
+          <ApplyStep number="03" title="Get App Key" detail="Save your generated SHD-APP key after submission." />
+          <ApplyStep number="04" title="Open Ticket" detail="Send the SHD-APP key inside your Discord ticket." />
+          <ApplyStep number="05" title="Staff Review" detail="The bot verifies your ticket and staff reviews the application." />
         </div>
 
         <div className="apply-grid">
@@ -1642,7 +1682,7 @@ function SignupPage() {
             <ul>
               <li>Minecraft Java account ready</li>
               <li>Discord account available for tickets</li>
-              <li>Rules read and accepted</li>
+              <li>Rules key generated from this website</li>
               <li>No alt account abuse</li>
               <li>Understand heart loss and elimination</li>
             </ul>
@@ -1651,21 +1691,22 @@ function SignupPage() {
             <span>Review Outcomes</span>
             <h2>Application Status</h2>
             <div className="apply-outcomes">
+              <strong>Ticket Verified</strong>
               <strong>Accepted</strong>
               <strong>Pending Review</strong>
               <strong>Waitlisted</strong>
               <strong>Denied</strong>
             </div>
-            <p>Use your Application ID when asking for updates. Do not DM staff about applications.</p>
+            <p>Use your SHD-APP key in your ticket. Do not DM staff about applications.</p>
           </article>
         </div>
 
         <aside className="application-id-preview">
           <div>
-            <span>Example Application ID</span>
-            <strong>LS-S1-A7K2</strong>
+            <span>Example Application Key</span>
+            <strong>SHD-APP-A7K2Q9</strong>
           </div>
-          <p>After submitting the portal form, include this ID in your Discord ticket so staff can find your application fast.</p>
+          <p>After submitting the portal form, send this key in your Discord ticket so the bot can verify your application.</p>
         </aside>
       </div>
     </section>
@@ -1694,15 +1735,15 @@ function PunishmentsPage() {
             <span className="apply-status punishment-status">Appeals Reviewed</span>
             <h2>Appeal a punishment</h2>
             <p>
-              Appeals are handled through the Lifesteal Support Portal. Submit your appeal, keep the generated Appeal ID,
-              and use that ID if staff asks for extra context in Discord.
+              Appeals will be handled through the SHD Support Portal. Submit your appeal there once the Minecraft appeal
+              flow opens and keep the generated key for Discord follow-up.
             </p>
           </div>
           <div className="apply-portal-card">
             <span>Support Portal</span>
-            <strong>lifesteal-support.shd-esports.com</strong>
-            <p>One portal for applications, ban appeals, and future Lifesteal support requests.</p>
-            <a className="primary-action" href="https://lifesteal-support.shd-esports.com">Open Support Portal</a>
+            <strong>support.shd-esports.com</strong>
+            <p>One SHD portal for applications, ban appeals, reports, and support requests.</p>
+            <a className="primary-action" href="https://support.shd-esports.com/reports-appeals">Open Support Portal</a>
           </div>
         </article>
 
@@ -1710,7 +1751,7 @@ function PunishmentsPage() {
           <ApplyStep number="01" title="Check Reason" detail="Read the punishment reason and any staff note first." />
           <ApplyStep number="02" title="Submit Appeal" detail="Explain what happened through the support portal." />
           <ApplyStep number="03" title="Add Evidence" detail="Attach clips, screenshots, or logs if they help the review." />
-          <ApplyStep number="04" title="Keep ID" detail="Save the generated Appeal ID for staff follow-up." />
+          <ApplyStep number="04" title="Keep Key" detail="Save the generated appeal key for staff follow-up." />
           <ApplyStep number="05" title="Wait Review" detail="Staff reviews evidence and updates the appeal status." />
         </div>
 
@@ -1758,10 +1799,10 @@ function PunishmentsPage() {
 
         <aside className="application-id-preview">
           <div>
-            <span>Example Appeal ID</span>
-            <strong>LS-APPEAL-4M9Q</strong>
+            <span>Example Appeal Key</span>
+            <strong>SHD-APPEAL-4M9Q</strong>
           </div>
-          <p>Use this ID in Discord if staff requests follow-up. It lets moderators find the exact appeal without digging.</p>
+          <p>Use this key in Discord if staff requests follow-up. It lets moderators find the exact appeal without digging.</p>
         </aside>
       </div>
     </section>

@@ -11,7 +11,7 @@ import {
 } from 'discord.js';
 import { config } from './config.js';
 import { statements } from './db.js';
-import { audit, appealLog, modLog, staffAuditLog, verifyLog } from './logger.js';
+import { audit, appealLog, logToChannel, modLog, staffAuditLog, verifyLog } from './logger.js';
 import { resolveMinecraftProfile } from './minecraft.js';
 import { createVerification } from './verification.js';
 
@@ -20,6 +20,7 @@ const JOIN_BUTTON_ID = 'ticket:join:open';
 const CLOSE_BUTTON_ID = 'ticket:close';
 const APPEAL_MODAL_ID = 'ticket:appeal:modal';
 const CLOSE_MODAL_ID = 'ticket:close:modal';
+const APPLICATION_CODE_PATTERN = /\bSHD-APP-[A-Z0-9]{4,12}\b/i;
 
 const joinQuestions = [
   {
@@ -114,6 +115,11 @@ export async function handleTicketInteraction(interaction) {
 export async function handleTicketMessage(message) {
   if (message.author.bot || !message.channel?.isThread?.()) {
     return false;
+  }
+
+  const verifiedApplication = await handleApplicationCodeMessage(message);
+  if (verifiedApplication) {
+    return true;
   }
 
   const ticket = statements.findTicketByThread.get(message.channel.id);
@@ -233,6 +239,131 @@ export async function handleTicketMessage(message) {
     components: [closeButtonRow()]
   });
   return true;
+}
+
+async function handleApplicationCodeMessage(message) {
+  const match = message.content.match(APPLICATION_CODE_PATTERN);
+  if (!match) {
+    return false;
+  }
+
+  const code = match[0].toUpperCase();
+  const application = statements.findSupportApplicationByCode.get(code);
+  if (!application) {
+    await message.reply('I could not find an application with that code. Check the code and send it again.');
+    return true;
+  }
+
+  if (application.status !== 'submitted') {
+    if (application.discord_id_verified === message.author.id) {
+      await message.reply('This application is already verified for this Discord account. Staff can review it.');
+    } else {
+      await message.reply('This application code has already been claimed by another Discord account or is no longer open.');
+    }
+    return true;
+  }
+
+  if (application.discord_id_claimed && application.discord_id_claimed !== message.author.id) {
+    audit('support.application_discord_id_mismatch', {
+      discordId: message.author.id,
+      data: {
+        applicationId: application.id,
+        claimedDiscordId: application.discord_id_claimed,
+        threadId: message.channel.id
+      }
+    });
+    await message.reply('The Discord ID on this application does not match your account. Staff can help if you entered the wrong ID.');
+    return true;
+  }
+
+  if (!discordNameMatches(application.discord_username, message)) {
+    audit('support.application_discord_name_mismatch', {
+      discordId: message.author.id,
+      data: {
+        applicationId: application.id,
+        claimedDiscordUsername: application.discord_username,
+        actualUsername: message.author.username,
+        actualTag: message.author.tag,
+        threadId: message.channel.id
+      }
+    });
+    await message.reply('The Discord username on this application does not match your current Discord account. Staff can help if you changed names or entered it differently.');
+    return true;
+  }
+
+  const verifiedAt = Date.now();
+  const updated = statements.claimSupportApplicationTicket.run({
+    code,
+    discordId: message.author.id,
+    threadId: message.channel.id,
+    status: 'ticket_verified',
+    verifiedAt
+  });
+
+  audit('support.application_ticket_verified', {
+    discordId: message.author.id,
+    data: {
+      applicationId: updated.id,
+      applicationCode: updated.code,
+      threadId: message.channel.id
+    }
+  });
+
+  await message.channel.send({
+    embeds: [new EmbedBuilder()
+      .setTitle('Application Verified')
+      .setColor(0x35b87f)
+      .setDescription([
+        `<@${message.author.id}> your application is verified for this ticket.`,
+        'Staff can now review your answers and follow up here.'
+      ].join('\n'))]
+  });
+
+  await logToChannel(message.client, config.supportApplicationLogChannelId || config.ticketNotifyChannelId || config.modLogChannelId, 'Support Application Ready For Review', supportApplicationFields(updated, [
+    { name: 'Ticket', value: `<#${message.channel.id}>`, inline: true },
+    { name: 'Applicant', value: `<@${message.author.id}>`, inline: true }
+  ]));
+  await staffAuditLog(message.client, 'Support Application Verified In Ticket', [
+    { name: 'Application', value: `#${updated.id} / ${updated.code}`, inline: true },
+    { name: 'Applicant', value: `<@${message.author.id}>`, inline: true },
+    { name: 'Thread', value: `<#${message.channel.id}>`, inline: true }
+  ]);
+
+  return true;
+}
+
+function discordNameMatches(claimedUsername, message) {
+  const claimed = normalizeDiscordName(claimedUsername);
+  const candidates = [
+    message.author.username,
+    message.author.tag,
+    message.author.globalName,
+    message.member?.displayName
+  ].map(normalizeDiscordName).filter(Boolean);
+  return candidates.includes(claimed);
+}
+
+function normalizeDiscordName(value) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/^@/, '')
+    .replace(/\s+/g, '');
+}
+
+function supportApplicationFields(application, extra = []) {
+  return [
+    { name: 'Application', value: `#${application.id} / ${application.code}`, inline: true },
+    { name: 'Status', value: application.status, inline: true },
+    { name: 'Minecraft', value: application.minecraft_name, inline: true },
+    { name: 'Rules', value: `${application.rules_version} / ${application.rules_code}`, inline: true },
+    ...extra,
+    { name: 'Found Lifesteal', value: application.answers.foundLifesteal },
+    { name: 'Experience', value: application.answers.experience },
+    { name: 'Motivation', value: application.answers.motivation },
+    application.answers.team ? { name: 'Team', value: application.answers.team } : null,
+    application.answers.content ? { name: 'Extra', value: application.answers.content } : null
+  ].filter(Boolean);
 }
 
 function showCloseTicketModal(interaction) {

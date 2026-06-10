@@ -16,6 +16,8 @@ const initialState = {
   discord_name_history: [],
   rules_acceptances: [],
   signup_answers: [],
+  support_rule_acknowledgements: [],
+  support_applications: [],
   appeals: [],
   staff_notes: [],
   shared_ip_exceptions: [],
@@ -46,6 +48,8 @@ const initialState = {
   nextCaseId: 1,
   nextAuditId: 1,
   nextAppealId: 1,
+  nextSupportRuleAckId: 1,
+  nextSupportApplicationId: 1,
   nextNoteId: 1,
   nextTicketId: 1
 };
@@ -383,6 +387,78 @@ export const statements = {
   findSignupAnswers: {
     get(discordId) {
       return state.signup_answers.find((row) => row.discord_id === discordId) ?? null;
+    }
+  },
+  createSupportRuleAcknowledgement: {
+    run(row) {
+      const ack = {
+        id: state.nextSupportRuleAckId++,
+        code: row.code,
+        project: row.project,
+        rules_version: row.rulesVersion,
+        created_at: row.createdAt,
+        expires_at: row.expiresAt,
+        used_at: null,
+        application_id: null
+      };
+      state.support_rule_acknowledgements.push(ack);
+      persist();
+      return ack;
+    }
+  },
+  findSupportRuleAcknowledgementByCode: {
+    get(code) {
+      return state.support_rule_acknowledgements.find((row) => row.code === code) ?? null;
+    }
+  },
+  createSupportApplication: {
+    run(row) {
+      const application = {
+        id: state.nextSupportApplicationId++,
+        code: row.code,
+        project: row.project,
+        game: row.game,
+        form_type: row.formType,
+        rules_ack_id: row.rulesAckId,
+        rules_code: row.rulesCode,
+        rules_version: row.rulesVersion,
+        discord_username: row.discordUsername,
+        discord_id_claimed: row.discordIdClaimed ?? null,
+        discord_id_verified: null,
+        minecraft_name: row.minecraftName,
+        answers: row.answers,
+        status: 'submitted',
+        created_at: row.createdAt,
+        ticket_thread_id: null,
+        verified_at: null
+      };
+      state.support_applications.push(application);
+
+      const ack = state.support_rule_acknowledgements.find((item) => item.id === row.rulesAckId);
+      if (ack) {
+        ack.used_at = row.createdAt;
+        ack.application_id = application.id;
+      }
+
+      persist();
+      return application;
+    }
+  },
+  findSupportApplicationByCode: {
+    get(code) {
+      return state.support_applications.find((row) => row.code === code) ?? null;
+    }
+  },
+  claimSupportApplicationTicket: {
+    run(row) {
+      const application = state.support_applications.find((item) => item.code === row.code);
+      if (!application) return null;
+      application.status = row.status;
+      application.discord_id_verified = row.discordId;
+      application.ticket_thread_id = row.threadId;
+      application.verified_at = row.verifiedAt;
+      persist();
+      return application;
     }
   },
   createAppeal: {
