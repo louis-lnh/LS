@@ -61,16 +61,27 @@ export async function handlePanelCommand(interaction) {
   }
 
   const isAppeal = type === 'appeal';
+  const portalUrl = config.supportPortalUrl.replace(/\/$/, '');
   const embed = new EmbedBuilder()
-    .setTitle(isAppeal ? 'Open an Appeal Ticket' : 'Apply to Join Lifesteal')
+    .setTitle(isAppeal ? 'Minecraft Appeals' : 'Minecraft Applications')
     .setColor(isAppeal ? 0xff5f56 : 0x35b87f)
     .setDescription(isAppeal
-      ? 'Use this if you need staff to review a ban or punishment. You will enter your ban ID before the thread opens.'
-      : 'Use this to start a signup thread. The bot will ask the signup questions one by one in the thread.');
+      ? [
+          'Use the SHD Support Portal for appeal information and then open a staff ticket here when you are ready.',
+          `${portalUrl}/ban-appeal`,
+          '',
+          'The ticket will ask for your ban ID, Minecraft username, and appeal reason.'
+        ].join('\n')
+      : [
+          'Apply through the SHD Support Portal first, then open a ticket here and paste your application key.',
+          `${portalUrl}/signup`,
+          '',
+          'Application keys look like SHD-APP-ABC123. The bot will verify the key in your ticket and notify staff.'
+        ].join('\n'));
 
   const button = new ButtonBuilder()
     .setCustomId(isAppeal ? APPEAL_BUTTON_ID : JOIN_BUTTON_ID)
-    .setLabel(isAppeal ? 'Open Appeal' : 'Start Join Ticket')
+    .setLabel(isAppeal ? 'Open Appeal Ticket' : 'Open Application Ticket')
     .setStyle(isAppeal ? ButtonStyle.Danger : ButtonStyle.Primary);
 
   await interaction.channel.send({
@@ -573,14 +584,21 @@ async function openJoinTicket(interaction) {
   ]);
 
   await thread.send({
-    content: `<@${interaction.user.id}> ${joinQuestions[0].prompt}`,
+    content: [
+      `<@${interaction.user.id}> welcome. If you applied through the SHD Support Portal, paste your application key here.`,
+      'Application keys look like `SHD-APP-ABC123`.',
+      '',
+      `Portal: ${config.supportPortalUrl.replace(/\/$/, '')}/signup`,
+      '',
+      `If you cannot use the portal, answer here instead: ${joinQuestions[0].prompt}`
+    ].join('\n'),
     components: [closeButtonRow()]
   });
   await sendTicketCreatedNotices(interaction, {
     type: 'join',
     thread,
     details: [
-      { name: 'Step', value: 'Question 1/7 started', inline: true }
+      { name: 'Step', value: 'Waiting for portal application key or fallback question 1/7', inline: true }
     ]
   });
   await interaction.editReply(`Join thread created: <#${thread.id}>`);

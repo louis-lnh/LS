@@ -82,6 +82,7 @@ export const config = {
   clientId: process.env.DISCORD_CLIENT_ID ?? '',
   guildId: process.env.DISCORD_GUILD_ID ?? '',
   publicBaseUrl: process.env.PUBLIC_BASE_URL ?? 'http://localhost:3000',
+  supportPortalUrl: process.env.SUPPORT_PORTAL_URL ?? 'https://support.shd-esports.com',
   port: int('PORT', 3000),
   ipHashSecret: process.env.IP_HASH_SECRET ?? 'dev-secret-change-me',
   rulesVersion: process.env.RULES_VERSION ?? 'v1',

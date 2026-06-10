@@ -284,6 +284,7 @@ main {
 .rules-confirm,
 .game-selector-panel,
 .form-card,
+.legal-note,
 .legal-document section {
   border: 1px solid rgba(245, 242, 235, 0.12);
   border-radius: 8px;
@@ -330,7 +331,8 @@ main {
 .result-panel p,
 .page-intro p,
 .form-actions p,
-.form-card p {
+.form-card p,
+.legal-note p {
   color: rgba(245, 242, 235, 0.68);
   line-height: 1.65;
 }
@@ -360,6 +362,15 @@ main {
 }
 
 .section-page .page-intro {
+  text-align: center;
+}
+
+.legal-page {
+  display: grid;
+  justify-items: center;
+}
+
+.legal-page .page-intro {
   text-align: center;
 }
 
@@ -557,10 +568,72 @@ main {
   box-shadow: 0 0 14px rgba(234, 212, 159, 0.72);
 }
 
+.legal-layout {
+  display: grid;
+  grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+  width: min(900px, 100%);
+}
+
+.legal-note {
+  position: sticky;
+  top: 5rem;
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(234, 212, 159, 0.12), transparent 10rem),
+    rgba(14, 14, 16, 0.72);
+}
+
+.legal-note strong {
+  color: #fffaf1;
+  font-size: 1.1rem;
+  text-transform: uppercase;
+}
+
+.legal-status {
+  justify-self: start;
+  min-height: 1.65rem;
+  padding: 0.28rem 0.7rem;
+  border: 1px solid rgba(234, 212, 159, 0.22);
+  border-radius: 999px;
+  background: rgba(234, 212, 159, 0.06);
+  color: #ead49f;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
 .legal-document {
   display: grid;
   gap: 1rem;
-  width: min(780px, 100%);
+  width: 100%;
+}
+
+.legal-document section {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 1rem;
+  padding: 1.15rem;
+  background:
+    linear-gradient(90deg, rgba(234, 212, 159, 0.08), transparent 22rem),
+    rgba(14, 14, 16, 0.72);
+}
+
+.legal-document section > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.15rem;
+  height: 2.15rem;
+  border: 1px solid rgba(234, 212, 159, 0.26);
+  border-radius: 999px;
+  color: #ead49f;
+  font-size: 0.72rem;
+  font-weight: 900;
 }
 
 .legal-document h2 {
@@ -629,6 +702,14 @@ main {
   .form-row,
   .form-card-grid {
     grid-template-columns: 1fr;
+  }
+
+  .legal-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .legal-note {
+    position: static;
   }
 
   .home-copy h1,

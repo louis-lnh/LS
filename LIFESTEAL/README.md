@@ -55,6 +55,13 @@ LIFESTEAL_DISCORD_ROLE_SYNC_INTERVAL_SECONDS=60
 LIFESTEAL_DRAGON_EGG_GLOW_HOURS=48
 ```
 
+Use `localhost` only when the Discord bot is running on the same machine as the Minecraft server. If the bot is running on a VPS, point the endpoint at the public bot/API URL instead:
+
+```env
+LIFESTEAL_DISCORD_ROLE_SYNC_ENDPOINT=https://verify.shd-esports.com/api/v1/gameplay/roles/sync
+LIFESTEAL_DISCORD_API_SHARED_SECRET=same_value_as_discord_bot_API_SHARED_SECRET
+```
+
 The shared secret must match the Discord bot's `API_SHARED_SECRET`. If the bot is offline or rejects the request, gameplay continues and the mod logs a warning.
 
 The sync payload includes `schemaVersion: 2`, server population, grace-period state, and per-player website-safe gameplay fields. Current synced player stats are `heartsCurrent`, `heartGains`, `heartLosses`, `killsTotal`, `deathsTotal`, `revivalsTotal`, `eliminated`, `twentyHearts`, `dragonEggHolder`, and `maceWielder`. Fields that require future dedicated tracking, such as `maceKills`, are sent as `null` until implemented.

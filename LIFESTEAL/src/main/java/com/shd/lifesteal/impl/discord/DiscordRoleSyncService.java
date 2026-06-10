@@ -11,6 +11,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -19,9 +20,12 @@ import net.minecraft.server.MinecraftServer;
 
 public final class DiscordRoleSyncService {
     private static final int SYNC_SCHEMA_VERSION = 2;
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
     private final LifestealConfig config;
     private final HeartService heartService;
-    private final HttpClient httpClient = HttpClient.newHttpClient();
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(REQUEST_TIMEOUT)
+            .build();
     private Instant nextSync = Instant.EPOCH;
     private CompletableFuture<?> pendingSync = CompletableFuture.completedFuture(null);
 
@@ -55,6 +59,7 @@ public final class DiscordRoleSyncService {
         HttpRequest request = HttpRequest.newBuilder(URI.create(config.discordRoleSyncEndpoint()))
                 .header("Authorization", "Bearer " + config.discordApiSharedSecret())
                 .header("Content-Type", "application/json")
+                .timeout(REQUEST_TIMEOUT)
                 .POST(HttpRequest.BodyPublishers.ofString(toJson(server, snapshots)))
                 .build();
 
@@ -62,16 +67,38 @@ public final class DiscordRoleSyncService {
                 .thenAccept(response -> {
                     if (response.statusCode() < 200 || response.statusCode() >= 300) {
                         ShdLifestealMod.LOGGER.warn(
-                                "Discord gameplay role sync failed with HTTP {}: {}",
+                                "Discord gameplay role sync to {} failed with HTTP {}: {}",
+                                config.discordRoleSyncEndpoint(),
                                 response.statusCode(),
-                                response.body()
+                                compactBody(response.body())
                         );
                     }
                 })
                 .exceptionally(exception -> {
-                    ShdLifestealMod.LOGGER.warn("Discord gameplay role sync failed", exception);
+                    Throwable cause = rootCause(exception);
+                    ShdLifestealMod.LOGGER.warn(
+                            "Discord gameplay role sync to {} failed: {}: {}",
+                            config.discordRoleSyncEndpoint(),
+                            cause.getClass().getSimpleName(),
+                            cause.getMessage()
+                    );
                     return null;
                 });
+    }
+
+    private static Throwable rootCause(Throwable throwable) {
+        Throwable current = throwable;
+        while (current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current;
+    }
+
+    private static String compactBody(String body) {
+        if (body == null || body.isBlank()) {
+            return "<empty response>";
+        }
+        return body.length() <= 500 ? body : body.substring(0, 500) + "...";
     }
 
     private String toJson(MinecraftServer server, List<GameplayRoleSnapshot> snapshots) {

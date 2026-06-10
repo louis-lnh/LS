@@ -532,18 +532,29 @@ const legalSections = {
 
 function LegalPage({ title, label, sections }: { title: string; label: string; sections: Array<{ title: string; body: string }> }) {
   return (
-    <section className="content-page page-frame">
+    <section className="content-page page-frame legal-page">
       <PageIntro label={label} title={title}>
         Required support portal information for visitors and players submitting data.
       </PageIntro>
-      <article className="legal-document">
-        {sections.map((section) => (
-          <section key={section.title}>
-            <h2>{section.title}</h2>
-            <p>{section.body}</p>
-          </section>
-        ))}
-      </article>
+      <div className="legal-layout">
+        <aside className="legal-note">
+          <span className="section-kicker">SHD Portal</span>
+          <strong>MVP Notice</strong>
+          <p>These pages are active for the portal MVP and will be expanded before the full public support launch.</p>
+          <span className="legal-status">Current draft</span>
+        </aside>
+        <article className="legal-document">
+          {sections.map((section, index) => (
+            <section key={section.title}>
+              <span>{String(index + 1).padStart(2, '0')}</span>
+              <div>
+                <h2>{section.title}</h2>
+                <p>{section.body}</p>
+              </div>
+            </section>
+          ))}
+        </article>
+      </div>
     </section>
   )
 }

@@ -337,6 +337,44 @@ function publicPlayersFromSnapshots(snapshots, updatedAt) {
     .map((player, index) => ({ ...player, rank: index + 1 }));
 }
 
+function publicPlayerPublishStats(snapshots, publishedCount) {
+  const stats = {
+    snapshots: snapshots.length,
+    matchedLinked: 0,
+    activeLinked: 0,
+    optedIn: 0,
+    unmatched: 0,
+    inactive: 0,
+    notOptedIn: 0,
+    published: publishedCount
+  };
+
+  for (const snapshot of snapshots) {
+    const minecraftUuid = snapshot.minecraftUuid ?? snapshot.playerId;
+    const linked = findLinkedMinecraftAccount(minecraftUuid);
+    if (!linked) {
+      stats.unmatched += 1;
+      continue;
+    }
+
+    stats.matchedLinked += 1;
+    if (linked.status !== 'active') {
+      stats.inactive += 1;
+      continue;
+    }
+
+    stats.activeLinked += 1;
+    if (!linked.public_stats_opt_in) {
+      stats.notOptedIn += 1;
+      continue;
+    }
+
+    stats.optedIn += 1;
+  }
+
+  return stats;
+}
+
 function publicObjectivesFromPlayers(players, updatedAt) {
   const dragonEggHolder = players.find((player) => player.dragon_egg_holder);
   const maceWielders = players.filter((player) => player.mace_wielder);
@@ -478,6 +516,7 @@ function publicSyncHealth(snapshot = normalizePublicSnapshot(statements.getPubli
     snapshot_age_seconds: age,
     players_received: latestSyncData.received ?? null,
     public_players_published: snapshot.players.length,
+    public_publish: latestSyncData.publicPublish ?? null,
     source: 'shd-lifesteal',
     schema_version: snapshot.schema_version,
     latest_audit_id: latestSync?.id ?? null
@@ -537,6 +576,7 @@ function publicPlayerTimeline(player, limit = 25) {
 function savePublicLifestealSnapshot(snapshots, status) {
   const updatedAt = Date.now();
   const players = publicPlayersFromSnapshots(snapshots, updatedAt);
+  const publishStats = publicPlayerPublishStats(snapshots, players.length);
   const publicStatus = publicStatusFromSync(status, updatedAt);
   const objectives = publicObjectivesFromPlayers(players, updatedAt);
   statements.upsertPublicLifestealSnapshot.run({
@@ -547,7 +587,7 @@ function savePublicLifestealSnapshot(snapshots, status) {
     season: publicSeason,
     updatedAt
   });
-  return { status: publicStatus, players, objectives, updatedAt };
+  return { status: publicStatus, players, objectives, publishStats, updatedAt };
 }
 
 function publicEvents(limit = 20) {
@@ -1172,11 +1212,12 @@ export function startWebServer(client) {
           roleSyncError: error.message
         };
       }
-      audit('gameplay.roles_sync', { data: { ...stats, overlay, publicPlayers: publicSnapshot.players.length } });
+      audit('gameplay.roles_sync', { data: { ...stats, overlay, publicPlayers: publicSnapshot.players.length, publicPublish: publicSnapshot.publishStats } });
       res.json({
         ok: true,
         overlay,
         publicPlayers: publicSnapshot.players.length,
+        publicPublish: publicSnapshot.publishStats,
         roleSyncOk: !stats.roleSyncError,
         ...stats
       });
