@@ -337,6 +337,15 @@ main {
   line-height: 1.65;
 }
 
+.form-message {
+  max-width: min(100%, 760px);
+  margin: 0;
+}
+
+.form-message.error {
+  color: #ffb8a8;
+}
+
 .content-page {
   padding: 4rem 0 5rem;
 }

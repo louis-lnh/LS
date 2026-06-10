@@ -126,6 +126,28 @@ function escapeHtml(value) {
     .replaceAll("'", '&#039;');
 }
 
+function validationErrorMessage(error) {
+  if (error instanceof z.ZodError) {
+    return error.issues
+      .map((issue) => `${supportFieldLabel(issue.path?.[0])}: ${issue.message}`)
+      .join(' ');
+  }
+  return error.message;
+}
+
+function supportFieldLabel(field) {
+  const labels = {
+    foundLifesteal: 'How did you find Lifesteal',
+    experience: 'Lifesteal or SMP experience',
+    motivation: 'Why do you want to join',
+    rulesCode: 'Rules acknowledgement key',
+    discordUsername: 'Discord username',
+    minecraftName: 'Minecraft Java name',
+    region: 'Region'
+  };
+  return labels[field] ?? String(field ?? 'Field');
+}
+
 function page(title, body) {
   return `<!doctype html>
 <html lang="en">
@@ -1003,7 +1025,7 @@ export function startWebServer(client) {
         expiresAt: ack.expires_at
       });
     } catch (error) {
-      res.status(400).json({ ok: false, error: error.message });
+      res.status(400).json({ ok: false, error: validationErrorMessage(error) });
     }
   });
 
@@ -1067,7 +1089,7 @@ export function startWebServer(client) {
         status: application.status
       });
     } catch (error) {
-      res.status(400).json({ ok: false, error: error.message });
+      res.status(400).json({ ok: false, error: validationErrorMessage(error) });
     }
   });
 

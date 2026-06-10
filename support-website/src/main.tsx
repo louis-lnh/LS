@@ -111,6 +111,34 @@ const initialSignup: SignupState = {
 
 const supportApiBase = (import.meta.env.VITE_SUPPORT_API_BASE_URL ?? 'http://localhost:3000/api/v1/public').replace(/\/$/, '')
 
+function fieldLabel(path: unknown) {
+  const field = Array.isArray(path) ? path[0] : path
+  const labels: Record<string, string> = {
+    foundLifesteal: 'How did you find Lifesteal',
+    experience: 'Lifesteal or SMP experience',
+    motivation: 'Why do you want to join',
+    rulesCode: 'Rules acknowledgement key',
+    discordUsername: 'Discord username',
+    minecraftName: 'Minecraft Java name',
+    region: 'Region',
+  }
+  return labels[String(field)] ?? String(field ?? 'Field')
+}
+
+function cleanApiError(message: string) {
+  try {
+    const issues = JSON.parse(message) as Array<{ message?: string; path?: unknown[] }>
+    if (Array.isArray(issues) && issues.length > 0) {
+      return issues
+        .map((issue) => `${fieldLabel(issue.path)}: ${issue.message ?? 'Please check this field.'}`)
+        .join(' ')
+    }
+  } catch {
+    // Fall through to plain server message.
+  }
+  return message || 'Application submission failed.'
+}
+
 function pageFromPath(): PageId {
   const value = window.location.pathname.replace(/^\/+/, '').split('/')[0]
   return routeItems.some((item) => item.id === value) ? value as PageId : 'home'
@@ -382,7 +410,7 @@ function SignupPage() {
         status: body.status,
       })
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : 'Application submission failed.')
+      setSubmitError(error instanceof Error ? cleanApiError(error.message) : 'Application submission failed.')
     } finally {
       setSubmitting(false)
     }
@@ -461,7 +489,7 @@ function SignupPage() {
 
         <div className="form-actions">
           <button className="primary-action" disabled={!canSubmit || submitting} type="submit">{submitting ? 'Submitting...' : 'Submit Application'}</button>
-          <p>{submitError || (canSubmit ? 'Ready for review.' : 'Required fields must be completed before submission.')}</p>
+          <p className={submitError ? 'form-message error' : 'form-message'}>{submitError || (canSubmit ? 'Ready for review.' : 'Required fields must be completed before submission.')}</p>
         </div>
       </form>
     </section>
