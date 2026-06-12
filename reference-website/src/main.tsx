@@ -135,14 +135,12 @@ type RankHistory = {
 
 type EventItem = {
   title: string
-  date: string
-  time: string
-  status: 'Upcoming' | 'Complete'
+  startsAt: number
+  priority: number
   type: string
   reward: string
   objective: string
   summary: string
-  result?: string
 }
 
 type RuleIndexItem = {
@@ -252,9 +250,29 @@ function countdownTo(timestamp: number) {
   const days = Math.floor(totalSeconds / 86400)
   const hours = Math.floor((totalSeconds % 86400) / 3600)
   const minutes = Math.floor((totalSeconds % 3600) / 60)
-  if (days > 0) return `${days}d ${hours}h ${minutes}m`
-  if (hours > 0) return `${hours}h ${minutes}m`
-  return `${minutes}m`
+  const seconds = totalSeconds % 60
+  if (days > 0) return `${days}d ${hours}h ${minutes}m ${seconds}s`
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`
+  return `${minutes}m ${seconds}s`
+}
+
+function eventDate(timestamp: number) {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Berlin',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(timestamp)
+}
+
+function eventTime(timestamp: number) {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Berlin',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZoneName: 'short',
+  }).format(timestamp)
 }
 
 function playerRankKey(player: PublicPlayer) {
@@ -864,76 +882,40 @@ const parsedRules = parseRules(rulesMarkdown)
 
 const events: EventItem[] = [
   {
-    title: 'Opening War Night',
-    date: 'June 14, 2026',
-    time: '20:00 CEST',
-    status: 'Upcoming',
-    type: 'PvP Window',
-    reward: 'Mace unlock pressure',
-    objective: 'First coordinated combat window after grace.',
-    summary: 'First coordinated PvP window after grace with objective pressure enabled.',
+    title: 'Event Start',
+    startsAt: seasonStartTimestamp,
+    priority: 0,
+    type: 'Server Start',
+    reward: 'Season 1 begins',
+    objective: 'The server opens for the first public Season 1 session.',
+    summary: 'The countdown to Season 1. We are looking forward to starting the server together at this time.',
   },
   {
-    title: 'Egg Hunt Sprint',
-    date: 'June 21, 2026',
-    time: '19:30 CEST',
-    status: 'Upcoming',
-    type: 'Objective Sprint',
-    reward: 'Dragon Egg Champion badge',
-    objective: 'Move, defend, or steal the Dragon Egg during a short public window.',
-    summary: 'Short event around dragon egg movement, recovery, and public tracking.',
+    title: 'Grace Period',
+    startsAt: seasonStartTimestamp,
+    priority: 1,
+    type: 'Protection Window',
+    reward: 'Safe first hour',
+    objective: 'PvP, combat tags, lifesteal, heart loss, eliminations, and revivals stay disabled for the first hour.',
+    summary: 'The first hour gives players time to spread out, prepare, and settle into the season before combat turns on.',
   },
   {
-    title: 'Bounty Board',
-    date: 'June 28, 2026',
-    time: '20:00 CEST',
-    status: 'Upcoming',
-    type: 'Bounty Event',
-    reward: '3 Heart bounty pool',
-    objective: 'Highest-value target becomes public for one timed hunt.',
-    summary: 'A staff-selected bounty target creates a short, focused hunt across the world.',
+    title: 'End Opening',
+    startsAt: seasonStartTimestamp + 7 * 24 * 60 * 60 * 1000,
+    priority: 0,
+    type: 'End Event',
+    reward: 'Dragon Egg race begins',
+    objective: 'The End opens exactly seven days after server start.',
+    summary: 'The first major objective fight opens the End and begins the race for the Dragon Egg.',
   },
   {
-    title: 'Nether Supply Run',
-    date: 'July 5, 2026',
-    time: '19:00 CEST',
-    status: 'Upcoming',
-    type: 'Resource Race',
-    reward: 'Supply drop priority',
-    objective: 'Timed Nether route with public checkpoints and limited PvP pressure.',
-    summary: 'A resource-focused event built around controlled Nether movement and checkpoint pressure.',
-  },
-  {
-    title: 'Final Stand Trial',
-    date: 'July 12, 2026',
-    time: '20:30 CEST',
-    status: 'Upcoming',
-    type: 'Arena Trial',
-    reward: 'Event Winner status',
-    objective: 'Small bracket combat night for players willing to risk hearts.',
-    summary: 'A compact arena-style trial with heart pressure and a visible winner badge.',
-  },
-  {
-    title: 'Preseason Stress Test',
-    date: 'June 2, 2026',
-    time: '18:00 CEST',
-    status: 'Complete',
-    type: 'Test Session',
-    reward: 'Systems validated',
-    objective: 'Validate combat tags, restrictions, Discord sync, and death flow.',
-    summary: 'Validated grace, combat tags, death flow, item restrictions, and Discord sync.',
-    result: 'Passed with minor tuning notes.',
-  },
-  {
-    title: 'Whitelist Scrim',
-    date: 'May 30, 2026',
-    time: '19:00 CEST',
-    status: 'Complete',
-    type: 'Scrim',
-    reward: 'No season rewards',
-    objective: 'Check early-game pacing and rule clarity.',
-    summary: 'Closed test for first-hour pacing, player onboarding, and basic server stability.',
-    result: 'Grace pacing felt strong.',
+    title: 'Dragon Egg = Mace',
+    startsAt: seasonStartTimestamp + 7 * 24 * 60 * 60 * 1000,
+    priority: 1,
+    type: 'Objective Challenge',
+    reward: 'Mace conversion',
+    objective: 'Survive the End fight, carry the egg out of the End, and stay alive for 48 hours.',
+    summary: 'Survive the End fight, carry the egg out of the End, and stay alive for 48 hours!',
   },
 ]
 
@@ -1066,21 +1048,28 @@ function Header({ current, onNavigate }: { current: PageId; onNavigate: (page: P
 }
 
 function Landing({ liveHealth, liveLoaded, liveStatus, onNavigate }: { liveHealth: SyncHealth | null; liveLoaded: boolean; liveStatus: LiveStatus | null; onNavigate: (page: PageId) => void }) {
+  const [eventCountdown, setEventCountdown] = useState(() => countdownTo(seasonStartTimestamp))
   const hasLivePopulation = liveStatus?.online_players != null && liveStatus?.max_players != null
   const population = !seasonStarted
-    ? 'Season has not started yet'
+    ? eventCountdown
     : hasLivePopulation
     ? `${liveStatus.online_players} / ${liveStatus.max_players} Players`
     : liveLoaded
       ? 'Live status unavailable'
       : 'Loading live data'
   const populationNote = !seasonStarted
-    ? 'Registered players are listed on the Players page until Season 1 begins.'
+    ? 'July 1, 2026 - 12:00 CEST. Registered players are listed on the Players page until Season 1 begins.'
     : hasLivePopulation
     ? `Updated ${relativeTime(liveStatus.updated_at)}`
     : liveLoaded
       ? 'Waiting for the next public server sync.'
       : 'Connecting to the public live API.'
+
+  useEffect(() => {
+    if (seasonStarted) return
+    const interval = window.setInterval(() => setEventCountdown(countdownTo(seasonStartTimestamp)), 1000)
+    return () => window.clearInterval(interval)
+  }, [])
 
   return (
     <section className="landing-page page-frame">
@@ -1090,7 +1079,7 @@ function Landing({ liveHealth, liveLoaded, liveStatus, onNavigate }: { liveHealt
         <h1>SHD LIFESTEAL</h1>
         <p className="season-line">Season 1</p>
         <div className="landing-live-card" aria-label="Current server population">
-          <span>{seasonStarted ? 'Online Now' : 'Pre-Season'}</span>
+          <span>{seasonStarted ? 'Online Now' : 'Event Starts In'}</span>
           <strong>{population}</strong>
           {seasonStarted && liveHealth && <em className={`sync-pill ${liveHealth.state}`}>{syncHealthLabel(liveHealth)}</em>}
           <p>{populationNote}</p>
@@ -1658,38 +1647,46 @@ function Objective({ title, owner, detail }: { title: string; owner: string; det
 }
 
 function EventsPage() {
-  const featuredEvent = events.find((event) => event.status === 'Upcoming') ?? events[0]
-  const upcomingEvents = events.filter((event) => event.status === 'Upcoming')
-  const completedEvents = events.filter((event) => event.status === 'Complete')
-  const eventVisibleItems = Math.max(1, Math.min(3, upcomingEvents.length, Math.max(1, completedEvents.length)))
+  const [now, setNow] = useState(() => Date.now())
+  const upcomingEvents = [...events]
+    .filter((event) => event.startsAt >= now)
+    .sort((first, second) => first.startsAt - second.startsAt || first.priority - second.priority)
+  const featuredEvent = upcomingEvents[0] ?? [...events].sort((first, second) => second.startsAt - first.startsAt || first.priority - second.priority)[0]
+  const eventVisibleItems = Math.max(1, Math.min(4, upcomingEvents.length))
   const eventPanelHeight = `${7.2 + eventVisibleItems * 8.35 + Math.max(0, eventVisibleItems - 1) * 0.8}rem`
+  const nextEventCountdown = featuredEvent ? countdownTo(featuredEvent.startsAt) : 'Season live'
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(interval)
+  }, [])
 
   return (
     <section className="content-page page-frame">
       <PageIntro label="Events" title="Season Events">
-        Event windows, objective races, bounty nights, and archived results for the current season.
+        Season start, grace period, objective windows, and planned public event timings.
       </PageIntro>
       <div className="events-dashboard">
         <article className="featured-event">
           <div>
-            <span className="event-status upcoming">{featuredEvent.status}</span>
+            <span className="event-status upcoming">Upcoming</span>
             <h2>{featuredEvent.title}</h2>
             <p>{featuredEvent.summary}</p>
           </div>
           <div className="featured-event-meta">
-            <EventMeta label="Date" value={featuredEvent.date} />
-            <EventMeta label="Time" value={featuredEvent.time} />
+            <EventMeta label="Date" value={eventDate(featuredEvent.startsAt)} />
+            <EventMeta label="Time" value={eventTime(featuredEvent.startsAt)} />
             <EventMeta label="Type" value={featuredEvent.type} />
             <EventMeta label="Reward" value={featuredEvent.reward} />
           </div>
         </article>
         <div className="event-stat-row">
-          <EventMeta label="Next Event In" value="4d 08h" />
+          <EventMeta label="Next Event In" value={nextEventCountdown} />
           <EventMeta label="Upcoming" value={String(upcomingEvents.length)} />
-          <EventMeta label="Completed" value={String(completedEvents.length)} />
+          <EventMeta label="Completed" value="-" />
           <EventMeta label="Season Phase" value="Pre-End" />
         </div>
-        <div className="event-board" style={{ '--event-panel-height': eventPanelHeight } as React.CSSProperties}>
+        <div className="event-board event-board-single" style={{ '--event-panel-height': eventPanelHeight } as React.CSSProperties}>
           <section className="event-timeline">
             <span className="event-section-label">Upcoming Schedule</span>
             <div className="event-scroll-list">
@@ -1697,8 +1694,8 @@ function EventsPage() {
                 <article className="timeline-event" key={event.title}>
                   <div className="timeline-marker" />
                   <div className="timeline-date">
-                    <strong>{event.date}</strong>
-                    <span>{event.time}</span>
+                    <strong>{eventDate(event.startsAt)}</strong>
+                    <span>{eventTime(event.startsAt)}</span>
                   </div>
                   <div>
                     <span className="event-status upcoming">{event.type}</span>
@@ -1707,32 +1704,6 @@ function EventsPage() {
                   </div>
                 </article>
               ))}
-            </div>
-          </section>
-          <section className="event-archive">
-            <span className="event-section-label">Archive</span>
-            <div className="event-scroll-list">
-              {completedEvents.length > 0 ? (
-                completedEvents.map((event) => (
-                  <article className="archive-event" key={event.title}>
-                    <div>
-                      <span className="event-status">{event.status}</span>
-                      <h3>{event.title}</h3>
-                      <p>{event.summary}</p>
-                    </div>
-                    <strong>{event.result}</strong>
-                  </article>
-                ))
-              ) : (
-                <article className="archive-event empty-event">
-                  <div>
-                    <span className="event-status">Archive</span>
-                    <h3>No Results Yet</h3>
-                    <p>Completed events will appear here once Season 1 starts moving.</p>
-                  </div>
-                  <strong>Waiting for first event.</strong>
-                </article>
-              )}
             </div>
           </section>
         </div>
@@ -1754,7 +1725,7 @@ function WorldPage() {
   const [eventCountdown, setEventCountdown] = useState(() => countdownTo(seasonStartTimestamp))
 
   useEffect(() => {
-    const interval = window.setInterval(() => setEventCountdown(countdownTo(seasonStartTimestamp)), 30000)
+    const interval = window.setInterval(() => setEventCountdown(countdownTo(seasonStartTimestamp)), 1000)
     return () => window.clearInterval(interval)
   }, [])
 

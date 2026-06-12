@@ -1279,6 +1279,10 @@ tbody tr:hover {
   align-items: stretch;
 }
 
+.event-board-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .event-timeline,
 .event-archive {
   display: grid;

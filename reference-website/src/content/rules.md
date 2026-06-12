@@ -332,9 +332,11 @@ Netherite tools such as pickaxes, shovels, and hoes remain allowed.
 
 ## Maces
 
-Only two normal Maces may exist on the server at any time.
+Only two custom Maces exist for the season.
 
-Once the limit is reached, additional Maces cannot be crafted until one is destroyed.
+These Maces are event rewards and cannot be obtained through normal crafting.
+
+Crafted, duplicated, renamed, modified, disenchanted, or otherwise bypassed Maces are not permitted and may be removed by staff or server systems.
 
 ---
 
