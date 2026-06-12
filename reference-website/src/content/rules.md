@@ -39,6 +39,8 @@ Examples include:
 * Fly Hacks
 * ESP
 * Freecam
+* Minimap mods
+* World map mods
 * Packet Manipulation
 * Duplication Exploits
 * Gameplay Automation Macros
