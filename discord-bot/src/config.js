@@ -22,7 +22,8 @@ const publicPrestigeBadgeIds = new Set([
 ]);
 
 const defaultPublicPrestigeBadges = new Map([
-  ['f4ae7f4f-cb60-45ff-bb15-576c89330e78', ['shd-team']]
+  ['f4ae7f4f-cb60-45ff-bb15-576c89330e78', ['shd-team']],
+  ['a5f7ba0b-cee1-4137-9b9b-835285ed606c', ['shd-team']]
 ]);
 
 function normalizeMinecraftUuid(value) {

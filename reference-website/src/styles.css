@@ -139,6 +139,14 @@ main {
   width: min(100%, 56rem);
 }
 
+.landing-logo {
+  width: min(17rem, 58vw);
+  height: auto;
+  margin-bottom: 1rem;
+  object-fit: contain;
+  filter: drop-shadow(0 0.7rem 1.6rem rgba(0, 0, 0, 0.36));
+}
+
 .chip {
   display: inline-flex;
   align-items: center;
@@ -679,9 +687,15 @@ th {
   min-width: 48rem;
 }
 
+.pre-season-table th:not(:first-child),
+.pre-season-table td:not(:first-child) {
+  text-align: center;
+}
+
 .pre-season-badge {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   min-height: 1.7rem;
   padding: 0.25rem 0.62rem;
   border: 1px solid rgba(245, 242, 235, 0.13);

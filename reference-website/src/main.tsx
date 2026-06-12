@@ -6,6 +6,7 @@ import dragonEggBadge from './assets/prestige/dragon-egg.png'
 import adminBadge from './assets/prestige/admin.png'
 import ownerBadge from './assets/prestige/owner.png'
 import maceBadge from './assets/prestige/mace.png'
+import shdTextLogo from './assets/prestige/shd-logo.png'
 import shdteamBadge from './assets/prestige/shd-logo-no-text.png'
 import moderatorBadge from './assets/prestige/moderator.png'
 import rulesMarkdown from './content/rules.md?raw'
@@ -190,6 +191,7 @@ const publicApiBase = (import.meta.env.VITE_LIFESTEAL_API_BASE_URL ?? 'http://lo
 const rankHistoryKey = 'shd-lifesteal-rank-history-v1'
 const rankMoveLifetimeMs = 24 * 60 * 60 * 1000
 const seasonStarted = false
+const seasonStartTimestamp = Date.UTC(2026, 6, 1, 10, 0, 0)
 
 const prestigeBadges: Record<PrestigeBadgeId, { label: string; shortLabel: string; image?: string }> = {
   owner: { label: 'Owner', shortLabel: 'OWN', image: ownerBadge },
@@ -212,9 +214,25 @@ const statusInfo: Record<string, { label: string; kind: StatusKind }> = {
 }
 
 const prestigePriority: PrestigeBadgeId[] = ['owner', 'admin', 'mod', 'shd-team', 'dragon-egg', 'mace-1', 'mace-2']
+const builtInPrestigeBadgesByUuid: Record<string, PrestigeBadgeId[]> = {
+  'f4ae7f4f-cb60-45ff-bb15-576c89330e78': ['shd-team'],
+  f4ae7f4fcb6045ffbb15576c89330e78: ['shd-team'],
+  'a5f7ba0b-cee1-4137-9b9b-835285ed606c': ['shd-team'],
+  a5f7ba0bcee141379b9b835285ed606c: ['shd-team'],
+}
+const builtInPrestigeBadgesByName: Record<string, PrestigeBadgeId[]> = {
+  tlzmax5454: ['shd-team'],
+  xvoidism: ['shd-team'],
+}
 
 function isPrestigeBadgeId(value: string): value is PrestigeBadgeId {
   return Object.prototype.hasOwnProperty.call(prestigeBadges, value)
+}
+
+function builtInPrestigeBadges(player: PublicPlayer) {
+  const uuid = player.minecraft_uuid?.toLowerCase()
+  const name = player.name.toLowerCase()
+  return uuid ? builtInPrestigeBadgesByUuid[uuid] ?? builtInPrestigeBadgesByName[name] ?? [] : builtInPrestigeBadgesByName[name] ?? []
 }
 
 function relativeTime(timestamp: number | null | undefined) {
@@ -227,6 +245,16 @@ function relativeTime(timestamp: number | null | undefined) {
   if (hours < 24) return `${hours}h ago`
   const days = Math.floor(hours / 24)
   return `${days}d ago`
+}
+
+function countdownTo(timestamp: number) {
+  const totalSeconds = Math.max(0, Math.floor((timestamp - Date.now()) / 1000))
+  const days = Math.floor(totalSeconds / 86400)
+  const hours = Math.floor((totalSeconds % 86400) / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  if (days > 0) return `${days}d ${hours}h ${minutes}m`
+  if (hours > 0) return `${hours}h ${minutes}m`
+  return `${minutes}m`
 }
 
 function playerRankKey(player: PublicPlayer) {
@@ -305,7 +333,7 @@ function publicPlayerToPlayer(player: PublicPlayer, index: number, rankMoves: Ra
   const move: Move = previousRank > rank ? 'up' : previousRank < rank ? 'down' : 'same'
   const rawHearts = player.hearts_current ?? player.hearts ?? null
   const hearts = player.eliminated ? Math.max(0, rawHearts ?? 0) : rawHearts ?? 10
-  const prestige = (player.prestige ?? []).filter(isPrestigeBadgeId)
+  const prestige = [...new Set([...(player.prestige ?? []).filter(isPrestigeBadgeId), ...builtInPrestigeBadges(player)])]
   const status = player.status ?? (player.eliminated ? 'Eliminated' : hearts === 1 ? 'On Last Heart' : undefined)
   const updatedAt = player.source_updated_at ?? player.updated_at
 
@@ -1057,6 +1085,7 @@ function Landing({ liveHealth, liveLoaded, liveStatus, onNavigate }: { liveHealt
   return (
     <section className="landing-page page-frame">
       <div className="landing-copy">
+        <img className="landing-logo" src={shdTextLogo} alt="SHD" />
         <span className="chip">SHD LIFESTEAL</span>
         <h1>SHD LIFESTEAL</h1>
         <p className="season-line">Season 1</p>
@@ -1722,6 +1751,13 @@ function EventMeta({ label, value }: { label: string; value: string }) {
 }
 
 function WorldPage() {
+  const [eventCountdown, setEventCountdown] = useState(() => countdownTo(seasonStartTimestamp))
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setEventCountdown(countdownTo(seasonStartTimestamp)), 30000)
+    return () => window.clearInterval(interval)
+  }, [])
+
   return (
     <section className="content-page page-frame">
       <PageIntro label="World" title="Map / World Info">
@@ -1736,7 +1772,7 @@ function WorldPage() {
         <article className="info-card">
           <span>Nether</span>
           <h2>50,000 x 50,000</h2>
-          <p>Same border size as the Overworld for Season 1.</p>
+          <p>25k blocks each direction from world center.</p>
         </article>
         <article className="info-card">
           <span>End</span>
@@ -1747,16 +1783,16 @@ function WorldPage() {
           <span>Server Settings</span>
           <h2>Season Config</h2>
           <ul>
-            <li>Difficulty: Hard</li>
-            <li>Version: 1.21.4</li>
-            <li>View Distance: 10 chunks</li>
-            <li>Simulation Distance: 8 chunks</li>
+            <li>Difficulty: Normal</li>
+            <li>Version: 1.21.11</li>
+            <li>View Distance: 32 chunks test-wise</li>
+            <li>Simulation Distance: 12 chunks test-wise</li>
           </ul>
         </article>
         <article className="info-card">
           <span>Objectives</span>
           <h2>Egg + Maces</h2>
-          <p>Public tracking shows holders and status. Coordinates stay hidden for competitive integrity.</p>
+          <p>Objective holders are exposed publicly with live holder state, approximate coordinate context, and the in-game glowing effect while tracking is active.</p>
         </article>
         <article className="info-card">
           <span>Grace Period</span>
@@ -1765,9 +1801,9 @@ function WorldPage() {
         </article>
       </div>
       <div className="world-event-strip">
-        <span>End Opens / Event In</span>
-        <strong>6d 14h 22m</strong>
-        <p>Mock timer for the first End objective window.</p>
+        <span>Event Starts In</span>
+        <strong>{eventCountdown}</strong>
+        <p>July 1, 2026 - 12:00 CEST. Looking forward to starting the server at this date.</p>
       </div>
     </section>
   )
