@@ -128,7 +128,9 @@ Current disabled-feature layer:
 - Weakness potions are allowed outside combat but blocked/removed while combat tagged
 - Strength II or higher is blocked/removed
 - Explosive fireworks with more than 7 explosions are blocked/removed
-- Ender pearls are blocked while combat tagged
+- PvP combat tagging applies item cooldowns to Elytras, ender pearls, and tridents
+- Ender pearls are blocked while combat tagged as a server-side backstop
+- Riptide tridents are blocked while combat tagged as a server-side backstop
 - Elytra and TNT minecarts are blocked/removed while combat tagged
 - Netherite swords and netherite axes are removed
 - Protection above 3 is clamped down to 3 on carried items/books

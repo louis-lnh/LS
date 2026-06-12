@@ -7,7 +7,7 @@ import { config } from './config.js';
 import { statements } from './db.js';
 import { clientIp, ipHashes } from './privacy.js';
 import { completeMinecraftLink, completeVerification } from './verification.js';
-import { audit, logToChannel, minecraftLog, securityLog } from './logger.js';
+import { audit, logToChannel, minecraftLog, securityLog, staffAuditLog } from './logger.js';
 import { refreshRisk } from './risk.js';
 import { currentRulesVersion } from './settings.js';
 
@@ -135,6 +135,19 @@ function validationErrorMessage(error) {
   return error.message;
 }
 
+function apiErrorStatus(error) {
+  if (error instanceof z.ZodError) return 400;
+  if (error?.type === 'entity.parse.failed') return 400;
+  return Number.isInteger(error?.status) && error.status >= 400 && error.status < 600 ? error.status : 500;
+}
+
+function apiErrorMessage(error, status) {
+  if (error instanceof z.ZodError) return validationErrorMessage(error);
+  if (error?.type === 'entity.parse.failed') return 'Invalid JSON body.';
+  if (status >= 500) return 'Internal server error.';
+  return error?.message || 'Request failed.';
+}
+
 function supportFieldLabel(field) {
   const labels = {
     foundLifesteal: 'How did you find Lifesteal',
@@ -170,19 +183,32 @@ function page(title, body) {
 </html>`;
 }
 
+function bearerToken(req) {
+  const header = String(req.headers.authorization ?? '').trim();
+  const match = header.match(/^Bearer\s+([^\s]+)$/i);
+  return match?.[1] ?? '';
+}
+
+function timingSafeEqualText(left, right) {
+  const leftBuffer = Buffer.from(String(left ?? ''));
+  const rightBuffer = Buffer.from(String(right ?? ''));
+  return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
 function requireApiSecret(req, res, next) {
-  if (!config.apiSharedSecret) return res.status(503).json({ error: 'API_SHARED_SECRET is not configured' });
-  const header = req.headers.authorization ?? '';
-  if (header !== `Bearer ${config.apiSharedSecret}`) return res.status(401).json({ error: 'Unauthorized' });
+  if (!config.apiSharedSecret) return res.status(503).json({ ok: false, error: 'API_SHARED_SECRET is not configured' });
+  if (!timingSafeEqualText(bearerToken(req), config.apiSharedSecret)) return res.status(401).json({ ok: false, error: 'Unauthorized' });
   next();
 }
 
 function requireOverlayToken(req, res, next) {
   if (!config.overlay.publicToken) return next();
-  const header = req.headers.authorization ?? '';
   const queryToken = req.query.token ?? '';
-  if (header === `Bearer ${config.overlay.publicToken}` || queryToken === config.overlay.publicToken) return next();
-  return res.status(401).json({ error: 'Unauthorized' });
+  if (
+    timingSafeEqualText(bearerToken(req), config.overlay.publicToken) ||
+    timingSafeEqualText(queryToken, config.overlay.publicToken)
+  ) return next();
+  return res.status(401).json({ ok: false, error: 'Unauthorized' });
 }
 
 function setPublicCors(res) {
@@ -190,6 +216,70 @@ function setPublicCors(res) {
   res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
 }
+
+function publicCors(req, res, next) {
+  setPublicCors(res);
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  return next();
+}
+
+const rateLimitBuckets = new Map();
+
+function createRateLimit({ name, windowMs, max, key = defaultRateLimitKey }) {
+  return (req, res, next) => {
+    if (req.method === 'OPTIONS') return next();
+
+    const now = Date.now();
+    const bucketKey = `${name}:${key(req)}`;
+    const bucket = rateLimitBuckets.get(bucketKey);
+    if (!bucket || now >= bucket.resetAt) {
+      rateLimitBuckets.set(bucketKey, { count: 1, resetAt: now + windowMs });
+      return next();
+    }
+
+    bucket.count += 1;
+    if (bucket.count <= max) return next();
+
+    const retryAfterSeconds = Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
+    res.set('Retry-After', String(retryAfterSeconds));
+    res.set('X-RateLimit-Limit', String(max));
+    res.set('X-RateLimit-Remaining', '0');
+    res.set('X-RateLimit-Reset', String(Math.ceil(bucket.resetAt / 1000)));
+
+    if (req.path.startsWith('/verify/')) {
+      return res.status(429).send(page('Too many requests', `
+        <h1>Too many requests</h1>
+        <p>Please wait a moment, then try again.</p>
+      `));
+    }
+
+    return res.status(429).json({ ok: false, error: 'Too many requests. Please wait a moment and try again.' });
+  };
+}
+
+function defaultRateLimitKey(req) {
+  return clientIp(req);
+}
+
+function protectedRateLimitKey(req) {
+  const token = bearerToken(req);
+  const authHash = token
+    ? crypto.createHash('sha256').update(token).digest('hex').slice(0, 16)
+    : 'no-auth';
+  return `${clientIp(req)}:${authHash}`;
+}
+
+const publicReadRateLimit = createRateLimit({ name: 'public-read', windowMs: 60_000, max: 240 });
+const publicWriteRateLimit = createRateLimit({ name: 'public-write', windowMs: 60_000, max: 12 });
+const verificationRateLimit = createRateLimit({ name: 'verification', windowMs: 15 * 60_000, max: 30 });
+const protectedApiRateLimit = createRateLimit({ name: 'protected-api', windowMs: 60_000, max: 180, key: protectedRateLimitKey });
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, bucket] of rateLimitBuckets) {
+    if (now >= bucket.resetAt) rateLimitBuckets.delete(key);
+  }
+}, 5 * 60_000).unref?.();
 
 function normalizeSupportCode(value) {
   return String(value ?? '').trim().toUpperCase();
@@ -225,6 +315,7 @@ function supportApplicationStaffFields(application, extra = []) {
 }
 
 function minecraftUuidVariants(value) {
+  if (!value) return [];
   const clean = String(value).toLowerCase();
   const compact = clean.replaceAll('-', '');
   return [...new Set([clean, compact])];
@@ -352,6 +443,60 @@ function publicPlayersFromSnapshots(snapshots, updatedAt) {
 
   return projected
     .sort((first, second) =>
+      Number(second.hearts_current ?? 0) - Number(first.hearts_current ?? 0) ||
+      Number(second.kills_total ?? 0) - Number(first.kills_total ?? 0) ||
+      first.name.localeCompare(second.name)
+    )
+    .map((player, index) => ({ ...player, rank: index + 1 }));
+}
+
+function publicPlayersWithApplications(snapshot) {
+  const existingNames = new Set(snapshot.players.map((player) => String(player.name ?? '').toLowerCase()));
+  const existingUuids = new Set(snapshot.players.flatMap((player) => minecraftUuidVariants(player.minecraft_uuid)));
+  const appliedPlayers = statements.findPublicSupportApplications.all()
+    .filter((application) => !existingNames.has(String(application.minecraft_name ?? '').toLowerCase()))
+    .filter((application) => !application.minecraft_uuid || !minecraftUuidVariants(application.minecraft_uuid).some((uuid) => existingUuids.has(uuid)))
+    .map((application) => ({
+      minecraft_uuid: null,
+      name: application.minecraft_name ?? 'Unknown',
+      hearts_current: null,
+      heart_gains: null,
+      heart_losses: null,
+      kills_total: 0,
+      deaths_total: 0,
+      revivals_total: 0,
+      mace_kills: null,
+      playtime: 'Hidden',
+      eliminated: false,
+      twenty_hearts: false,
+      dragon_egg_holder: false,
+      mace_wielder: false,
+      prestige: [],
+      status: 'Applied',
+      data_status: {
+        hearts_current: 'unavailable',
+        heart_gains: 'unavailable',
+        heart_losses: 'unavailable',
+        kills_total: 'unavailable',
+        deaths_total: 'unavailable',
+        revivals_total: 'unavailable',
+        mace_kills: 'unavailable',
+        playtime: 'unavailable',
+        objectives: 'unavailable'
+      },
+      source_updated_at: application.verified_at ?? application.created_at,
+      hearts: null,
+      hearts_gained: null,
+      hearts_lost: null,
+      kills: 0,
+      deaths: 0,
+      revivals: 0,
+      updated_at: application.verified_at ?? application.created_at
+    }));
+
+  return [...snapshot.players, ...appliedPlayers]
+    .sort((first, second) =>
+      (first.status === 'Applied' ? 1 : 0) - (second.status === 'Applied' ? 1 : 0) ||
       Number(second.hearts_current ?? 0) - Number(first.hearts_current ?? 0) ||
       Number(second.kills_total ?? 0) - Number(first.kills_total ?? 0) ||
       first.name.localeCompare(second.name)
@@ -595,6 +740,17 @@ function publicPlayerTimeline(player, limit = 25) {
     });
 }
 
+function formatRoleSyncDiagnostics(diagnostics) {
+  return diagnostics
+    .slice(0, 10)
+    .map((item) => {
+      const target = item.discordId ? `<@${item.discordId}>` : item.minecraftName || item.minecraftUuid || 'Unknown player';
+      return `${item.action} ${target} role ${item.roleId}: ${item.error}`;
+    })
+    .join('\n')
+    .slice(0, 1024) || 'No examples captured.';
+}
+
 function savePublicLifestealSnapshot(snapshots, status) {
   const updatedAt = Date.now();
   const players = publicPlayersFromSnapshots(snapshots, updatedAt);
@@ -705,7 +861,21 @@ async function syncGameplayRoles(client, snapshots) {
     skipped: 0,
     errors: 0
   };
+  const diagnostics = [];
   const syncedDiscordIds = new Set();
+
+  function recordRoleSyncError({ linked = null, minecraftUuid = null, minecraftName = null, roleId, action, error }) {
+    stats.errors += 1;
+    if (diagnostics.length >= 25) return;
+    diagnostics.push({
+      discordId: linked?.discord_id ?? null,
+      minecraftUuid: linked?.minecraft_uuid ?? minecraftUuid ?? null,
+      minecraftName: linked?.minecraft_name ?? minecraftName ?? null,
+      roleId,
+      action,
+      error: error?.message || String(error)
+    });
+  }
 
   for (const snapshot of snapshots) {
     const minecraftUuid = snapshot.minecraftUuid ?? snapshot.playerId;
@@ -735,8 +905,15 @@ async function syncGameplayRoles(client, snapshots) {
           await member.roles.remove(role.roleId, `Lifesteal gameplay role: ${role.configKey}`);
           stats.removed += 1;
         }
-      } catch (_error) {
-        stats.errors += 1;
+      } catch (error) {
+        recordRoleSyncError({
+          linked,
+          minecraftUuid,
+          minecraftName: snapshot.name ?? snapshot.minecraftName ?? null,
+          roleId: role.roleId,
+          action: shouldHaveRole ? 'add_gameplay_role' : 'remove_gameplay_role',
+          error
+        });
       }
     }
 
@@ -752,8 +929,15 @@ async function syncGameplayRoles(client, snapshots) {
             await member.roles.remove(role.roleId, `Lifesteal heart role: ${role.hearts}`);
             stats.removed += 1;
           }
-        } catch (_error) {
-          stats.errors += 1;
+        } catch (error) {
+          recordRoleSyncError({
+            linked,
+            minecraftUuid,
+            minecraftName: snapshot.name ?? snapshot.minecraftName ?? null,
+            roleId: role.roleId,
+            action: shouldHaveRole ? 'add_heart_role' : 'remove_heart_role',
+            error
+          });
         }
       }
     }
@@ -778,19 +962,27 @@ async function syncGameplayRoles(client, snapshots) {
         await member.roles.remove(roleId, 'Lifesteal gameplay role no longer present in full sync');
         stats.removed += 1;
         stats.clearedMissing += 1;
-      } catch (_error) {
-        stats.errors += 1;
+      } catch (error) {
+        recordRoleSyncError({
+          linked,
+          roleId,
+          action: 'clear_missing_role',
+          error
+        });
       }
     }
   }
 
+  stats.diagnostics = diagnostics;
   return stats;
 }
 
 export function startWebServer(client) {
   const app = express();
-  app.use(express.json({ limit: '64kb' }));
   app.set('trust proxy', true);
+  app.use('/api/v1/public', publicCors);
+  app.use('/api/v1/overlays', publicCors);
+  app.use(express.json({ limit: '64kb' }));
 
   app.get('/favicon.png', (_req, res) => {
     if (!existsSync(verificationFaviconPath)) return res.sendStatus(404);
@@ -801,7 +993,7 @@ export function startWebServer(client) {
     res.json({ ok: true });
   });
 
-  app.get('/verify/:token', (req, res) => {
+  app.get('/verify/:token', verificationRateLimit, (req, res) => {
     const token = req.params.token;
     const row = statements.getToken.get(token);
     if (!row || row.used_at || Date.now() > row.expires_at) {
@@ -823,7 +1015,7 @@ export function startWebServer(client) {
     `));
   });
 
-  app.post('/verify/:token', async (req, res) => {
+  app.post('/verify/:token', verificationRateLimit, async (req, res) => {
     if (config.requireVerificationConsent !== true) {
       return res.status(403).send(page('Consent required', '<h1>Consent required</h1><p>Verification consent is disabled by configuration.</p>'));
     }
@@ -846,13 +1038,12 @@ export function startWebServer(client) {
     }
   });
 
-  app.get('/api/v1/link/discord/:discordId', requireApiSecret, (req, res) => {
+  app.get('/api/v1/link/discord/:discordId', protectedApiRateLimit, requireApiSecret, (req, res) => {
     const linked = statements.findLinkedByDiscord.get(req.params.discordId);
     res.json({ linked: linked ?? null });
   });
 
-  app.get('/api/v1/overlays/lifesteal/player', requireOverlayToken, (_req, res) => {
-    res.set('Access-Control-Allow-Origin', '*');
+  app.get('/api/v1/overlays/lifesteal/player', publicReadRateLimit, requireOverlayToken, (_req, res) => {
     const player = statements.getOverlayLifestealPlayer.get();
     res.json({
       ok: true,
@@ -861,8 +1052,7 @@ export function startWebServer(client) {
     });
   });
 
-  app.get('/api/v1/public/status', (_req, res) => {
-    res.set('Access-Control-Allow-Origin', '*');
+  app.get('/api/v1/public/status', publicReadRateLimit, (_req, res) => {
     const snapshot = normalizePublicSnapshot(statements.getPublicLifestealSnapshot.get());
     res.json({
       ok: true,
@@ -873,20 +1063,32 @@ export function startWebServer(client) {
     });
   });
 
-  app.get('/api/v1/public/players', (_req, res) => {
-    res.set('Access-Control-Allow-Origin', '*');
+  app.get('/api/v1/public/players', publicReadRateLimit, (_req, res) => {
     const snapshot = normalizePublicSnapshot(statements.getPublicLifestealSnapshot.get());
+    const players = publicPlayersWithApplications(snapshot);
     res.json({
       ok: true,
       schemaVersion: snapshot.schema_version,
-      players: snapshot.players,
+      players,
       snapshotAgeSeconds: snapshot.snapshot_age_seconds,
       updatedAt: snapshot.updated_at
     });
   });
 
-  app.get('/api/v1/public/players/:minecraftUuid', (req, res) => {
-    res.set('Access-Control-Allow-Origin', '*');
+  app.get('/api/v1/public/players/by-name/:name', publicReadRateLimit, (req, res) => {
+    const snapshot = normalizePublicSnapshot(statements.getPublicLifestealSnapshot.get());
+    const player = publicPlayerByName({ ...snapshot, players: publicPlayersWithApplications(snapshot) }, req.params.name);
+    if (!player) return res.status(404).json({ ok: false, error: 'Public player was not found.' });
+    res.json({
+      ok: true,
+      schemaVersion: snapshot.schema_version,
+      player,
+      snapshotAgeSeconds: snapshot.snapshot_age_seconds,
+      updatedAt: snapshot.updated_at
+    });
+  });
+
+  app.get('/api/v1/public/players/:minecraftUuid', publicReadRateLimit, (req, res) => {
     const snapshot = normalizePublicSnapshot(statements.getPublicLifestealSnapshot.get());
     const player = publicPlayerByUuid(snapshot, req.params.minecraftUuid);
     if (!player) return res.status(404).json({ ok: false, error: 'Public player was not found.' });
@@ -899,22 +1101,7 @@ export function startWebServer(client) {
     });
   });
 
-  app.get('/api/v1/public/players/by-name/:name', (req, res) => {
-    res.set('Access-Control-Allow-Origin', '*');
-    const snapshot = normalizePublicSnapshot(statements.getPublicLifestealSnapshot.get());
-    const player = publicPlayerByName(snapshot, req.params.name);
-    if (!player) return res.status(404).json({ ok: false, error: 'Public player was not found.' });
-    res.json({
-      ok: true,
-      schemaVersion: snapshot.schema_version,
-      player,
-      snapshotAgeSeconds: snapshot.snapshot_age_seconds,
-      updatedAt: snapshot.updated_at
-    });
-  });
-
-  app.get('/api/v1/public/players/:minecraftUuid/timeline', (req, res) => {
-    res.set('Access-Control-Allow-Origin', '*');
+  app.get('/api/v1/public/players/:minecraftUuid/timeline', publicReadRateLimit, (req, res) => {
     const snapshot = normalizePublicSnapshot(statements.getPublicLifestealSnapshot.get());
     const player = publicPlayerByUuid(snapshot, req.params.minecraftUuid);
     if (!player) return res.status(404).json({ ok: false, error: 'Public player was not found.' });
@@ -932,8 +1119,7 @@ export function startWebServer(client) {
     });
   });
 
-  app.get('/api/v1/public/leaderboard', (req, res) => {
-    res.set('Access-Control-Allow-Origin', '*');
+  app.get('/api/v1/public/leaderboard', publicReadRateLimit, (req, res) => {
     const snapshot = normalizePublicSnapshot(statements.getPublicLifestealSnapshot.get());
     const sort = String(req.query.sort ?? 'hearts');
     const limit = Math.max(1, Math.min(500, Number.parseInt(req.query.limit ?? '100', 10) || 100));
@@ -947,8 +1133,7 @@ export function startWebServer(client) {
     });
   });
 
-  app.get('/api/v1/public/objectives', (_req, res) => {
-    res.set('Access-Control-Allow-Origin', '*');
+  app.get('/api/v1/public/objectives', publicReadRateLimit, (_req, res) => {
     const snapshot = normalizePublicSnapshot(statements.getPublicLifestealSnapshot.get());
     res.json({
       ok: true,
@@ -959,8 +1144,7 @@ export function startWebServer(client) {
     });
   });
 
-  app.get('/api/v1/public/season', (_req, res) => {
-    res.set('Access-Control-Allow-Origin', '*');
+  app.get('/api/v1/public/season', publicReadRateLimit, (_req, res) => {
     const snapshot = normalizePublicSnapshot(statements.getPublicLifestealSnapshot.get());
     res.json({
       ok: true,
@@ -972,8 +1156,7 @@ export function startWebServer(client) {
     });
   });
 
-  app.get('/api/v1/public/sync-health', (_req, res) => {
-    res.set('Access-Control-Allow-Origin', '*');
+  app.get('/api/v1/public/sync-health', publicReadRateLimit, (_req, res) => {
     const snapshot = normalizePublicSnapshot(statements.getPublicLifestealSnapshot.get());
     res.json({
       ok: true,
@@ -983,8 +1166,7 @@ export function startWebServer(client) {
     });
   });
 
-  app.get('/api/v1/public/events', (_req, res) => {
-    res.set('Access-Control-Allow-Origin', '*');
+  app.get('/api/v1/public/events', publicReadRateLimit, (_req, res) => {
     res.json({
       ok: true,
       events: publicEvents(),
@@ -992,13 +1174,7 @@ export function startWebServer(client) {
     });
   });
 
-  app.options('/api/v1/public/rules/acknowledge', (_req, res) => {
-    setPublicCors(res);
-    res.sendStatus(204);
-  });
-
-  app.post('/api/v1/public/rules/acknowledge', (req, res) => {
-    setPublicCors(res);
+  app.post('/api/v1/public/rules/acknowledge', publicWriteRateLimit, (req, res) => {
     try {
       const body = supportRulesAckSchema.parse(req.body ?? {});
       const now = Date.now();
@@ -1029,13 +1205,7 @@ export function startWebServer(client) {
     }
   });
 
-  app.options('/api/v1/public/support/lifesteal-signup', (_req, res) => {
-    setPublicCors(res);
-    res.sendStatus(204);
-  });
-
-  app.post('/api/v1/public/support/lifesteal-signup', async (req, res) => {
-    setPublicCors(res);
+  app.post('/api/v1/public/support/lifesteal-signup', publicWriteRateLimit, async (req, res) => {
     try {
       const body = supportLifestealSignupSchema.parse(req.body);
       const rulesCode = normalizeSupportCode(body.rulesCode);
@@ -1093,7 +1263,7 @@ export function startWebServer(client) {
     }
   });
 
-  app.post('/api/v1/minecraft/join', requireApiSecret, async (req, res) => {
+  app.post('/api/v1/minecraft/join', protectedApiRateLimit, requireApiSecret, async (req, res) => {
     const body = minecraftJoinSchema.parse(req.body);
     statements.recordMinecraftName.run({
       minecraftUuid: body.minecraftUuid,
@@ -1163,7 +1333,7 @@ export function startWebServer(client) {
     res.json({ allowed: true, discordId: linked.discord_id, status: linked.status, riskScore: risk.score, rulesVersion: currentRulesVersion() });
   });
 
-  app.post('/api/v1/minecraft/event', requireApiSecret, async (req, res) => {
+  app.post('/api/v1/minecraft/event', protectedApiRateLimit, requireApiSecret, async (req, res) => {
     try {
       const body = minecraftEventSchema.parse(req.body);
       const linked = body.minecraftUuid ? findLinkedMinecraftAccount(body.minecraftUuid) : null;
@@ -1190,7 +1360,7 @@ export function startWebServer(client) {
     }
   });
 
-  app.post('/api/v1/minecraft/link', requireApiSecret, async (req, res) => {
+  app.post('/api/v1/minecraft/link', protectedApiRateLimit, requireApiSecret, async (req, res) => {
     try {
       const body = minecraftLinkSchema.parse(req.body);
       statements.recordMinecraftName.run({
@@ -1212,7 +1382,7 @@ export function startWebServer(client) {
     }
   });
 
-  app.post('/api/v1/gameplay/roles/sync', requireApiSecret, async (req, res) => {
+  app.post('/api/v1/gameplay/roles/sync', protectedApiRateLimit, requireApiSecret, async (req, res) => {
     try {
       const body = gameplayRoleSyncSchema.parse(req.body);
       const overlay = saveOverlayLifestealPlayer(body.players);
@@ -1235,17 +1405,34 @@ export function startWebServer(client) {
         };
       }
       audit('gameplay.roles_sync', { data: { ...stats, overlay, publicPlayers: publicSnapshot.players.length, publicPublish: publicSnapshot.publishStats } });
+      if (stats.diagnostics?.length > 0) {
+        await staffAuditLog(client, 'Gameplay Role Sync Issues', [
+          { name: 'Errors', value: String(stats.errors), inline: true },
+          { name: 'Received', value: String(stats.received), inline: true },
+          { name: 'Examples', value: formatRoleSyncDiagnostics(stats.diagnostics) }
+        ]);
+      }
       res.json({
         ok: true,
         overlay,
         publicPlayers: publicSnapshot.players.length,
         publicPublish: publicSnapshot.publishStats,
         roleSyncOk: !stats.roleSyncError,
+        diagnostics: stats.diagnostics ?? [],
         ...stats
       });
     } catch (error) {
       res.status(400).json({ ok: false, error: error.message });
     }
+  });
+
+  app.use('/api', (error, req, res, next) => {
+    if (res.headersSent) return next(error);
+    const status = apiErrorStatus(error);
+    if (status >= 500) {
+      console.error(`API error on ${req.method} ${req.originalUrl}`, error);
+    }
+    return res.status(status).json({ ok: false, error: apiErrorMessage(error, status) });
   });
 
   return app.listen(config.port, () => {

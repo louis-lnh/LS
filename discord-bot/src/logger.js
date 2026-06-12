@@ -15,8 +15,14 @@ export function audit(type, values = {}) {
 
 export async function logToChannel(client, channelId, title, fields = []) {
   if (!channelId) return;
-  const channel = await client.channels.fetch(channelId).catch(() => null);
-  if (!channel?.isTextBased()) return;
+  const channel = await client.channels.fetch(channelId).catch((error) => {
+    console.warn(`Could not fetch log channel ${channelId} for "${title}": ${error.message}`);
+    return null;
+  });
+  if (!channel?.isTextBased()) {
+    console.warn(`Configured log channel ${channelId} for "${title}" is missing or not text-based.`);
+    return;
+  }
 
   const embed = new EmbedBuilder()
     .setTitle(title)
@@ -32,7 +38,9 @@ export async function logToChannel(client, channelId, title, fields = []) {
     });
   }
 
-  await channel.send({ embeds: [embed] }).catch(() => null);
+  await channel.send({ embeds: [embed] }).catch((error) => {
+    console.warn(`Could not send log message "${title}" to ${channelId}: ${error.message}`);
+  });
 }
 
 export async function modLog(client, title, fields = []) {

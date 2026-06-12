@@ -21,6 +21,10 @@ const publicPrestigeBadgeIds = new Set([
   'mace-2'
 ]);
 
+const defaultPublicPrestigeBadges = new Map([
+  ['f4ae7f4f-cb60-45ff-bb15-576c89330e78', ['shd-team']]
+]);
+
 function normalizeMinecraftUuid(value) {
   return String(value ?? '').trim().toLowerCase();
 }
@@ -28,6 +32,12 @@ function normalizeMinecraftUuid(value) {
 function publicPrestigeBadges() {
   const raw = process.env.PUBLIC_PRESTIGE_BADGES ?? '';
   const badgesByUuid = new Map();
+
+  for (const [uuidValue, badges] of defaultPublicPrestigeBadges) {
+    const uuid = normalizeMinecraftUuid(uuidValue);
+    badgesByUuid.set(uuid, badges);
+    badgesByUuid.set(uuid.replaceAll('-', ''), badges);
+  }
 
   for (const entry of raw.split(';')) {
     const [uuidValue, badgesValue] = entry.split(':');

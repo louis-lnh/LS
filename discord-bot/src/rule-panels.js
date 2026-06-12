@@ -2,11 +2,11 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  EmbedBuilder,
-  PermissionFlagsBits
+  EmbedBuilder
 } from 'discord.js';
 import { config } from './config.js';
 import { audit, modLog, verifyLog } from './logger.js';
+import { hasStaffAccess } from './permissions.js';
 
 const DISCORD_RULES_BUTTON_ID = 'rules:discord:accept';
 const LIFESTEAL_RULES_BUTTON_ID = 'rules:lifesteal:accept';
@@ -40,7 +40,7 @@ const panelConfigs = {
 
 export async function handleRulesPanelCommand(interaction, type) {
   await interaction.deferReply({ ephemeral: true });
-  if (!interaction.memberPermissions?.has(PermissionFlagsBits.ModerateMembers)) {
+  if (!hasStaffAccess(interaction)) {
     return interaction.editReply('You do not have permission to post rules panels.');
   }
 

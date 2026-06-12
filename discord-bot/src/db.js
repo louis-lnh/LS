@@ -161,18 +161,18 @@ export const statements = {
         minecraft_uuid: row.minecraftUuid,
         minecraft_name: row.minecraftName,
         discord_username: row.discordUsername ?? null,
-        ip_hash: row.ipHash,
-        ip_prefix_hash: row.ipPrefixHash,
+        ip_hash: row.ipHash ?? existingLinked?.ip_hash ?? null,
+        ip_prefix_hash: row.ipPrefixHash ?? existingLinked?.ip_prefix_hash ?? null,
         verified_at: row.verifiedAt,
         last_seen_at: row.lastSeenAt,
         status: row.status,
         suspicious: row.suspicious,
         suspicious_reason: row.suspiciousReason,
-        risk_score: row.riskScore ?? 0,
-        risk_band: row.riskBand ?? 'low',
-        risk_reasons: row.riskReasons ?? [],
+        risk_score: row.riskScore ?? existingLinked?.risk_score ?? 0,
+        risk_band: row.riskBand ?? existingLinked?.risk_band ?? 'low',
+        risk_reasons: row.riskReasons ?? existingLinked?.risk_reasons ?? [],
         role: row.role ?? 'player',
-        public_stats_opt_in: row.publicStatsOptIn ?? false,
+        public_stats_opt_in: row.publicStatsOptIn ?? existingLinked?.public_stats_opt_in ?? false,
         region: row.region ?? existingLinked?.region ?? null,
         team_name: row.teamName ?? existingLinked?.team_name ?? null,
         event_interest: row.eventInterest ?? existingLinked?.event_interest ?? null
@@ -449,6 +449,15 @@ export const statements = {
       return state.support_applications.find((row) => row.code === code) ?? null;
     }
   },
+  findPublicSupportApplications: {
+    all() {
+      return state.support_applications.filter((row) =>
+        row.discord_id_verified &&
+        row.ticket_thread_id &&
+        ['ticket_verified', 'approved_whitelist_pending'].includes(row.status)
+      );
+    }
+  },
   claimSupportApplicationTicket: {
     run(row) {
       const application = state.support_applications.find((item) => item.code === row.code);
@@ -457,6 +466,18 @@ export const statements = {
       application.discord_id_verified = row.discordId;
       application.ticket_thread_id = row.threadId;
       application.verified_at = row.verifiedAt;
+      persist();
+      return application;
+    }
+  },
+  updateSupportApplicationStatus: {
+    run(row) {
+      const application = state.support_applications.find((item) => item.code === row.code);
+      if (!application) return null;
+      application.status = row.status;
+      application.reviewed_at = row.reviewedAt;
+      application.reviewed_by = row.reviewedBy;
+      application.review_reason = row.reason;
       persist();
       return application;
     }

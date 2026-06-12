@@ -546,11 +546,13 @@ const legalSections = {
   privacy: [
     { title: 'Data We Process', body: 'Support forms may process Discord usernames or IDs, Minecraft usernames or UUIDs, application answers, appeal text, report evidence, staff review notes, and technical logs.' },
     { title: 'Use of Data', body: 'Submitted data is used to review applications, handle support requests, enforce rules, protect community safety, and operate SHD Esports services.' },
+    { title: 'Application Approval', body: 'If a Lifesteal application is approved, the bot may link the approved Minecraft username to the applicant Discord account, prepare server access, and enable public gameplay stats for the Lifesteal leaderboard.' },
     { title: 'Requests', body: 'Players may request correction or deletion through the support contact while the permanent portal workflow is under construction.' },
   ],
   terms: [
     { title: 'Use of the Portal', body: 'The portal is intended for legitimate SHD Esports support requests. Spam, impersonation, false reports, or abuse may lead to denied requests or server restrictions.' },
     { title: 'Applications and Appeals', body: 'Submitting a form does not guarantee acceptance, appeal approval, or access to any SHD service. Staff decisions may depend on server rules, safety, and available capacity.' },
+    { title: 'Approved Access', body: 'Approved Lifesteal applications may be processed automatically by the Discord bot. If automation cannot prepare Minecraft access, staff may finish the setup manually in the Discord ticket.' },
   ],
   imprint: [
     { title: 'Operator', body: 'SHD Esports support portal. Full provider details and dedicated business contact information will be completed before the final public launch.' },

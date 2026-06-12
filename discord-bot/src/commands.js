@@ -180,9 +180,10 @@ export const commands = [
     ),
   new SlashCommandBuilder()
     .setName('approve')
-    .setDescription('Approve a linked member under review')
+    .setDescription('Approve a linked member or portal application')
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
-    .addUserOption((option) => option.setName('user').setDescription('Discord user').setRequired(true))
+    .addUserOption((option) => option.setName('user').setDescription('Linked Discord user to approve'))
+    .addStringOption((option) => option.setName('application_code').setDescription('Portal application code, for example SHD-APP-ABC123'))
     .addStringOption((option) => option.setName('reason').setDescription('Approval reason')),
   new SlashCommandBuilder()
     .setName('deny')
@@ -267,7 +268,7 @@ export const commands = [
   new SlashCommandBuilder()
     .setName('data')
     .setDescription('Backup or export bot data')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addSubcommand((subcommand) =>
       subcommand
         .setName('backup')

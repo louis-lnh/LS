@@ -5,7 +5,6 @@ import {
   ChannelType,
   EmbedBuilder,
   ModalBuilder,
-  PermissionFlagsBits,
   TextInputBuilder,
   TextInputStyle
 } from 'discord.js';
@@ -13,11 +12,13 @@ import { config } from './config.js';
 import { statements } from './db.js';
 import { audit, appealLog, logToChannel, modLog, staffAuditLog, verifyLog } from './logger.js';
 import { resolveMinecraftProfile } from './minecraft.js';
+import { hasStaffAccess } from './permissions.js';
 import { createVerification } from './verification.js';
 
 const APPEAL_BUTTON_ID = 'ticket:appeal:open';
 const JOIN_BUTTON_ID = 'ticket:join:open';
 const CLOSE_BUTTON_ID = 'ticket:close';
+const CLAIM_BUTTON_ID = 'ticket:claim';
 const APPEAL_MODAL_ID = 'ticket:appeal:modal';
 const CLOSE_MODAL_ID = 'ticket:close:modal';
 const APPLICATION_CODE_PATTERN = /\bSHD-APP-[A-Z0-9]{4,12}\b/i;
@@ -25,31 +26,31 @@ const APPLICATION_CODE_PATTERN = /\bSHD-APP-[A-Z0-9]{4,12}\b/i;
 const joinQuestions = [
   {
     key: 'minecraft_name',
-    prompt: 'Question 1/7: What is your Minecraft Java username?'
+    prompt: 'Question 1/7: What is your exact Minecraft Java username?'
   },
   {
     key: 'lifesteal_experience',
-    prompt: 'Question 2/7: Have you ever played Lifesteal before?'
+    prompt: 'Question 2/7: Tell us about your Lifesteal, SMP, survival, or PvP experience.'
   },
   {
     key: 'found_server',
-    prompt: 'Question 3/7: How did you find the server?'
+    prompt: 'Question 3/7: How did you find SHD Lifesteal?'
   },
   {
     key: 'timezone',
-    prompt: 'Question 4/7: What timezone or region are you in?'
+    prompt: 'Question 4/7: What region and timezone are you in?'
   },
   {
     key: 'understands_pvp',
-    prompt: 'Question 5/7: Do you understand this is a competitive PvP server? Answer yes or no.'
+    prompt: 'Question 5/7: Do you understand this is a competitive PvP Lifesteal server? Answer yes or no.'
   },
   {
     key: 'rules_agreement',
-    prompt: 'Question 6/7: Do you agree to follow the server rules? Answer yes or no.'
+    prompt: 'Question 6/7: Have you read and accepted the current Lifesteal rules? Answer yes or no.'
   },
   {
     key: 'extra',
-    prompt: 'Question 7/7: Anything else staff should know? You can answer none.'
+    prompt: 'Question 7/7: Anything else staff should know, such as team plans, content links, or availability? You can answer none.'
   }
 ];
 
@@ -73,7 +74,10 @@ export async function handlePanelCommand(interaction) {
           'The ticket will ask for your ban ID, Minecraft username, and appeal reason.'
         ].join('\n')
       : [
-          'Apply through the SHD Support Portal first, then open a ticket here and paste your application key.',
+          'Read the Lifesteal rules first and generate your rules key:',
+          'https://lifesteal.shd-esports.com/rules',
+          '',
+          'Then apply through the SHD Support Portal and open a ticket here with your application key.',
           `${portalUrl}/signup`,
           '',
           'Application keys look like SHD-APP-ABC123. The bot will verify the key in your ticket and notify staff.'
@@ -110,6 +114,9 @@ export async function handleTicketInteraction(interaction) {
     }
     if (interaction.customId === CLOSE_BUTTON_ID) {
       return showCloseTicketModal(interaction);
+    }
+    if (interaction.customId === CLAIM_BUTTON_ID) {
+      return claimTicket(interaction);
     }
   }
 
@@ -247,7 +254,7 @@ export async function handleTicketMessage(message) {
 
   await message.channel.send({
     content: 'Staff can review this thread now.',
-    components: [closeButtonRow()]
+    components: [ticketStaffActionRow()]
   });
   return true;
 }
@@ -325,14 +332,25 @@ async function handleApplicationCodeMessage(message) {
       .setTitle('Application Verified')
       .setColor(0x35b87f)
       .setDescription([
-        `<@${message.author.id}> your application is verified for this ticket.`,
-        'Staff can now review your answers and follow up here.'
+        `<@${message.author.id}> your application key is verified and attached to this ticket.`,
+        'Staff will review your answers here. If something is missing or looks wrong, they will ask you in this thread.',
+        'If you are approved, the bot will be the first to tell you and will prepare your Minecraft account for Lifesteal.'
       ].join('\n'))]
+  });
+
+  await message.channel.send({
+    embeds: [ticketEmbed('Staff Review Ready', 0xf2c94c, supportApplicationFields(updated, [
+      { name: 'Applicant', value: `<@${message.author.id}>`, inline: true },
+      { name: 'Approve', value: `/approve application_code:${updated.code}`, inline: false },
+      { name: 'Review Note', value: 'Claim the ticket before reviewing so staff do not duplicate work.' }
+    ]))],
+    components: [ticketStaffActionRow()]
   });
 
   await logToChannel(message.client, config.supportApplicationLogChannelId || config.ticketNotifyChannelId || config.modLogChannelId, 'Support Application Ready For Review', supportApplicationFields(updated, [
     { name: 'Ticket', value: `<#${message.channel.id}>`, inline: true },
-    { name: 'Applicant', value: `<@${message.author.id}>`, inline: true }
+    { name: 'Applicant', value: `<@${message.author.id}>`, inline: true },
+    { name: 'Approve', value: `/approve application_code:${updated.code}` }
   ]));
   await staffAuditLog(message.client, 'Support Application Verified In Ticket', [
     { name: 'Application', value: `#${updated.id} / ${updated.code}`, inline: true },
@@ -440,6 +458,38 @@ async function closeTicket(interaction) {
   await interaction.editReply('Ticket closed.');
 }
 
+async function claimTicket(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  if (!hasTicketStaffAccess(interaction)) {
+    return interaction.editReply('Only staff can claim tickets.');
+  }
+  if (!interaction.channel?.isThread?.()) {
+    return interaction.editReply('This can only be used inside a ticket thread.');
+  }
+
+  const ticket = statements.findTicketByThread.get(interaction.channel.id);
+  if (!ticket) {
+    return interaction.editReply('No open ticket record found for this thread.');
+  }
+
+  audit('ticket.claimed', {
+    discordId: ticket.discord_id,
+    minecraftUuid: ticket.minecraft_uuid,
+    data: {
+      type: ticket.type,
+      threadId: interaction.channel.id,
+      claimedBy: interaction.user.id
+    }
+  });
+  await staffAuditLog(interaction.client, 'Ticket Claimed', [
+    { name: 'Thread', value: `<#${interaction.channel.id}>`, inline: true },
+    { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true },
+    { name: 'Type', value: ticket.type, inline: true }
+  ]);
+  await interaction.channel.send(`Review claimed by <@${interaction.user.id}>.`);
+  return interaction.editReply('Ticket claimed.');
+}
+
 function showAppealModal(interaction) {
   const modal = new ModalBuilder()
     .setCustomId(APPEAL_MODAL_ID)
@@ -543,7 +593,7 @@ async function openAppealTicket(interaction) {
         '',
         reason
       ].join('\n'))],
-    components: [closeButtonRow()]
+    components: [ticketStaffActionRow()]
   });
   await sendTicketCreatedNotices(interaction, {
     type: 'appeal',
@@ -587,12 +637,14 @@ async function openJoinTicket(interaction) {
     content: [
       `<@${interaction.user.id}> welcome. If you applied through the SHD Support Portal, paste your application key here.`,
       'Application keys look like `SHD-APP-ABC123`.',
+      'You need a rules key first. Generate it after reading the rules:',
+      'https://lifesteal.shd-esports.com/rules',
       '',
       `Portal: ${config.supportPortalUrl.replace(/\/$/, '')}/signup`,
       '',
       `If you cannot use the portal, answer here instead: ${joinQuestions[0].prompt}`
     ].join('\n'),
-    components: [closeButtonRow()]
+    components: [ticketStaffActionRow()]
   });
   await sendTicketCreatedNotices(interaction, {
     type: 'join',
@@ -745,8 +797,12 @@ async function addStaffMembers(thread, guild) {
   }
 }
 
-function closeButtonRow() {
+function ticketStaffActionRow() {
   return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(CLAIM_BUTTON_ID)
+      .setLabel('Claim Review')
+      .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId(CLOSE_BUTTON_ID)
       .setLabel('Close Ticket')
@@ -755,10 +811,7 @@ function closeButtonRow() {
 }
 
 function hasTicketStaffAccess(interaction) {
-  if (interaction.memberPermissions?.has(PermissionFlagsBits.ModerateMembers)) {
-    return true;
-  }
-  return config.staffRoleIds.some((roleId) => interaction.member?.roles?.cache?.has(roleId));
+  return hasStaffAccess(interaction);
 }
 
 function parseYesNo(value) {

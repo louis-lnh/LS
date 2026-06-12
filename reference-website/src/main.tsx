@@ -189,6 +189,7 @@ const priorityLinks: NavItem[] = [
 const publicApiBase = (import.meta.env.VITE_LIFESTEAL_API_BASE_URL ?? 'http://localhost:3000/api/v1/public').replace(/\/$/, '')
 const rankHistoryKey = 'shd-lifesteal-rank-history-v1'
 const rankMoveLifetimeMs = 24 * 60 * 60 * 1000
+const seasonStarted = false
 
 const prestigeBadges: Record<PrestigeBadgeId, { label: string; shortLabel: string; image?: string }> = {
   owner: { label: 'Owner', shortLabel: 'OWN', image: ownerBadge },
@@ -644,6 +645,18 @@ const rules = [
         body: ['Pearl Stasis Chambers are allowed.', 'If you are in combat, you must fight or escape using normal gameplay mechanics.'],
         bullets: ['Activating a stasis chamber while combat tagged is prohibited.', 'Using external players to pull someone out of active combat is prohibited.'],
       },
+      {
+        title: 'Combat Mobility Restrictions',
+        body: [
+          'Ender pearls, Elytras, and Riptide Tridents may not be used to create combat kills while restricted by the combat system.',
+          'Using mobility items to bypass cooldowns, swap gear mid-air, or set up a kill from flight is punishable even if the mod does not catch every setup automatically.',
+        ],
+        bullets: [
+          'Flying above a player, swapping from Elytra to chestplate, and dropping into a Mace kill is prohibited.',
+          'Using Riptide, ender pearls, Elytra flight, or spear-style airborne attacks to bypass combat restrictions is prohibited.',
+          'Staff may treat suspicious mobility-assisted kills as anti-cheat or rules cases.'
+        ],
+      },
     ],
   },
   {
@@ -1026,12 +1039,16 @@ function Header({ current, onNavigate }: { current: PageId; onNavigate: (page: P
 
 function Landing({ liveHealth, liveLoaded, liveStatus, onNavigate }: { liveHealth: SyncHealth | null; liveLoaded: boolean; liveStatus: LiveStatus | null; onNavigate: (page: PageId) => void }) {
   const hasLivePopulation = liveStatus?.online_players != null && liveStatus?.max_players != null
-  const population = hasLivePopulation
+  const population = !seasonStarted
+    ? 'Season has not started yet'
+    : hasLivePopulation
     ? `${liveStatus.online_players} / ${liveStatus.max_players} Players`
     : liveLoaded
       ? 'Live status unavailable'
       : 'Loading live data'
-  const populationNote = hasLivePopulation
+  const populationNote = !seasonStarted
+    ? 'Registered players are listed on the Players page until Season 1 begins.'
+    : hasLivePopulation
     ? `Updated ${relativeTime(liveStatus.updated_at)}`
     : liveLoaded
       ? 'Waiting for the next public server sync.'
@@ -1044,9 +1061,9 @@ function Landing({ liveHealth, liveLoaded, liveStatus, onNavigate }: { liveHealt
         <h1>SHD LIFESTEAL</h1>
         <p className="season-line">Season 1</p>
         <div className="landing-live-card" aria-label="Current server population">
-          <span>Online Now</span>
+          <span>{seasonStarted ? 'Online Now' : 'Pre-Season'}</span>
           <strong>{population}</strong>
-          {liveHealth && <em className={`sync-pill ${liveHealth.state}`}>{syncHealthLabel(liveHealth)}</em>}
+          {seasonStarted && liveHealth && <em className={`sync-pill ${liveHealth.state}`}>{syncHealthLabel(liveHealth)}</em>}
           <p>{populationNote}</p>
         </div>
         <div className="landing-actions">
@@ -1077,6 +1094,10 @@ function RulesPage() {
       <PageIntro label="Rules" title={parsedRules.title}>
         Official rules for the SHD Lifesteal event. This version is text-first and mirrors the final public rule document.
       </PageIntro>
+      <aside className="rules-key-info">
+        <strong>Need the rules key?</strong>
+        <span>Read through the rules, then scroll to the bottom to generate the SHD-RULES key for your application.</span>
+      </aside>
       <div className="rules-layout">
         <aside className="rules-index" aria-label="Rules index">
           {parsedRules.index.map((section) => (
@@ -1129,9 +1150,13 @@ function RulesAcknowledgement() {
       <span>Application Step</span>
       <h2>Rules Acknowledgement</h2>
       <p>Generate a rules key after reading the rules. You will need this key for the SHD Support signup form.</p>
-      {code && <strong>{code}</strong>}
+      {code && (
+        <p className="rules-key-result">
+          Your rules key is: <strong>{code}</strong>
+        </p>
+      )}
       {error && <p className="rules-acknowledgement-error">{error}</p>}
-      <button className="primary-action" onClick={acknowledge} type="button">{loading ? 'Creating Key...' : 'I Read And Understand The Rules'}</button>
+      {!code && <button className="primary-action" onClick={acknowledge} type="button">{loading ? 'Creating Key...' : 'I Read And Understand The Rules'}</button>}
     </section>
   )
 }
@@ -1198,6 +1223,14 @@ function PlayersPage({ liveHealth, liveLoaded, liveObjectives, livePlayers, live
 
     return players.filter((player) => playerSearchText(player).includes(normalizedQuery))
   }, [normalizedQuery, players])
+  const preSeasonPlayers = useMemo(() => {
+    const roster = normalizedQuery ? filteredPlayers : players
+    return [...roster].sort((first, second) =>
+      preSeasonStatusRank(first) - preSeasonStatusRank(second) ||
+      preSeasonBadgeRank(first) - preSeasonBadgeRank(second) ||
+      first.name.localeCompare(second.name)
+    )
+  }, [filteredPlayers, normalizedQuery, players])
   const openProfile = (player: Player) => {
     const params = new URLSearchParams(window.location.search)
     params.set('profile', player.name)
@@ -1234,6 +1267,37 @@ function PlayersPage({ liveHealth, liveLoaded, liveObjectives, livePlayers, live
       window.removeEventListener('keydown', onKeyDown)
     }
   }, [selectedPlayer])
+
+  if (!seasonStarted) {
+    return (
+      <section className="content-page page-frame">
+        <PageIntro label="Players" title="Registered Players">
+          Season 1 has not started yet. Until live gameplay begins, this page only shows registered public players and the SHD team.
+        </PageIntro>
+        <div className="leaderboard-tools pre-season-tools">
+          <div>
+            <span>Pre-Season Roster</span>
+            <strong>{liveLoaded ? `${players.length} Public Roster Entries` : 'Loading Public Roster'}</strong>
+            <div className="leaderboard-counts" aria-label="Pre-season player counts">
+              <span>{players.filter((player) => preSeasonStatus(player) === 'Whitelisted').length} Whitelisted</span>
+              <span>{players.filter((player) => preSeasonStatus(player) === 'Registered').length} Registered</span>
+              <span>{players.filter((player) => preSeasonStatus(player) === 'Applied').length} Applied</span>
+              {!liveLoaded && <span>Connecting to public API</span>}
+              {liveLoaded && players.length === 0 && <span>No public players registered yet</span>}
+              {players.length > 0 && <span>Updated {relativeTime(liveUpdatedAt)}</span>}
+            </div>
+          </div>
+          <label className="player-search">
+            <span>Search Players</span>
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search players..." type="search" />
+          </label>
+        </div>
+        <div className="pre-season-roster">
+          <PreSeasonRosterTable players={preSeasonPlayers} emptyText={liveLoaded ? 'No registered public players found.' : 'Loading registered players...'} />
+        </div>
+      </section>
+    )
+  }
 
   return (
     <section className="content-page page-frame">
@@ -1332,6 +1396,72 @@ function PlayersPage({ liveHealth, liveLoaded, liveObjectives, livePlayers, live
       {selectedPlayer && <PlayerProfileModal player={selectedPlayer} onClose={closeProfile} />}
     </section>
   )
+}
+
+function PreSeasonRosterTable({ players, emptyText }: { players: Player[]; emptyText: string }) {
+  return (
+    <section className="table-panel pre-season-table">
+      <header>
+        <span>Registered Roster</span>
+        <strong>{players.length}</strong>
+      </header>
+      <table>
+        <thead>
+          <tr>
+            <th>Player</th>
+            <th>Badges</th>
+            <th>Status</th>
+            <th>Timestamp</th>
+          </tr>
+        </thead>
+        <tbody>
+          {players.map((player) => (
+            <tr key={player.name}>
+              <td className="player-name">{player.name}</td>
+              <td>
+                <span className={`pre-season-badge ${preSeasonBadgeClass(player)}`}>{preSeasonBadge(player)}</span>
+              </td>
+              <td>{preSeasonStatus(player)}</td>
+              <td>{player.lastUpdated}</td>
+            </tr>
+          ))}
+          {players.length === 0 && (
+            <tr>
+              <td className="empty-row" colSpan={4}>{emptyText}</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </section>
+  )
+}
+
+function preSeasonBadge(player: Player) {
+  if (player.prestige.includes('owner')) return 'Owner'
+  if (player.prestige.includes('admin')) return 'Admin'
+  if (player.prestige.includes('mod')) return 'Mod'
+  if (player.prestige.includes('shd-team')) return 'SHD Team'
+  return 'Player'
+}
+
+function preSeasonBadgeRank(player: Player) {
+  return ['Owner', 'Admin', 'Mod', 'SHD Team', 'Player'].indexOf(preSeasonBadge(player))
+}
+
+function preSeasonBadgeClass(player: Player) {
+  return preSeasonBadge(player).toLowerCase().replace(/\s+/g, '-')
+}
+
+function preSeasonStatus(player: Player) {
+  if (preSeasonBadge(player) !== 'Player') return 'Whitelisted'
+  return player.status === 'Applied' ? 'Applied' : 'Registered'
+}
+
+function preSeasonStatusRank(player: Player) {
+  const status = preSeasonStatus(player)
+  if (status === 'Whitelisted') return 0
+  if (status === 'Registered') return 1
+  return 2
 }
 
 function HeartValue({ player }: { player: Player }) {

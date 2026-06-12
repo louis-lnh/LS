@@ -203,6 +203,22 @@ Riptide Tridents may not be used while combat tagged.
 
 ---
 
+## Combat Mobility Bypasses
+
+Ender Pearls, Elytras, and Riptide Tridents may not be used to create combat kills while restricted by the combat system.
+
+Attempting to bypass cooldowns or combat restrictions is prohibited.
+
+Examples include:
+
+* Flying above a player, swapping from Elytra to chestplate, and dropping into a Mace kill.
+* Using Riptide, Ender Pearls, Elytra flight, or spear-style airborne attacks to bypass combat restrictions.
+* Setting up mobility-assisted kills that avoid the intended combat cooldown.
+
+Staff may treat suspicious mobility-assisted kills as anti-cheat or rules cases even if the mod does not catch every setup automatically.
+
+---
+
 # 5. Revival System
 
 ## Revivals

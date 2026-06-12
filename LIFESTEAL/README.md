@@ -38,6 +38,7 @@ The current build bundles Xerial SQLite JDBC. Fabric Loom may print a warning th
 - Combat logging while tagged drops the player's inventory and resolves the same heart transfer/elimination path as death
 - Grace commands support status/start/end/pause/resume, and grace blocks PvP damage
 - Disabled-feature enforcement blocks crystals, anchors, totems, tipped arrows, restricted potions, oversized explosive fireworks, combat pearls/elytra/TNT minecarts, combat Riptide tridents, netherite sword/axe, Protection above 3, and Sharpness above 4
+- PvP combat tagging applies item cooldowns to Elytras, ender pearls, and tridents; pearl use and Riptide trident use remain blocked while combat tagged as a server-side backstop
 - Mace limiting issues a hidden tracking id to every crafted/discovered mace, persists last-known locations in `config/shd-lifesteal/maces.json`, blocks player/workbench/autocrafter mace crafts once two tracked maces exist, and writes `mace-audit.log` entries for blocked or suspicious maces
 - Heart items and dragon eggs are ejected from loaded vanilla storage/bundles near players; dragon egg carriers glow
 - Dragon egg glow uses a persisted 48-hour holder timer and keeps counting while the egg is moved on the inventory cursor

@@ -18,6 +18,7 @@ import { calculateRisk, formatRiskReasons, refreshRisk } from './risk.js';
 import { currentRulesVersion, setRulesVersion } from './settings.js';
 import { handleRulesPanelCommand, handleRulesPanelInteraction } from './rule-panels.js';
 import { handlePanelCommand, handleTicketInteraction, handleTicketMessage } from './tickets.js';
+import { hasSensitiveDataAccess, hasStaffAccess, hasStaffOrPermission, missingPermissionMessage } from './permissions.js';
 import { createVerification } from './verification.js';
 import { startWebServer } from './web.js';
 
@@ -44,6 +45,7 @@ const staffCommands = new Set([
   'note',
   'case',
   'flag',
+  'purge',
   'approve',
   'deny',
   'sharedip',
@@ -83,7 +85,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   try {
     recordDiscordSnapshot(interaction.user);
-    if (staffCommands.has(interaction.commandName) && !hasStaffAccess(interaction)) {
+    if (staffCommands.has(interaction.commandName) && !hasCommandAccess(interaction)) {
       return interaction.reply({ content: 'You do not have permission to use this staff command.', ephemeral: true });
     }
 
@@ -265,16 +267,20 @@ async function handleRisk(interaction) {
   if (!linked) return interaction.editReply('No linked account found.');
 
   const risk = await refreshRisk(client, linked);
-  await syncSuspiciousRole(interaction.guild, linked.discord_id, risk);
+  const roleResult = await syncSuspiciousRole(interaction.guild, linked.discord_id, risk, client, {
+    minecraftUuid: linked.minecraft_uuid,
+    source: 'risk_command'
+  });
   const embed = new EmbedBuilder()
     .setTitle('Risk score')
     .setColor(risk.score >= 80 ? 0xff4d4d : risk.score >= 50 ? 0xffb020 : 0x35b87f)
-    .addFields(
+    .addFields([
       { name: 'Account', value: `<@${linked.discord_id}> / ${linked.minecraft_name}`, inline: false },
       { name: 'Score', value: `${risk.score}`, inline: true },
       { name: 'Band', value: risk.band, inline: true },
+      roleResult.ok ? null : { name: 'Role Sync Warning', value: roleResult.error, inline: false },
       { name: 'Reasons', value: formatRiskReasons(risk.reasons).slice(0, 1024), inline: false }
-    );
+    ].filter(Boolean));
   await interaction.editReply({ embeds: [embed] });
 }
 
@@ -326,7 +332,7 @@ async function handleSignup(interaction) {
   }
 
   const target = interaction.options.getUser('user') ?? interaction.user;
-  if (target.id !== interaction.user.id && !interaction.memberPermissions.has(PermissionFlagsBits.ModerateMembers)) {
+  if (target.id !== interaction.user.id && !hasStaffAccess(interaction)) {
     return interaction.editReply('You do not have permission to view another member signup.');
   }
   const signup = statements.findSignupAnswers.get(target.id);
@@ -351,7 +357,7 @@ async function handleRules(interaction) {
     audit('rules.accepted', { discordId: interaction.user.id, minecraftUuid: linked?.minecraft_uuid ?? null, data: { version: currentRulesVersion() } });
     return interaction.editReply(`Rules accepted for version ${currentRulesVersion()}.`);
   }
-  if (!interaction.memberPermissions.has(PermissionFlagsBits.ModerateMembers)) {
+  if (!hasStaffAccess(interaction)) {
     return interaction.editReply('You do not have permission to bump rules.');
   }
   const version = interaction.options.getString('version', true);
@@ -379,7 +385,7 @@ async function handleProfile(interaction) {
   }
 
   const target = interaction.options.getUser('user') ?? interaction.user;
-  if (target.id !== interaction.user.id && !interaction.memberPermissions.has(PermissionFlagsBits.ModerateMembers)) {
+  if (target.id !== interaction.user.id && !hasStaffAccess(interaction)) {
     return interaction.editReply('You do not have permission to view another member profile.');
   }
   const linked = statements.findLinkedByDiscord.get(target.id);
@@ -408,7 +414,7 @@ async function handleAppeal(interaction) {
     return interaction.editReply(`Appeal #${appeal.id} created. The panel flow in #appeal-tickets is preferred because it creates a staff thread.`);
   }
 
-  if (!interaction.memberPermissions.has(PermissionFlagsBits.ModerateMembers)) {
+  if (!hasStaffAccess(interaction)) {
     return interaction.editReply('You do not have permission to manage appeals.');
   }
   const appealId = interaction.options.getInteger('id', true);
@@ -512,7 +518,13 @@ async function handleNote(interaction) {
 
 async function handleApprove(interaction) {
   await interaction.deferReply({ ephemeral: true });
-  const user = interaction.options.getUser('user', true);
+  const applicationCode = interaction.options.getString('application_code');
+  if (applicationCode) {
+    return approveSupportApplication(interaction, applicationCode);
+  }
+
+  const user = interaction.options.getUser('user');
+  if (!user) return interaction.editReply('Choose a linked Discord user or provide an application code.');
   const reason = interaction.options.getString('reason') || 'Approved by staff';
   const linked = statements.findLinkedByDiscord.get(user.id);
   if (!linked) return interaction.editReply('That Discord user is not linked.');
@@ -523,26 +535,167 @@ async function handleApprove(interaction) {
     suspicious: 0,
     reason
   });
-  await whitelistAdd(linked.minecraft_name).catch(() => null);
+  const whitelistResult = await optionalSideEffect(client, {
+    type: 'minecraft.whitelist_add',
+    action: 'Add Minecraft whitelist entry',
+    discordId: user.id,
+    minecraftUuid: linked.minecraft_uuid,
+    fields: [
+      { name: 'Target', value: `<@${user.id}>`, inline: true },
+      { name: 'Minecraft', value: linked.minecraft_name, inline: true },
+      { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true }
+    ],
+    run: () => whitelistAdd(linked.minecraft_name)
+  });
 
   const member = await interaction.guild.members.fetch(user.id).catch(() => null);
+  let roleResult = { ok: true };
   if (member && config.suspiciousRoleId) {
-    await member.roles.remove(config.suspiciousRoleId, reason).catch(() => null);
+    roleResult = await optionalSideEffect(client, {
+      type: 'discord.role_remove.suspicious',
+      action: 'Remove suspicious Discord role',
+      discordId: user.id,
+      minecraftUuid: linked.minecraft_uuid,
+      fields: [
+        { name: 'Target', value: `<@${user.id}>`, inline: true },
+        { name: 'Role', value: `<@&${config.suspiciousRoleId}>`, inline: true },
+        { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true }
+      ],
+      run: () => member.roles.remove(config.suspiciousRoleId, reason)
+    });
   }
 
   addCase('approve', user.id, linked.minecraft_uuid, interaction.user.id, reason);
   audit('moderation.approve', {
     discordId: user.id,
     minecraftUuid: linked.minecraft_uuid,
-    data: { reason, moderatorId: interaction.user.id }
+    data: { reason, moderatorId: interaction.user.id, whitelistOk: whitelistResult.ok, suspiciousRoleOk: roleResult.ok }
   });
   await modLog(client, 'Linked Member Approved', [
     { name: 'Target', value: `<@${user.id}>`, inline: true },
     { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true },
     { name: 'Minecraft', value: linked.minecraft_name, inline: true },
+    whitelistResult.ok ? null : { name: 'Whitelist Warning', value: whitelistResult.error },
+    roleResult.ok ? null : { name: 'Role Warning', value: roleResult.error },
     { name: 'Reason', value: reason }
+  ].filter(Boolean));
+  const warnings = [
+    whitelistResult.ok ? null : `whitelist sync failed: ${whitelistResult.error}`,
+    roleResult.ok ? null : `role update failed: ${roleResult.error}`
+  ].filter(Boolean);
+  await interaction.editReply(`Approved ${user.tag} and set the link active.${warnings.length ? ` Staff warning: ${warnings.join('; ')}.` : ''}`);
+}
+
+async function approveSupportApplication(interaction, codeInput) {
+  const code = codeInput.trim().toUpperCase();
+  const reason = interaction.options.getString('reason') || 'Application approved by staff';
+  const application = statements.findSupportApplicationByCode.get(code);
+  if (!application) return interaction.editReply('No support application was found with that code.');
+  if (!application.discord_id_verified || !application.ticket_thread_id) {
+    return interaction.editReply('That application is not attached to a Discord ticket yet. Ask the applicant to paste their application key in the ticket first.');
+  }
+  if (!['ticket_verified', 'approved_whitelist_pending'].includes(application.status)) {
+    return interaction.editReply(`That application is currently ${application.status} and cannot be approved from this command.`);
+  }
+
+  const profile = await resolveMinecraftProfile(application.minecraft_name);
+  const member = await interaction.guild.members.fetch(application.discord_id_verified).catch(() => null);
+  const now = Date.now();
+
+  statements.upsertLinked.run({
+    discordId: application.discord_id_verified,
+    minecraftUuid: profile.uuid,
+    minecraftName: profile.name,
+    discordUsername: member?.user.tag ?? application.discord_username ?? null,
+    ipHash: null,
+    ipPrefixHash: null,
+    verifiedAt: application.verified_at ?? now,
+    lastSeenAt: now,
+    status: 'active',
+    suspicious: 0,
+    suspiciousReason: reason,
+    publicStatsOptIn: true
+  });
+  statements.upsertRulesAcceptance.run({
+    discordId: application.discord_id_verified,
+    minecraftUuid: profile.uuid,
+    rulesVersion: currentRulesVersion(),
+    acceptedAt: now,
+    source: 'support_application_approval'
+  });
+
+  const whitelistResult = await optionalSideEffect(client, {
+    type: 'minecraft.whitelist_add',
+    action: 'Add Minecraft whitelist entry',
+    discordId: application.discord_id_verified,
+    minecraftUuid: profile.uuid,
+    fields: [
+      { name: 'Application', value: `${application.id} / ${application.code}`, inline: true },
+      { name: 'Applicant', value: `<@${application.discord_id_verified}>`, inline: true },
+      { name: 'Minecraft', value: profile.name, inline: true },
+      { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true }
+    ],
+    run: () => whitelistAdd(profile.name)
+  });
+  const whitelistOk = whitelistResult.ok;
+  const whitelistError = whitelistResult.error || '';
+
+  const updatedApplication = statements.updateSupportApplicationStatus.run({
+    code,
+    status: whitelistOk ? 'approved' : 'approved_whitelist_pending',
+    reviewedAt: now,
+    reviewedBy: interaction.user.id,
+    reason: whitelistOk ? reason : `${reason}; whitelist failed: ${whitelistError}`
+  });
+
+  const ticket = await interaction.client.channels.fetch(application.ticket_thread_id).catch(() => null);
+  if (ticket?.isTextBased?.()) {
+    if (whitelistOk) {
+      await ticket.send([
+        `<@${application.discord_id_verified}> your application was approved.`,
+        `Your Discord account is now linked to **${profile.name}**, public stats are enabled, and your Lifesteal access is prepared.`,
+        'Have fun in Lifesteal.'
+      ].join('\n')).catch(() => null);
+    } else {
+      await ticket.send([
+        `<@${application.discord_id_verified}> your application was approved, but your Minecraft access is not ready yet.`,
+        'Staff has been notified and will finish the remaining whitelist step here.'
+      ].join('\n')).catch(() => null);
+    }
+  }
+
+  addCase('support_application_approve', application.discord_id_verified, profile.uuid, interaction.user.id, reason);
+  audit('support.application_approved', {
+    discordId: application.discord_id_verified,
+    minecraftUuid: profile.uuid,
+    data: {
+      applicationId: updatedApplication.id,
+      applicationCode: updatedApplication.code,
+      moderatorId: interaction.user.id,
+      publicStatsOptIn: true,
+      whitelistOk,
+      whitelistError: whitelistError || null
+    }
+  });
+  await modLog(client, whitelistOk ? 'Support Application Approved' : 'Support Application Approved With Whitelist Issue', [
+    { name: 'Application', value: `${updatedApplication.id} / ${updatedApplication.code}`, inline: true },
+    { name: 'Applicant', value: `<@${application.discord_id_verified}>`, inline: true },
+    { name: 'Minecraft', value: profile.name, inline: true },
+    { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true },
+    { name: 'Public Stats', value: 'Enabled', inline: true },
+    whitelistOk ? null : { name: 'Whitelist Issue', value: whitelistError || 'Unknown error' },
+    { name: 'Reason', value: reason }
+  ].filter(Boolean));
+  await staffAuditLog(client, 'Support Application Approval Applied', [
+    { name: 'Application', value: `${updatedApplication.id} / ${updatedApplication.code}`, inline: true },
+    { name: 'Applicant', value: `<@${application.discord_id_verified}>`, inline: true },
+    { name: 'Minecraft', value: profile.name, inline: true },
+    { name: 'Result', value: whitelistOk ? 'Approved and ready' : 'Approved, whitelist pending' }
   ]);
-  await interaction.editReply(`Approved ${user.tag} and set the link active.`);
+
+  return interaction.editReply(whitelistOk
+    ? `Approved ${updatedApplication.code}; linked ${profile.name}, enabled public stats, and notified the ticket.`
+    : `Approved ${updatedApplication.code}, but whitelist sync failed: ${whitelistError || 'unknown error'}. The ticket was notified.`);
 }
 
 async function handleDeny(interaction) {
@@ -563,27 +716,40 @@ async function handleDeny(interaction) {
     suspicious: 1,
     reason
   });
-  await whitelistRemove(linked.minecraft_name).catch(() => null);
+  const whitelistResult = await optionalSideEffect(client, {
+    type: 'minecraft.whitelist_remove',
+    action: 'Remove Minecraft whitelist entry',
+    discordId: user.id,
+    minecraftUuid: linked.minecraft_uuid,
+    fields: [
+      { name: 'Target', value: `<@${user.id}>`, inline: true },
+      { name: 'Minecraft', value: linked.minecraft_name, inline: true },
+      { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true }
+    ],
+    run: () => whitelistRemove(linked.minecraft_name)
+  });
 
   addCase('deny', user.id, linked.minecraft_uuid, interaction.user.id, reason);
   audit('moderation.deny', {
     discordId: user.id,
     minecraftUuid: linked.minecraft_uuid,
-    data: { reason, moderatorId: interaction.user.id }
+    data: { reason, moderatorId: interaction.user.id, whitelistOk: whitelistResult.ok }
   });
   await staffAuditLog(client, 'Denied Linked Member', [
     { name: 'Target', value: `<@${user.id}>`, inline: true },
     { name: 'Moderator', value: `<@${interaction.user.id}>`, inline: true },
     { name: 'Minecraft', value: linked.minecraft_name, inline: true },
+    whitelistResult.ok ? null : { name: 'Whitelist Warning', value: whitelistResult.error },
     { name: 'Reason', value: reason }
-  ]);
+  ].filter(Boolean));
   await modLog(client, 'Linked Member Denied', [
     { name: 'Target', value: `<@${user.id}>`, inline: true },
     { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true },
     { name: 'Minecraft', value: linked.minecraft_name, inline: true },
+    whitelistResult.ok ? null : { name: 'Whitelist Warning', value: whitelistResult.error },
     { name: 'Reason', value: reason }
-  ]);
-  await interaction.editReply(`Denied ${user.tag}; their link is now banned and removed from whitelist if RCON is enabled.`);
+  ].filter(Boolean));
+  await interaction.editReply(`Denied ${user.tag}; their link is now banned.${whitelistResult.ok ? ' Whitelist removal was applied or RCON is disabled.' : ` Staff warning: whitelist removal failed: ${whitelistResult.error}.`}`);
 }
 
 async function handleSharedIp(interaction) {
@@ -667,39 +833,74 @@ async function handleFlag(interaction) {
 
   const guild = interaction.guild;
   const member = await guild.members.fetch(user.id).catch(() => null);
+  let manualRoleResult = { ok: true };
   if (member && config.suspiciousRoleId) {
-    if (suspicious) await member.roles.add(config.suspiciousRoleId, reason).catch(() => null);
-    else await member.roles.remove(config.suspiciousRoleId, reason).catch(() => null);
+    manualRoleResult = await optionalSideEffect(client, {
+      type: suspicious ? 'discord.role_add.suspicious' : 'discord.role_remove.suspicious',
+      action: suspicious ? 'Add suspicious Discord role' : 'Remove suspicious Discord role',
+      discordId: user.id,
+      minecraftUuid: linked.minecraft_uuid,
+      fields: [
+        { name: 'Target', value: `<@${user.id}>`, inline: true },
+        { name: 'Role', value: `<@&${config.suspiciousRoleId}>`, inline: true },
+        { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true }
+      ],
+      run: () => suspicious
+        ? member.roles.add(config.suspiciousRoleId, reason)
+        : member.roles.remove(config.suspiciousRoleId, reason)
+    });
   }
 
+  let syncRoleResult = { ok: true };
   const refreshed = statements.findLinkedByDiscord.get(user.id);
   if (refreshed) {
     const risk = await refreshRisk(client, refreshed);
-    await syncSuspiciousRole(interaction.guild, user.id, risk);
+    syncRoleResult = await syncSuspiciousRole(interaction.guild, user.id, risk, client, {
+      minecraftUuid: linked.minecraft_uuid,
+      source: 'manual_flag'
+    });
   }
 
   addCase('flag', user.id, linked.minecraft_uuid, interaction.user.id, reason);
   audit('moderation.flag', {
     discordId: user.id,
     minecraftUuid: linked.minecraft_uuid,
-    data: { suspicious, reason, moderatorId: interaction.user.id }
+    data: {
+      suspicious,
+      reason,
+      moderatorId: interaction.user.id,
+      manualRoleOk: manualRoleResult.ok,
+      syncRoleOk: syncRoleResult.ok
+    }
   });
   await modLog(client, suspicious ? 'Member Flagged' : 'Member Flag Cleared', [
     { name: 'Target', value: `<@${user.id}>`, inline: true },
     { name: 'Minecraft', value: linked.minecraft_name, inline: true },
+    manualRoleResult.ok ? null : { name: 'Manual Role Warning', value: manualRoleResult.error },
+    syncRoleResult.ok ? null : { name: 'Risk Role Warning', value: syncRoleResult.error },
     { name: 'Reason', value: reason }
-  ]);
+  ].filter(Boolean));
   await securityLog(client, suspicious ? 'Security Flag Added' : 'Security Flag Cleared', [
     { name: 'Target', value: `<@${user.id}>`, inline: true },
     { name: 'Minecraft', value: linked.minecraft_name, inline: true },
+    manualRoleResult.ok ? null : { name: 'Manual Role Warning', value: manualRoleResult.error },
+    syncRoleResult.ok ? null : { name: 'Risk Role Warning', value: syncRoleResult.error },
     { name: 'Reason', value: reason }
-  ]);
+  ].filter(Boolean));
 
-  await interaction.editReply(`${suspicious ? 'Flagged' : 'Cleared'} ${user.tag}.`);
+  const warnings = [
+    manualRoleResult.ok ? null : `manual role update failed: ${manualRoleResult.error}`,
+    syncRoleResult.ok ? null : `risk role sync failed: ${syncRoleResult.error}`
+  ].filter(Boolean);
+  await interaction.editReply(`${suspicious ? 'Flagged' : 'Cleared'} ${user.tag}.${warnings.length ? ` Staff warning: ${warnings.join('; ')}.` : ''}`);
 }
 
 async function handlePurge(interaction) {
   await interaction.deferReply({ ephemeral: true });
+  if (!hasStaffOrPermission(interaction, PermissionFlagsBits.ManageMessages)) {
+    return interaction.editReply(missingPermissionMessage('delete messages'));
+  }
+
   const amount = interaction.options.getInteger('amount', true);
   const deleted = await interaction.channel.bulkDelete(amount, true);
   addCase('purge', null, null, interaction.user.id, `Deleted ${deleted.size} messages in #${interaction.channel.name}`);
@@ -717,7 +918,7 @@ async function handleKick(interaction) {
   const includeMinecraft = interaction.options.getBoolean('minecraft') ?? false;
   const member = await interaction.guild.members.fetch(user.id).catch(() => null);
   if (!member) return interaction.editReply('That member is not in this server.');
-  if (!interaction.memberPermissions.has(PermissionFlagsBits.KickMembers)) {
+  if (!interaction.memberPermissions?.has(PermissionFlagsBits.KickMembers)) {
     return interaction.editReply('You do not have permission to kick members.');
   }
 
@@ -751,7 +952,7 @@ async function handleBan(interaction) {
   const user = interaction.options.getUser('user', true);
   const reason = interaction.options.getString('reason') || 'No reason provided';
   const includeMinecraft = interaction.options.getBoolean('minecraft') ?? false;
-  if (!interaction.memberPermissions.has(PermissionFlagsBits.BanMembers)) {
+  if (!interaction.memberPermissions?.has(PermissionFlagsBits.BanMembers)) {
     return interaction.editReply('You do not have permission to ban members.');
   }
 
@@ -806,25 +1007,40 @@ async function handleUnlink(interaction) {
     suspicious: linked.suspicious,
     reason: linked.suspicious_reason
   });
-  await whitelistRemove(linked.minecraft_name).catch(() => null);
+  const whitelistResult = await optionalSideEffect(client, {
+    type: 'minecraft.whitelist_remove',
+    action: 'Remove Minecraft whitelist entry',
+    discordId: user.id,
+    minecraftUuid: linked.minecraft_uuid,
+    fields: [
+      { name: 'Target', value: `<@${user.id}>`, inline: true },
+      { name: 'Minecraft', value: linked.minecraft_name, inline: true },
+      { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true }
+    ],
+    run: () => whitelistRemove(linked.minecraft_name)
+  });
 
   addCase('unlink', user.id, linked.minecraft_uuid, interaction.user.id, reason);
   audit('moderation.unlink', {
     discordId: user.id,
     minecraftUuid: linked.minecraft_uuid,
-    data: { reason, moderatorId: interaction.user.id }
+    data: { reason, moderatorId: interaction.user.id, whitelistOk: whitelistResult.ok }
   });
   await modLog(client, 'Member Unlinked', [
     { name: 'Target', value: `<@${user.id}>`, inline: true },
     { name: 'Minecraft', value: linked.minecraft_name, inline: true },
+    whitelistResult.ok ? null : { name: 'Whitelist Warning', value: whitelistResult.error },
     { name: 'Reason', value: reason }
-  ]);
-  await interaction.editReply(`Unlinked ${user.tag} from ${linked.minecraft_name}.`);
+  ].filter(Boolean));
+  await interaction.editReply(`Unlinked ${user.tag} from ${linked.minecraft_name}.${whitelistResult.ok ? '' : ` Staff warning: whitelist removal failed: ${whitelistResult.error}.`}`);
 }
 
 async function handleData(interaction) {
   await interaction.deferReply({ ephemeral: true });
   const subcommand = interaction.options.getSubcommand();
+  if (!hasSensitiveDataAccess(interaction)) {
+    return interaction.editReply(missingPermissionMessage(subcommand === 'export' ? 'export bot data' : 'create data backups'));
+  }
 
   if (subcommand === 'backup') {
     const backupPath = statements.backup.run();
@@ -954,12 +1170,53 @@ function safeJsonSummary(json) {
   }
 }
 
-async function syncSuspiciousRole(guild, discordId, risk) {
-  if (!guild || !config.suspiciousRoleId) return;
+async function syncSuspiciousRole(guild, discordId, risk, clientForLog = null, context = {}) {
+  if (!guild || !config.suspiciousRoleId) return { ok: true };
   const member = await guild.members.fetch(discordId).catch(() => null);
-  if (!member) return;
-  if (risk.score >= 50) await member.roles.add(config.suspiciousRoleId, `Risk ${risk.score}: ${risk.band}`).catch(() => null);
-  else await member.roles.remove(config.suspiciousRoleId, 'Risk below suspicious threshold').catch(() => null);
+  if (!member) return { ok: true };
+
+  return optionalSideEffect(clientForLog, {
+    type: risk.score >= 50 ? 'discord.role_add.suspicious' : 'discord.role_remove.suspicious',
+    action: risk.score >= 50 ? 'Add suspicious Discord role from risk sync' : 'Remove suspicious Discord role from risk sync',
+    discordId,
+    minecraftUuid: context.minecraftUuid ?? null,
+    fields: [
+      { name: 'Target', value: `<@${discordId}>`, inline: true },
+      { name: 'Role', value: `<@&${config.suspiciousRoleId}>`, inline: true },
+      { name: 'Risk', value: `${risk.score} (${risk.band})`, inline: true },
+      context.source ? { name: 'Source', value: context.source, inline: true } : null
+    ].filter(Boolean),
+    run: () => risk.score >= 50
+      ? member.roles.add(config.suspiciousRoleId, `Risk ${risk.score}: ${risk.band}`)
+      : member.roles.remove(config.suspiciousRoleId, 'Risk below suspicious threshold')
+  });
+}
+
+async function optionalSideEffect(clientForLog, { type, action, discordId = null, minecraftUuid = null, fields = [], run }) {
+  try {
+    const value = await run();
+    return { ok: true, value, error: null };
+  } catch (error) {
+    const message = error?.message || String(error);
+    audit(`${type}.failed`, {
+      discordId,
+      minecraftUuid,
+      data: {
+        action,
+        error: message
+      }
+    });
+
+    if (clientForLog) {
+      await staffAuditLog(clientForLog, 'Bot Side Effect Failed', [
+        { name: 'Action', value: action, inline: false },
+        ...fields,
+        { name: 'Error', value: message }
+      ]);
+    }
+
+    return { ok: false, value: null, error: message };
+  }
 }
 
 function addCase(action, targetDiscordId, targetMinecraftUuid, moderatorId, reason) {
@@ -1034,16 +1291,19 @@ function recordMinecraftSnapshot(profile) {
   });
 }
 
-function hasStaffAccess(interaction) {
-  if (interaction.memberPermissions?.has(PermissionFlagsBits.ModerateMembers)) {
-    return true;
+function hasCommandAccess(interaction) {
+  switch (interaction.commandName) {
+    case 'kick':
+      return hasStaffOrPermission(interaction, PermissionFlagsBits.KickMembers);
+    case 'ban':
+      return hasStaffOrPermission(interaction, PermissionFlagsBits.BanMembers);
+    case 'purge':
+      return hasStaffOrPermission(interaction, PermissionFlagsBits.ManageMessages);
+    case 'data':
+      return hasSensitiveDataAccess(interaction);
+    default:
+      return hasStaffAccess(interaction);
   }
-
-  if (config.staffRoleIds.length === 0) {
-    return false;
-  }
-
-  return config.staffRoleIds.some((roleId) => interaction.member?.roles?.cache?.has(roleId));
 }
 
 client.login(config.discordToken);
