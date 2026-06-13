@@ -6,11 +6,12 @@ import logoImage from './assets/shd-logo.png'
 
 type PageId =
   | 'home'
-  | 'applications'
+  | 'minecraft'
   | 'support'
-  | 'reports-appeals'
+  | 'valorant'
   | 'info'
   | 'signup'
+  | 'minecraft-support'
   | 'general-support'
   | 'ban-appeal'
   | 'player-report'
@@ -20,7 +21,7 @@ type PageId =
   | 'terms'
   | 'imprint'
 
-type SectionId = 'applications' | 'support' | 'reports-appeals' | 'info'
+type SectionId = 'minecraft' | 'support' | 'valorant' | 'info'
 type SignupField =
   | 'rulesCode'
   | 'discordName'
@@ -44,9 +45,9 @@ type SubmittedApplication = {
 }
 
 const primarySections: Array<{ id: SectionId; label: string; title: string }> = [
-  { id: 'applications', label: 'Applications', title: 'SHD Applications' },
-  { id: 'support', label: 'Support', title: 'SHD Support' },
-  { id: 'reports-appeals', label: 'Reports/Appeals', title: 'SHD Reports & Appeals' },
+  { id: 'minecraft', label: 'Minecraft', title: 'Minecraft Support' },
+  { id: 'support', label: 'Support', title: 'General Support' },
+  { id: 'valorant', label: 'Valorant', title: 'Valorant Support' },
   { id: 'info', label: 'Info', title: 'SHD Info' },
 ]
 
@@ -58,12 +59,14 @@ const legalItems: Array<{ id: PageId; label: string }> = [
 ]
 
 const sectionForms: Record<SectionId, Array<{ id: PageId; label: string }>> = {
-  applications: [{ id: 'signup', label: 'MC - Signup' }],
-  support: [{ id: 'general-support', label: 'MC - Support' }],
-  'reports-appeals': [
-    { id: 'ban-appeal', label: 'MC - Ban Appeal' },
-    { id: 'player-report', label: 'MC - Player Report' },
+  minecraft: [
+    { id: 'signup', label: 'Lifesteal Signup' },
+    { id: 'ban-appeal', label: 'Ban Appeal' },
+    { id: 'player-report', label: 'Player Report' },
+    { id: 'minecraft-support', label: 'Minecraft Support' },
   ],
+  support: [{ id: 'general-support', label: 'General Support' }],
+  valorant: [],
   info: [
     { id: 'status', label: 'Status' },
     { id: 'privacy', label: 'Privacy' },
@@ -71,13 +74,14 @@ const sectionForms: Record<SectionId, Array<{ id: PageId; label: string }>> = {
 }
 
 const pageSections: Partial<Record<PageId, SectionId>> = {
-  applications: 'applications',
-  signup: 'applications',
+  minecraft: 'minecraft',
+  signup: 'minecraft',
+  'minecraft-support': 'minecraft',
   support: 'support',
   'general-support': 'support',
-  'reports-appeals': 'reports-appeals',
-  'ban-appeal': 'reports-appeals',
-  'player-report': 'reports-appeals',
+  valorant: 'valorant',
+  'ban-appeal': 'minecraft',
+  'player-report': 'minecraft',
   info: 'info',
   status: 'info',
   legal: 'info',
@@ -154,7 +158,8 @@ function sectionTitle(section: SectionId | undefined) {
 
 function headerTitle(page: PageId, section: SectionId | undefined) {
   if (page === 'signup') return 'Lifesteal Signup'
-  if (page === 'general-support') return 'Minecraft Support'
+  if (page === 'minecraft-support') return 'Minecraft Support'
+  if (page === 'general-support') return 'General Support'
   if (page === 'ban-appeal') return 'Minecraft Ban Appeal'
   if (page === 'player-report') return 'Minecraft Player Report'
   return sectionTitle(section)
@@ -182,14 +187,15 @@ function App() {
       <Header current={page} onNavigate={navigate} />
       <main>
         {page === 'home' && <HomePage onNavigate={navigate} />}
-        {page === 'applications' && <SectionPage section="applications" onNavigate={navigate} />}
+        {page === 'minecraft' && <SectionPage section="minecraft" onNavigate={navigate} />}
         {page === 'support' && <SectionPage section="support" onNavigate={navigate} />}
-        {page === 'reports-appeals' && <SectionPage section="reports-appeals" onNavigate={navigate} />}
+        {page === 'valorant' && <SectionPage section="valorant" onNavigate={navigate} />}
         {page === 'info' && <SectionPage section="info" onNavigate={navigate} />}
-        {page === 'signup' && <SignupPage />}
-        {page === 'general-support' && <ConstructionPage title="Support" label="Minecraft Support" detail="General Minecraft support tickets will open after the first portal release." />}
-        {page === 'ban-appeal' && <ConstructionPage title="Ban Appeal" label="Minecraft Appeals" detail="Ban appeal intake will be connected to the staff queue in the next support pass." />}
-        {page === 'player-report' && <ConstructionPage title="Player Report" label="Minecraft Reports" detail="Player reports and evidence intake are reserved for the moderation workflow." />}
+        {page === 'signup' && <SignupPage onNavigate={navigate} />}
+        {page === 'minecraft-support' && <ConstructionPage title="Minecraft Support" label="Minecraft Support" detail="General Minecraft support tickets can wait until the application, report, and appeal flows are finished." backTo="minecraft" onNavigate={navigate} />}
+        {page === 'general-support' && <ConstructionPage title="Support" label="General Support" detail="General SHD support tickets will open after the Lifesteal launch pass." backTo="support" onNavigate={navigate} />}
+        {page === 'ban-appeal' && <ConstructionPage title="Ban Appeal" label="Minecraft Appeals" detail="Ban appeal intake will be connected to the staff queue in the next support pass." backTo="minecraft" onNavigate={navigate} />}
+        {page === 'player-report' && <ConstructionPage title="Player Report" label="Minecraft Reports" detail="Player reports and evidence intake are reserved for the moderation workflow." backTo="minecraft" onNavigate={navigate} />}
         {page === 'status' && <ConstructionPage title="Status" label="System Status" detail="Live API health, Minecraft sync health, and known incidents will be shown here." />}
         {page === 'legal' && <LegalPage title="Legal" label="Legal Notice" sections={legalSections.legal} />}
         {page === 'privacy' && <LegalPage title="Privacy" label="Data Protection" sections={legalSections.privacy} />}
@@ -243,10 +249,18 @@ function Header({ current, onNavigate }: { current: PageId; onNavigate: (page: P
   )
 }
 
-function PageIntro({ label, title, children }: { label: string; title: string; children: React.ReactNode }) {
+function PageIntro({ label, title, children, backTo, onNavigate }: { label: string; title: string; children: React.ReactNode; backTo?: PageId; onNavigate?: (page: PageId) => void }) {
   return (
     <div className="page-intro">
-      <span className="chip">{label}</span>
+      <div className="intro-actions">
+        <span className="chip">{label}</span>
+        {backTo && onNavigate && (
+          <button className="intro-back-button" onClick={() => onNavigate(backTo)} type="button">
+            <span aria-hidden="true">&lt;-</span>
+            Back
+          </button>
+        )}
+      </div>
       <h1>{title}</h1>
       <p>{children}</p>
     </div>
@@ -264,9 +278,9 @@ function HomePage({ onNavigate }: { onNavigate: (page: PageId) => void }) {
         <button className="info-link-button" onClick={() => onNavigate('info')} type="button">Portal Info</button>
       </div>
       <div className="support-grid" aria-label="Support areas">
-        <SupportTile title="Applications" state="Open MVP" detail="Apply for current and future SHD projects, teams, and community events." onClick={() => onNavigate('applications')} />
-        <SupportTile title="Support" state="Under Construction" detail="General help, account questions, staff contact, and project support requests." onClick={() => onNavigate('support')} />
-        <SupportTile title="Reports / Appeals" state="Under Construction" detail="Appeal punishments, report players, and send staff evidence through one flow." onClick={() => onNavigate('reports-appeals')} />
+        <SupportTile title="Minecraft" state="Lifesteal Open" detail="Lifesteal applications, ban appeals, player reports, and Minecraft support flows." onClick={() => onNavigate('minecraft')} />
+        <SupportTile title="Support" state="Reserved" detail="General SHD help, account questions, staff contact, and project support requests." onClick={() => onNavigate('support')} />
+        <SupportTile title="Valorant" state="Coming Later" detail="Valorant support, reports, and team-related workflows will live here later." onClick={() => onNavigate('valorant')} />
       </div>
     </section>
   )
@@ -283,23 +297,23 @@ function SupportTile({ title, state, detail, onClick }: { title: string; state: 
 }
 
 const sectionCopy: Record<SectionId, { label: string; title: string; intro: string; empty: string }> = {
-  applications: {
-    label: 'Applications',
-    title: 'Apply',
-    intro: 'Choose a game or SHD project, then pick the application form that fits what you want to join.',
-    empty: 'No application forms are active for this game yet.',
+  minecraft: {
+    label: 'Minecraft',
+    title: 'Minecraft Support',
+    intro: 'Choose the Minecraft workflow you need. Lifesteal applications are open first; reports and appeals are next in line.',
+    empty: 'No Minecraft workflows are active yet.',
   },
   support: {
     label: 'Support',
-    title: 'Support',
-    intro: 'Choose a game or SHD project, then select the support workflow you need.',
+    title: 'General Support',
+    intro: 'General SHD support lives here for account questions, project contact, and non-game-specific requests.',
     empty: 'No support forms are active for this game yet.',
   },
-  'reports-appeals': {
-    label: 'Reports & Appeals',
-    title: 'Reports',
-    intro: 'Choose a game or SHD project, then select a report or appeal workflow.',
-    empty: 'No report or appeal forms are active for this game yet.',
+  valorant: {
+    label: 'Valorant',
+    title: 'Valorant Support',
+    intro: 'Valorant workflows are reserved for a future SHD portal slice.',
+    empty: 'No Valorant workflows are active yet.',
   },
   info: {
     label: 'Info',
@@ -310,52 +324,148 @@ const sectionCopy: Record<SectionId, { label: string; title: string; intro: stri
 }
 
 function SectionPage({ section, onNavigate }: { section: SectionId; onNavigate: (page: PageId) => void }) {
-  const [game, setGame] = useState(section === 'info' ? 'general' : '')
   const forms = sectionForms[section]
   const copy = sectionCopy[section]
-  const isInfo = section === 'info'
-  const showMinecraftForms = game === 'minecraft'
-  const showGeneralInfo = isInfo && game === 'general'
+
+  if (section === 'info') {
+    return <InfoPage copy={copy} onNavigate={onNavigate} />
+  }
 
   return (
     <section className="content-page page-frame section-page">
       <PageIntro label={copy.label} title={copy.title}>{copy.intro}</PageIntro>
-      <div className="game-selector-panel">
-        <label className="field game-select">
-          <span>{isInfo ? 'Info Type' : 'Game'}</span>
-          <select value={game} onChange={(event) => setGame(event.target.value)}>
-            {!isInfo && <option value="">Select your Game</option>}
-            {isInfo && <option value="general">General Info</option>}
-            <option value="minecraft">Minecraft</option>
-          </select>
-        </label>
-      </div>
       <div className="form-card-grid">
-        {showGeneralInfo && forms.map((form) => (
+        {forms.map((form) => (
           <button className="form-card" key={form.id} onClick={() => onNavigate(form.id)} type="button">
-            <span>General Info</span>
+            <span>{sectionLabel(section)}</span>
             <strong>{form.label}</strong>
             <p>{formDescription(form.id)}</p>
           </button>
         ))}
-        {showMinecraftForms && forms.map((form) => (
-          <button className="form-card" key={form.id} onClick={() => onNavigate(form.id)} type="button">
-            <span>{form.label.startsWith('MC') ? 'Minecraft' : 'Portal'}</span>
-            <strong>{form.label.replace('MC - ', '')}</strong>
-            <p>{formDescription(form.id)}</p>
-          </button>
-        ))}
-        {!game && <LockedPanel eyebrow="Select" title="Select your game to continue" detail="Forms stay locked until a game or project is selected." compact />}
-        {game && !showMinecraftForms && !showGeneralInfo && <LockedPanel eyebrow="Pending" title={copy.empty} detail="This area is reserved for a future SHD portal release." compact />}
+        {forms.length === 0 && <LockedPanel eyebrow="Pending" title={copy.empty} detail="This area is reserved for a future SHD portal release." compact />}
       </div>
     </section>
   )
 }
 
+type InfoWorkflow = {
+  label: string
+  title: string
+  body: string
+  target?: PageId
+  state?: string
+}
+
+const infoWorkflowCategories: Array<{ title: string; label: string; workflows: InfoWorkflow[] }> = [
+  {
+    title: 'Minecraft',
+    label: 'Active',
+    workflows: [
+      {
+        label: 'Lifesteal',
+        title: 'Application Flow',
+        body: 'Rules key, portal form, Discord ticket verification, staff review, and automated access setup.',
+        target: 'signup',
+        state: 'Open',
+      },
+      {
+        label: 'Moderation',
+        title: 'Ban Appeal',
+        body: 'Reserved for punishment reviews once the appeal intake is connected to staff workflows.',
+        target: 'ban-appeal',
+        state: 'Next',
+      },
+      {
+        label: 'Moderation',
+        title: 'Player Report',
+        body: 'Reserved for reports with player context, evidence, and staff-readable review details.',
+        target: 'player-report',
+        state: 'Next',
+      },
+    ],
+  },
+  {
+    title: 'General',
+    label: 'Reserved',
+    workflows: [
+      {
+        label: 'Support',
+        title: 'General Support',
+        body: 'Account questions, project contact, and non-game-specific SHD support after the Lifesteal launch pass.',
+        target: 'general-support',
+        state: 'Later',
+      },
+    ],
+  },
+  {
+    title: 'Valorant',
+    label: 'Future',
+    workflows: [
+      {
+        label: 'Valorant',
+        title: 'Support Workflows',
+        body: 'Valorant support, team, report, and appeal flows will live here once that portal slice starts.',
+        target: 'valorant',
+        state: 'Planned',
+      },
+    ],
+  },
+]
+
+function InfoPage({ copy, onNavigate }: { copy: { label: string; title: string; intro: string }; onNavigate: (page: PageId) => void }) {
+  const [activeCategory, setActiveCategory] = useState(infoWorkflowCategories[0].title)
+  const active = infoWorkflowCategories.find((category) => category.title === activeCategory) ?? infoWorkflowCategories[0]
+
+  return (
+    <section className="content-page page-frame section-page info-page">
+      <PageIntro label={copy.label} title={copy.title}>{copy.intro}</PageIntro>
+      <div className="info-quick-actions" aria-label="Portal quick links">
+        <button onClick={() => onNavigate('status')} type="button">Status</button>
+        <button onClick={() => onNavigate('privacy')} type="button">Privacy</button>
+      </div>
+      <div className="info-category-grid" aria-label="Support workflow categories">
+        {infoWorkflowCategories.map((category) => (
+          <button className={active.title === category.title ? 'info-category-card active' : 'info-category-card'} key={category.title} onClick={() => setActiveCategory(category.title)} type="button">
+            <span>{category.label}</span>
+            <strong>{category.title}</strong>
+            <p>{category.workflows.map((workflow) => workflow.title).join(' / ')}</p>
+          </button>
+        ))}
+      </div>
+      <section className="workflow-info-panel" aria-label={`${active.title} workflow information`}>
+        <header>
+          <span>{active.label}</span>
+          <h2>{active.title} Workflows</h2>
+        </header>
+        <div className="workflow-info-list">
+          {active.workflows.map((workflow) => (
+            <article className="workflow-info-card" key={workflow.title}>
+              <div>
+                <span>{workflow.label}</span>
+                <h3>{workflow.title}</h3>
+                <p>{workflow.body}</p>
+              </div>
+              <button onClick={() => workflow.target && onNavigate(workflow.target)} type="button">{workflow.state ?? 'Open'}</button>
+            </article>
+          ))}
+        </div>
+      </section>
+    </section>
+  )
+}
+
+function sectionLabel(section: SectionId) {
+  if (section === 'minecraft') return 'Minecraft'
+  if (section === 'valorant') return 'Valorant'
+  if (section === 'info') return 'Portal'
+  return 'General'
+}
+
 function formDescription(page: PageId) {
   const descriptions: Partial<Record<PageId, string>> = {
     signup: 'Apply for the SHD Lifesteal Minecraft season.',
-    'general-support': 'Request help for Minecraft-related access, account, or server issues.',
+    'minecraft-support': 'Request help for Minecraft-related access, account, or server issues.',
+    'general-support': 'Request help for access, account, or server issues.',
     'ban-appeal': 'Appeal a Minecraft punishment once the review flow is live.',
     'player-report': 'Report a Minecraft player with staff-readable context and evidence.',
     status: 'View portal and service status information.',
@@ -364,7 +474,7 @@ function formDescription(page: PageId) {
   return descriptions[page] ?? 'Open this SHD support page.'
 }
 
-function SignupPage() {
+function SignupPage({ onNavigate }: { onNavigate: (page: PageId) => void }) {
   const [form, setForm] = useState<SignupState>(initialSignup)
   const [submitted, setSubmitted] = useState<SubmittedApplication | null>(null)
   const [submitError, setSubmitError] = useState('')
@@ -419,14 +529,17 @@ function SignupPage() {
   if (submitted) {
     return (
       <section className="content-page page-frame">
-        <PageIntro label="Application Saved" title="Submitted">
-          Your Lifesteal signup is saved. Use the application key in your Discord ticket so the bot can verify the ticket belongs to you.
+        <PageIntro label="Application Saved" title="Submitted" backTo="minecraft" onNavigate={onNavigate}>
+          Your Lifesteal signup is saved. Copy the application key, open a Lifesteal join ticket in Discord, and send the key there.
         </PageIntro>
         <div className="result-panel">
           <span className="section-kicker">Application Key</span>
           <strong>{submitted.applicationCode}</strong>
-          <p>Open your Lifesteal ticket in Discord and send this key. The bot will verify your application and notify staff.</p>
-          <button className="secondary-action" onClick={() => setSubmitted(null)} type="button">Edit Submission</button>
+          <p>The bot will attach this application to your Discord ticket. Staff will review it there and the bot will notify you if you are approved.</p>
+          <div className="result-actions">
+            <button className="secondary-action" onClick={() => onNavigate('info')} type="button">View Info Hub</button>
+            <button className="secondary-action" onClick={() => setSubmitted(null)} type="button">Edit Submission</button>
+          </div>
         </div>
       </section>
     )
@@ -434,7 +547,7 @@ function SignupPage() {
 
   return (
     <section className="content-page page-frame">
-      <PageIntro label="Minecraft Application" title="Lifesteal Signup">
+      <PageIntro label="Minecraft Application" title="Lifesteal Signup" backTo="minecraft" onNavigate={onNavigate}>
         Submit the first version of your Lifesteal application. This MVP keeps the form ready while the permanent backend and staff queue are being connected.
       </PageIntro>
       <form className="signup-form" onSubmit={submit}>
@@ -451,7 +564,7 @@ function SignupPage() {
             <span className="section-kicker">Identity</span>
             <h2>Discord and Minecraft</h2>
           </div>
-          <FormField label="Discord username" required value={form.discordName} onChange={(value) => update('discordName', value)} placeholder="example: prime_louis" />
+          <FormField label="Discord username" required value={form.discordName} onChange={(value) => update('discordName', value)} placeholder="example: user_name" />
           <FormField label="Discord ID" value={form.discordId} onChange={(value) => update('discordId', value)} placeholder="Optional, but helps staff verify faster" />
           <FormField label="Minecraft Java name" required value={form.minecraftName} onChange={(value) => update('minecraftName', value)} placeholder="Your exact Java username" />
         </div>
@@ -514,10 +627,10 @@ function TextArea({ label, value, onChange, placeholder, required = false }: { l
   )
 }
 
-function ConstructionPage({ title, label, detail }: { title: string; label: string; detail: string }) {
+function ConstructionPage({ title, label, detail, backTo, onNavigate }: { title: string; label: string; detail: string; backTo?: PageId; onNavigate?: (page: PageId) => void }) {
   return (
     <section className="content-page page-frame">
-      <PageIntro label={label} title={title}>{detail}</PageIntro>
+      <PageIntro label={label} title={title} backTo={backTo} onNavigate={onNavigate}>{detail}</PageIntro>
       <LockedPanel
         eyebrow="Locked MVP"
         title="Under Construction"
@@ -594,9 +707,9 @@ function Footer({ current, onNavigate }: { current: string; onNavigate: (page: P
     <footer className="site-footer">
       <span>{current}</span>
       <div>
-        <button onClick={() => onNavigate('applications')} type="button">Applications</button>
+        <button onClick={() => onNavigate('minecraft')} type="button">Minecraft</button>
         <button onClick={() => onNavigate('support')} type="button">Support</button>
-        <button onClick={() => onNavigate('reports-appeals')} type="button">Reports</button>
+        <button onClick={() => onNavigate('valorant')} type="button">Valorant</button>
         {legalItems.map((item) => (
           <button key={item.id} onClick={() => onNavigate(item.id)} type="button">{item.label}</button>
         ))}

@@ -200,6 +200,35 @@ main {
   text-transform: uppercase;
 }
 
+.intro-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.intro-back-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 1.65rem;
+  padding: 0.3rem 0.72rem;
+  border: 1px solid rgba(245, 242, 235, 0.14);
+  border-radius: 999px;
+  background: rgba(245, 242, 235, 0.045);
+  color: rgba(245, 242, 235, 0.76);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.intro-back-button:hover {
+  border-color: rgba(234, 212, 159, 0.34);
+  color: #f6e0aa;
+}
+
 .home-copy h1,
 .page-intro h1 {
   margin-top: 1rem;
@@ -282,7 +311,6 @@ main {
 .result-panel,
 .form-section,
 .rules-confirm,
-.game-selector-panel,
 .form-card,
 .legal-note,
 .legal-document section {
@@ -374,6 +402,11 @@ main {
   text-align: center;
 }
 
+.section-page .intro-actions,
+.legal-page .intro-actions {
+  justify-content: center;
+}
+
 .legal-page {
   display: grid;
   justify-items: center;
@@ -383,34 +416,180 @@ main {
   text-align: center;
 }
 
-.game-selector-panel {
-  width: min(34rem, 100%);
-  margin: 0 auto 1.25rem;
-  padding: 1rem;
-}
-
-.game-select select {
-  width: 100%;
-  min-height: 3rem;
-  padding: 0 0.9rem;
-  border: 1px solid rgba(245, 242, 235, 0.14);
-  border-radius: 6px;
-  background: rgba(5, 5, 6, 0.62);
-  color: #fffaf1;
-  outline: 0;
-}
-
-.game-select select:focus {
-  border-color: rgba(234, 212, 159, 0.52);
-  box-shadow: 0 0 0 3px rgba(234, 212, 159, 0.1);
-}
-
 .form-card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 24rem));
   justify-content: center;
   gap: 1rem;
   width: min(760px, 100%);
+}
+
+.info-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+  margin: -0.75rem 0 1.5rem;
+}
+
+.info-quick-actions button {
+  min-height: 2.35rem;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid rgba(245, 242, 235, 0.12);
+  border-radius: 999px;
+  background: rgba(245, 242, 235, 0.045);
+  color: rgba(245, 242, 235, 0.78);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.info-quick-actions button:hover {
+  border-color: rgba(234, 212, 159, 0.34);
+  color: #f6e0aa;
+}
+
+.info-category-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  width: min(960px, 100%);
+}
+
+.info-category-card {
+  border: 1px solid rgba(245, 242, 235, 0.12);
+  border-radius: 8px;
+  background: rgba(14, 14, 16, 0.72);
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.24);
+  display: grid;
+  align-content: start;
+  gap: 0.8rem;
+  min-height: 12rem;
+  padding: 1.15rem;
+  text-align: left;
+}
+
+.info-category-card span {
+  color: #ead49f;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.info-category-card strong {
+  color: #fffaf1;
+  font-size: 1.4rem;
+  text-transform: uppercase;
+}
+
+.info-category-card:hover {
+  border-color: rgba(234, 212, 159, 0.34);
+  transform: translateY(-1px);
+}
+
+.info-category-card.active {
+  border-color: rgba(234, 212, 159, 0.48);
+  background:
+    linear-gradient(180deg, rgba(234, 212, 159, 0.09), rgba(14, 14, 16, 0.72)),
+    rgba(14, 14, 16, 0.72);
+}
+
+.info-category-card p {
+  color: rgba(245, 242, 235, 0.68);
+  line-height: 1.65;
+}
+
+.workflow-info-panel {
+  display: grid;
+  gap: 1rem;
+  width: min(960px, 100%);
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid rgba(245, 242, 235, 0.12);
+  border-radius: 8px;
+  background: rgba(14, 14, 16, 0.72);
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.24);
+  text-align: left;
+}
+
+.workflow-info-panel header {
+  display: grid;
+  gap: 0.35rem;
+  padding-bottom: 0.8rem;
+  border-bottom: 1px solid rgba(245, 242, 235, 0.1);
+}
+
+.workflow-info-panel header span,
+.workflow-info-card span {
+  color: #ead49f;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.workflow-info-panel h2,
+.workflow-info-card h3 {
+  color: #fffaf1;
+  text-transform: uppercase;
+}
+
+.workflow-info-panel h2 {
+  font-size: 1.25rem;
+}
+
+.workflow-info-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.workflow-info-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.95rem;
+  border: 1px solid rgba(245, 242, 235, 0.1);
+  border-radius: 8px;
+  background: rgba(245, 242, 235, 0.045);
+}
+
+.workflow-info-card h3 {
+  margin-top: 0.35rem;
+  font-size: 1.05rem;
+}
+
+.workflow-info-card p {
+  margin-top: 0.35rem;
+  color: rgba(245, 242, 235, 0.68);
+  line-height: 1.55;
+}
+
+.workflow-info-card button {
+  min-width: 5.5rem;
+  min-height: 2.25rem;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid rgba(234, 212, 159, 0.2);
+  border-radius: 999px;
+  background: rgba(234, 212, 159, 0.06);
+  color: #ead49f;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.workflow-info-card button:hover {
+  border-color: rgba(234, 212, 159, 0.42);
+  color: #fffaf1;
+}
+
+.result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
 }
 
 .form-card {
@@ -709,7 +888,8 @@ main {
 
   .support-grid,
   .form-row,
-  .form-card-grid {
+  .form-card-grid,
+  .info-category-grid {
     grid-template-columns: 1fr;
   }
 
@@ -745,6 +925,14 @@ main {
 
   .primary-action,
   .secondary-action {
+    width: 100%;
+  }
+
+  .workflow-info-card {
+    grid-template-columns: 1fr;
+  }
+
+  .workflow-info-card button {
     width: 100%;
   }
 
