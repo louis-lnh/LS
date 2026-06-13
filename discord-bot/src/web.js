@@ -453,6 +453,53 @@ function publicPlayersFromSnapshots(snapshots, updatedAt) {
 function publicPlayersWithApplications(snapshot) {
   const existingNames = new Set(snapshot.players.map((player) => String(player.name ?? '').toLowerCase()));
   const existingUuids = new Set(snapshot.players.flatMap((player) => minecraftUuidVariants(player.minecraft_uuid)));
+  const linkedPlayers = statements.findLinkedAccounts.all()
+    .filter((linked) => linked.status === 'active' && linked.public_stats_opt_in)
+    .filter((linked) => !existingNames.has(String(linked.minecraft_name ?? '').toLowerCase()))
+    .filter((linked) => !minecraftUuidVariants(linked.minecraft_uuid).some((uuid) => existingUuids.has(uuid)))
+    .map((linked) => {
+      const prestige = configuredPrestigeBadges(linked.minecraft_uuid);
+      existingNames.add(String(linked.minecraft_name ?? '').toLowerCase());
+      minecraftUuidVariants(linked.minecraft_uuid).forEach((uuid) => existingUuids.add(uuid));
+
+      return {
+        minecraft_uuid: linked.minecraft_uuid,
+        name: linked.minecraft_name ?? 'Unknown',
+        hearts_current: null,
+        heart_gains: null,
+        heart_losses: null,
+        kills_total: 0,
+        deaths_total: 0,
+        revivals_total: 0,
+        mace_kills: null,
+        playtime: 'Hidden',
+        eliminated: false,
+        twenty_hearts: false,
+        dragon_egg_holder: false,
+        mace_wielder: false,
+        prestige,
+        status: 'Registered',
+        data_status: {
+          hearts_current: 'unavailable',
+          heart_gains: 'unavailable',
+          heart_losses: 'unavailable',
+          kills_total: 'unavailable',
+          deaths_total: 'unavailable',
+          revivals_total: 'unavailable',
+          mace_kills: 'unavailable',
+          playtime: 'unavailable',
+          objectives: 'unavailable'
+        },
+        source_updated_at: linked.verified_at,
+        hearts: null,
+        hearts_gained: null,
+        hearts_lost: null,
+        kills: 0,
+        deaths: 0,
+        revivals: 0,
+        updated_at: linked.verified_at
+      };
+    });
   const appliedPlayers = statements.findPublicSupportApplications.all()
     .filter((application) => !existingNames.has(String(application.minecraft_name ?? '').toLowerCase()))
     .filter((application) => !application.minecraft_uuid || !minecraftUuidVariants(application.minecraft_uuid).some((uuid) => existingUuids.has(uuid)))
@@ -494,9 +541,15 @@ function publicPlayersWithApplications(snapshot) {
       updated_at: application.verified_at ?? application.created_at
     }));
 
-  return [...snapshot.players, ...appliedPlayers]
+  function publicRosterStatusRank(player) {
+    if (player.status === 'Applied') return 2;
+    if (player.status === 'Registered') return 1;
+    return 0;
+  }
+
+  return [...snapshot.players, ...linkedPlayers, ...appliedPlayers]
     .sort((first, second) =>
-      (first.status === 'Applied' ? 1 : 0) - (second.status === 'Applied' ? 1 : 0) ||
+      publicRosterStatusRank(first) - publicRosterStatusRank(second) ||
       Number(second.hearts_current ?? 0) - Number(first.hearts_current ?? 0) ||
       Number(second.kills_total ?? 0) - Number(first.kills_total ?? 0) ||
       first.name.localeCompare(second.name)
@@ -1090,7 +1143,7 @@ export function startWebServer(client) {
 
   app.get('/api/v1/public/players/:minecraftUuid', publicReadRateLimit, (req, res) => {
     const snapshot = normalizePublicSnapshot(statements.getPublicLifestealSnapshot.get());
-    const player = publicPlayerByUuid(snapshot, req.params.minecraftUuid);
+    const player = publicPlayerByUuid({ ...snapshot, players: publicPlayersWithApplications(snapshot) }, req.params.minecraftUuid);
     if (!player) return res.status(404).json({ ok: false, error: 'Public player was not found.' });
     res.json({
       ok: true,
@@ -1103,7 +1156,7 @@ export function startWebServer(client) {
 
   app.get('/api/v1/public/players/:minecraftUuid/timeline', publicReadRateLimit, (req, res) => {
     const snapshot = normalizePublicSnapshot(statements.getPublicLifestealSnapshot.get());
-    const player = publicPlayerByUuid(snapshot, req.params.minecraftUuid);
+    const player = publicPlayerByUuid({ ...snapshot, players: publicPlayersWithApplications(snapshot) }, req.params.minecraftUuid);
     if (!player) return res.status(404).json({ ok: false, error: 'Public player was not found.' });
     const limit = Math.max(1, Math.min(50, Number.parseInt(req.query.limit ?? '25', 10) || 25));
     res.json({
@@ -1121,13 +1174,14 @@ export function startWebServer(client) {
 
   app.get('/api/v1/public/leaderboard', publicReadRateLimit, (req, res) => {
     const snapshot = normalizePublicSnapshot(statements.getPublicLifestealSnapshot.get());
+    const players = publicPlayersWithApplications(snapshot);
     const sort = String(req.query.sort ?? 'hearts');
     const limit = Math.max(1, Math.min(500, Number.parseInt(req.query.limit ?? '100', 10) || 100));
     res.json({
       ok: true,
       schemaVersion: snapshot.schema_version,
       sort: ['hearts', 'kills', 'deaths', 'revivals'].includes(sort) ? sort : 'hearts',
-      players: publicLeaderboard(snapshot, sort).slice(0, limit),
+      players: publicLeaderboard({ ...snapshot, players }, sort).slice(0, limit),
       snapshotAgeSeconds: snapshot.snapshot_age_seconds,
       updatedAt: snapshot.updated_at
     });
