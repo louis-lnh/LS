@@ -133,7 +133,15 @@ export const config = {
     port: int('MINECRAFT_RCON_PORT', 25575),
     password: process.env.MINECRAFT_RCON_PASSWORD ?? ''
   },
-  apiSharedSecret: process.env.API_SHARED_SECRET ?? ''
+  apiSharedSecret: process.env.API_SHARED_SECRET ?? '',
+  admin: {
+    portalUrl: (process.env.ADMIN_PORTAL_URL ?? 'http://127.0.0.1:4177').replace(/\/+$/, ''),
+    clientSecret: process.env.DISCORD_CLIENT_SECRET ?? '',
+    sessionSecret: process.env.ADMIN_SESSION_SECRET ?? '',
+    redirectUrl: process.env.ADMIN_OAUTH_REDIRECT_URL ??
+      `${process.env.PUBLIC_BASE_URL ?? 'http://localhost:3000'}/api/v1/admin/auth/callback`,
+    enabled: Boolean(process.env.DISCORD_CLIENT_SECRET && process.env.ADMIN_SESSION_SECRET)
+  }
 };
 
 export function assertRuntimeConfig() {

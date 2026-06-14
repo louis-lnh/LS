@@ -44,8 +44,8 @@ type SubmittedApplication = {
   status: string
 }
 
-type MockFormId = 'ban-appeal' | 'player-report' | 'minecraft-support'
-type MockField = {
+type MinecraftFormId = 'ban-appeal' | 'player-report' | 'minecraft-support'
+type MinecraftFormField = {
   id: string
   label: string
   placeholder: string
@@ -53,13 +53,26 @@ type MockField = {
   kind?: 'input' | 'textarea' | 'select'
   options?: string[]
 }
-type MockFormConfig = {
+type MinecraftFormConfig = {
   label: string
   title: string
   description: string
-  sections: Array<{ label: string; title: string; fields: MockField[] }>
+  endpoint: string
+  noticeLabel: string
+  noticeBody: string
+  sections: Array<{ label: string; title: string; fields: MinecraftFormField[] }>
   acknowledgement: string
   resultTitle: string
+  ticketInstruction: string
+}
+type SupportIntakeResponse = {
+  ok?: boolean
+  error?: string
+  code?: string
+  submissionId?: number
+  referenceCode?: string
+  status?: string
+  requiresTicket?: boolean
 }
 
 const primarySections: Array<{ id: SectionId; label: string; title: string }> = [
@@ -227,10 +240,10 @@ function App() {
         {page === 'valorant' && <SectionPage section="valorant" onNavigate={navigate} />}
         {page === 'info' && <SectionPage section="info" onNavigate={navigate} />}
         {page === 'signup' && <SignupPage onNavigate={navigate} />}
-        {page === 'minecraft-support' && <MockMinecraftForm formId="minecraft-support" onNavigate={navigate} />}
+        {page === 'minecraft-support' && <MinecraftIntakeForm formId="minecraft-support" onNavigate={navigate} />}
         {page === 'general-support' && <ConstructionPage title="Support" label="General Support" detail="General SHD support tickets will open after the Lifesteal launch pass." backTo="support" onNavigate={navigate} />}
-        {page === 'ban-appeal' && <MockMinecraftForm formId="ban-appeal" onNavigate={navigate} />}
-        {page === 'player-report' && <MockMinecraftForm formId="player-report" onNavigate={navigate} />}
+        {page === 'ban-appeal' && <MinecraftIntakeForm formId="ban-appeal" onNavigate={navigate} />}
+        {page === 'player-report' && <MinecraftIntakeForm formId="player-report" onNavigate={navigate} />}
         {page === 'status' && <ConstructionPage title="Status" label="System Status" detail="Live API health, Minecraft sync health, and known incidents will be shown here." />}
         {page === 'legal' && <LegalPage title="Legal" label="Legal Notice" sections={legalSections.legal} />}
         {page === 'privacy' && <LegalPage title="Privacy" label="Data Protection" sections={legalSections.privacy} />}
@@ -335,7 +348,7 @@ const sectionCopy: Record<SectionId, { label: string; title: string; intro: stri
   minecraft: {
     label: 'Minecraft',
     title: 'Minecraft Support',
-    intro: 'Choose the Minecraft workflow you need. Lifesteal applications are live; appeals, reports, and general support are available as form previews.',
+    intro: 'Choose the Minecraft workflow you need. Lifesteal applications, appeals, reports, and general Minecraft support are open.',
     empty: 'No Minecraft workflows are active yet.',
   },
   support: {
@@ -406,16 +419,16 @@ const infoWorkflowCategories: Array<{ title: string; label: string; workflows: I
       {
         label: 'Moderation',
         title: 'Ban Appeal',
-        body: 'Preview the punishment review form before its staff queue integration goes live.',
+        body: 'Submit a punishment review and continue the conversation in a Discord appeal ticket.',
         target: 'ban-appeal',
-        state: 'Preview',
+        state: 'Open',
       },
       {
         label: 'Moderation',
         title: 'Player Report',
-        body: 'Preview the player report form with incident context, evidence, and witnesses.',
+        body: 'Submit a private staff report with incident context, evidence, and witnesses.',
         target: 'player-report',
-        state: 'Preview',
+        state: 'Open',
       },
     ],
   },
@@ -499,10 +512,10 @@ function sectionLabel(section: SectionId) {
 function formDescription(page: PageId) {
   const descriptions: Partial<Record<PageId, string>> = {
     signup: 'Apply for the SHD Lifesteal Minecraft season.',
-    'minecraft-support': 'Preview help intake for Minecraft access, account, or server issues.',
+    'minecraft-support': 'Request help for Minecraft access, account, or server issues.',
     'general-support': 'Request help for access, account, or server issues.',
-    'ban-appeal': 'Preview a Minecraft punishment appeal with staff-readable context.',
-    'player-report': 'Preview a Minecraft player report with incident details and evidence.',
+    'ban-appeal': 'Submit a Minecraft punishment appeal with staff-readable context.',
+    'player-report': 'Submit a private Minecraft player report with incident details and evidence.',
     status: 'View portal and service status information.',
     privacy: 'Read how support data is handled.',
   }
@@ -645,11 +658,14 @@ function SignupPage({ onNavigate }: { onNavigate: (page: PageId) => void }) {
   )
 }
 
-const mockMinecraftForms: Record<MockFormId, MockFormConfig> = {
+const minecraftIntakeForms: Record<MinecraftFormId, MinecraftFormConfig> = {
   'ban-appeal': {
     label: 'Minecraft Appeals',
     title: 'Ban Appeal',
-    description: 'Prepare a clear punishment appeal for staff review. This preview does not send or save data yet.',
+    description: 'Submit a clear punishment appeal for staff review and continue with the reference in Discord.',
+    endpoint: 'minecraft-ban-appeal',
+    noticeLabel: 'Secure Intake',
+    noticeBody: 'Your submission will be saved for staff review. Relevant details are available only to authorized SHD staff through our internal support systems.',
     sections: [
       {
         label: 'Identity',
@@ -680,12 +696,16 @@ const mockMinecraftForms: Record<MockFormId, MockFormConfig> = {
       },
     ],
     acknowledgement: 'I confirm this appeal is honest, complete, and submitted without harassment or repeated spam.',
-    resultTitle: 'Appeal Preview Complete',
+    resultTitle: 'Appeal Submitted',
+    ticketInstruction: 'Open a Minecraft appeal ticket in Discord and include this reference so staff can connect the conversation to your appeal.',
   },
   'player-report': {
     label: 'Minecraft Reports',
     title: 'Player Report',
-    description: 'Organize an incident report with enough context for staff to investigate. This preview does not send or save data yet.',
+    description: 'Submit an incident report with enough context and evidence for a private staff investigation.',
+    endpoint: 'minecraft-player-report',
+    noticeLabel: 'Private Report',
+    noticeBody: 'Your report and evidence are visible only to authorized staff. The reported player will not receive your submission details.',
     sections: [
       {
         label: 'Reporter',
@@ -717,12 +737,16 @@ const mockMinecraftForms: Record<MockFormId, MockFormConfig> = {
       },
     ],
     acknowledgement: 'I confirm this report is made in good faith and the evidence has not been misleadingly edited.',
-    resultTitle: 'Report Preview Complete',
+    resultTitle: 'Report Submitted',
+    ticketInstruction: 'Your report was sent directly to the private staff review channel. You do not need to open a public ticket.',
   },
   'minecraft-support': {
     label: 'Minecraft Support',
     title: 'Minecraft Support',
-    description: 'Prepare a technical or account support request for the Minecraft team. This preview does not send or save data yet.',
+    description: 'Submit a technical or account support request for the Minecraft team.',
+    endpoint: 'minecraft-support',
+    noticeLabel: 'Secure Intake',
+    noticeBody: 'Your submission will be saved for staff review. Relevant details are available only to authorized SHD staff through our internal support systems.',
     sections: [
       {
         label: 'Identity',
@@ -745,37 +769,59 @@ const mockMinecraftForms: Record<MockFormId, MockFormConfig> = {
       },
     ],
     acknowledgement: 'I confirm the information is accurate and staff may use it to investigate this support request.',
-    resultTitle: 'Support Preview Complete',
+    resultTitle: 'Support Request Submitted',
+    ticketInstruction: 'Keep this reference available. Staff received the request and can use it when continuing the conversation in Discord.',
   },
 }
 
-function MockMinecraftForm({ formId, onNavigate }: { formId: MockFormId; onNavigate: (page: PageId) => void }) {
-  const config = mockMinecraftForms[formId]
+function MinecraftIntakeForm({ formId, onNavigate }: { formId: MinecraftFormId; onNavigate: (page: PageId) => void }) {
+  const config = minecraftIntakeForms[formId]
   const [values, setValues] = useState<Record<string, string>>({})
   const [accepted, setAccepted] = useState(false)
-  const [complete, setComplete] = useState(false)
+  const [submitted, setSubmitted] = useState<SupportIntakeResponse | null>(null)
+  const [submitError, setSubmitError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
   const requiredFields = config.sections.flatMap((section) => section.fields).filter((field) => field.required)
-  const canSubmit = accepted && requiredFields.every((field) => values[field.id]?.trim())
+  const canSubmit = accepted && requiredFields.every((field) => values[field.id]?.trim()) && !submitting
 
-  const submit = (event: React.FormEvent<HTMLFormElement>) => {
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!canSubmit) return
-    setComplete(true)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    setSubmitting(true)
+    setSubmitError('')
+    try {
+      const response = await fetch(`${supportApiBase}/support/${config.endpoint}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(Object.fromEntries(
+          Object.entries(values).map(([key, value]) => [key, value.trim() || null])
+        )),
+      })
+      const body = await response.json() as SupportIntakeResponse
+      if (!response.ok || !body.ok || !body.referenceCode) {
+        throw new Error(body.error ?? 'Submission failed.')
+      }
+      setSubmitted(body)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    } catch (error) {
+      setSubmitError(error instanceof Error ? cleanApiError(error.message) : 'Submission failed.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
-  if (complete) {
+  if (submitted) {
     return (
       <section className="content-page page-frame">
-        <PageIntro label="Local Form Preview" title={config.resultTitle} backTo="minecraft" onNavigate={onNavigate}>
-          The form layout and required-field flow are working. No information was transmitted or saved.
+        <PageIntro label="Submission Saved" title={config.resultTitle} backTo="minecraft" onNavigate={onNavigate}>
+          Your information was saved and is ready for authorized staff review.
         </PageIntro>
         <div className="result-panel">
-          <span className="section-kicker">Preview Only</span>
-          <strong>Ready for backend integration</strong>
-          <p>This mock submission remains only in this browser tab. The next integration pass can connect it to a protected staff queue and Discord notification flow.</p>
+          <span className="section-kicker">Reference</span>
+          <strong>{submitted.referenceCode}</strong>
+          <p>{config.ticketInstruction}</p>
           <div className="result-actions">
-            <button className="secondary-action" onClick={() => setComplete(false)} type="button">Edit Preview</button>
+            <button className="secondary-action" onClick={() => setSubmitted(null)} type="button">Review Form</button>
             <button className="secondary-action" onClick={() => onNavigate('minecraft')} type="button">Minecraft Support</button>
           </div>
         </div>
@@ -788,9 +834,9 @@ function MockMinecraftForm({ formId, onNavigate }: { formId: MockFormId; onNavig
       <PageIntro label={config.label} title={config.title} backTo="minecraft" onNavigate={onNavigate}>
         {config.description}
       </PageIntro>
-      <div className="preview-notice" role="note">
-        <span>Form Preview</span>
-        <p>Complete the mock workflow freely. Pressing the final button does not contact staff or store your answers.</p>
+      <div className="preview-notice live" role="note">
+        <span>{config.noticeLabel}</span>
+        <p>{config.noticeBody}</p>
       </div>
       <form className="signup-form" onSubmit={submit}>
         {config.sections.map((section) => (
@@ -800,7 +846,7 @@ function MockMinecraftForm({ formId, onNavigate }: { formId: MockFormId; onNavig
               <h2>{section.title}</h2>
             </div>
             {section.fields.map((field) => (
-              <MockFieldControl
+              <MinecraftFieldControl
                 field={field}
                 key={field.id}
                 value={values[field.id] ?? ''}
@@ -816,15 +862,15 @@ function MockMinecraftForm({ formId, onNavigate }: { formId: MockFormId; onNavig
           </label>
         </div>
         <div className="form-actions">
-          <button className="primary-action" disabled={!canSubmit} type="submit">Complete Form Preview</button>
-          <p className="form-message">{canSubmit ? 'Preview ready.' : 'Complete the required fields and acknowledgement.'}</p>
+          <button className="primary-action" disabled={!canSubmit} type="submit">{submitting ? 'Submitting...' : 'Submit Request'}</button>
+          <p className={submitError ? 'form-message error' : 'form-message'}>{submitError || (canSubmit ? 'Ready to submit.' : 'Complete the required fields and acknowledgement.')}</p>
         </div>
       </form>
     </section>
   )
 }
 
-function MockFieldControl({ field, value, onChange }: { field: MockField; value: string; onChange: (value: string) => void }) {
+function MinecraftFieldControl({ field, value, onChange }: { field: MinecraftFormField; value: string; onChange: (value: string) => void }) {
   if (field.kind === 'textarea') {
     return <TextArea label={field.label} required={field.required} value={value} onChange={onChange} placeholder={field.placeholder} />
   }

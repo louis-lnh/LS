@@ -418,6 +418,15 @@ main {
   line-height: 1.5;
 }
 
+.preview-notice.live {
+  border-color: rgba(53, 184, 127, 0.28);
+  background: rgba(53, 184, 127, 0.065);
+}
+
+.preview-notice.live span {
+  color: #79d8ae;
+}
+
 .section-page {
   display: grid;
   justify-items: center;

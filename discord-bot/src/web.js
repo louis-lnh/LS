@@ -10,6 +10,7 @@ import { completeMinecraftLink, completeVerification } from './verification.js';
 import { audit, logToChannel, minecraftLog, securityLog, staffAuditLog } from './logger.js';
 import { refreshRisk } from './risk.js';
 import { currentRulesVersion } from './settings.js';
+import { createAdminRouter } from './admin-auth.js';
 
 const minecraftJoinSchema = z.object({
   minecraftUuid: z.string().min(32).max(36),
@@ -91,6 +92,41 @@ const supportLifestealSignupSchema = z.object({
   content: z.string().max(2000).optional().nullable()
 });
 
+const supportBanAppealSchema = z.object({
+  discordUsername: z.string().min(2).max(80),
+  minecraftName: z.string().min(3).max(16),
+  banId: z.string().min(2).max(80),
+  punishmentType: z.string().min(2).max(80),
+  punishmentDate: z.string().max(80).optional().nullable(),
+  punishmentReason: z.string().min(2).max(2000),
+  context: z.string().min(10).max(4000),
+  change: z.string().min(10).max(4000),
+  evidence: z.string().max(4000).optional().nullable()
+});
+
+const supportPlayerReportSchema = z.object({
+  discordUsername: z.string().min(2).max(80),
+  minecraftName: z.string().min(3).max(16),
+  reportedPlayer: z.string().min(2).max(80),
+  category: z.string().min(2).max(100),
+  incidentTime: z.string().min(2).max(120),
+  location: z.string().max(200).optional().nullable(),
+  description: z.string().min(10).max(4000),
+  evidence: z.string().min(2).max(4000),
+  witnesses: z.string().max(1000).optional().nullable(),
+  extra: z.string().max(2000).optional().nullable()
+});
+
+const supportMinecraftRequestSchema = z.object({
+  discordUsername: z.string().min(2).max(80),
+  minecraftName: z.string().min(3).max(16).optional().nullable(),
+  category: z.string().min(2).max(100),
+  summary: z.string().min(5).max(200),
+  details: z.string().min(10).max(4000),
+  error: z.string().max(2000).optional().nullable(),
+  evidence: z.string().max(4000).optional().nullable()
+});
+
 const publicEventTypes = new Set([
   'kill',
   'elimination',
@@ -156,7 +192,19 @@ function supportFieldLabel(field) {
     rulesCode: 'Rules acknowledgement key',
     discordUsername: 'Discord username',
     minecraftName: 'Minecraft Java name',
-    region: 'Region'
+    region: 'Region',
+    banId: 'Ban or case ID',
+    punishmentType: 'Punishment type',
+    punishmentReason: 'Reason shown to you',
+    context: 'What happened',
+    change: 'Why staff should reconsider',
+    reportedPlayer: 'Reported player',
+    category: 'Category',
+    incidentTime: 'Incident date and time',
+    description: 'Incident description',
+    evidence: 'Evidence',
+    summary: 'Short summary',
+    details: 'Issue details'
   };
   return labels[field] ?? String(field ?? 'Field');
 }
@@ -321,6 +369,82 @@ function supportApplicationStaffFields(application, extra = []) {
     application.answers.team ? { name: 'Team', value: application.answers.team } : null,
     application.answers.content ? { name: 'Extra', value: application.answers.content } : null
   ].filter(Boolean);
+}
+
+function supportSubmissionStaffFields(submission, extra = []) {
+  return [
+    { name: 'Reference', value: `#${submission.id} / ${submission.code}`, inline: true },
+    { name: 'Type', value: submission.form_type, inline: true },
+    { name: 'Status', value: submission.status, inline: true },
+    { name: 'Discord', value: submission.discord_username, inline: true },
+    submission.minecraft_name ? { name: 'Minecraft', value: submission.minecraft_name, inline: true } : null,
+    submission.subject_name ? { name: 'Subject', value: submission.subject_name, inline: true } : null,
+    { name: 'Category', value: submission.category, inline: true },
+    { name: 'Summary', value: submission.summary },
+    ...extra
+  ].filter(Boolean);
+}
+
+async function createPublicSupportSubmission(client, res, {
+  prefix,
+  formType,
+  title,
+  body,
+  discordUsername,
+  minecraftName = null,
+  subjectName = null,
+  category,
+  summary,
+  answers,
+  requiresTicket,
+  logChannelId
+}) {
+  const existing = formType === 'player_report' ? null : statements.findOpenSupportSubmission.get({
+    formType,
+    discordUsername,
+    minecraftName,
+    subjectName
+  });
+  if (existing) {
+    return supportError(res, 409, 'SUBMISSION_ALREADY_OPEN', 'An open submission of this type already exists for this account.', {
+      referenceCode: existing.code,
+      submissionStatus: existing.status
+    });
+  }
+
+  const submission = statements.createSupportSubmission.run({
+    code: createUniqueCode(prefix, statements.findSupportSubmissionByCode),
+    project: 'lifesteal',
+    game: 'minecraft',
+    formType,
+    discordUsername: discordUsername.trim(),
+    minecraftName: minecraftName?.trim() || null,
+    subjectName: subjectName?.trim() || null,
+    category: category.trim(),
+    summary: summary.trim(),
+    answers,
+    requiresTicket,
+    createdAt: Date.now()
+  });
+  audit('support.submission_created', {
+    data: {
+      submissionId: submission.id,
+      referenceCode: submission.code,
+      formType: submission.form_type,
+      requiresTicket: submission.requires_ticket
+    }
+  });
+  await logToChannel(client, logChannelId || config.supportApplicationLogChannelId || config.modLogChannelId, title, supportSubmissionStaffFields(submission, [
+    { name: 'Routing', value: requiresTicket ? 'Applicant should open a Discord ticket and provide this reference.' : 'Private staff review; no public ticket required.' },
+    ...body
+  ]));
+  return res.status(201).json({
+    ok: true,
+    submissionId: submission.id,
+    referenceCode: submission.code,
+    status: submission.status,
+    requiresTicket: submission.requires_ticket
+  });
 }
 
 function minecraftUuidVariants(value) {
@@ -1054,6 +1178,7 @@ export function startWebServer(client) {
   app.use('/api/v1/public', publicCors);
   app.use('/api/v1/overlays', publicCors);
   app.use(express.json({ limit: '64kb' }));
+  app.use('/api/v1/admin', protectedApiRateLimit, createAdminRouter(client));
 
   app.get('/favicon.png', (_req, res) => {
     if (!existsSync(verificationFaviconPath)) return res.sendStatus(404);
@@ -1359,6 +1484,107 @@ export function startWebServer(client) {
       });
     } catch (error) {
       res.status(400).json({ ok: false, error: validationErrorMessage(error) });
+    }
+  });
+
+  app.post('/api/v1/public/support/minecraft-ban-appeal', publicWriteRateLimit, async (req, res) => {
+    try {
+      const body = supportBanAppealSchema.parse(req.body);
+      return createPublicSupportSubmission(client, res, {
+        prefix: 'SHD-APL',
+        formType: 'ban_appeal',
+        title: 'Minecraft Ban Appeal Submitted',
+        body: [
+          { name: 'Ban / Case ID', value: body.banId, inline: true },
+          { name: 'Punishment', value: body.punishmentType, inline: true },
+          { name: 'Reason Shown', value: body.punishmentReason },
+          { name: 'Appeal Context', value: body.context },
+          { name: 'Why Reconsider', value: body.change },
+          body.evidence ? { name: 'Evidence', value: body.evidence } : null
+        ].filter(Boolean),
+        discordUsername: body.discordUsername,
+        minecraftName: body.minecraftName,
+        subjectName: body.banId,
+        category: body.punishmentType,
+        summary: body.punishmentReason,
+        answers: {
+          banId: body.banId,
+          punishmentDate: body.punishmentDate?.trim() || null,
+          punishmentReason: body.punishmentReason.trim(),
+          context: body.context.trim(),
+          change: body.change.trim(),
+          evidence: body.evidence?.trim() || null
+        },
+        requiresTicket: true,
+        logChannelId: config.appealLogChannelId
+      });
+    } catch (error) {
+      return res.status(400).json({ ok: false, error: validationErrorMessage(error) });
+    }
+  });
+
+  app.post('/api/v1/public/support/minecraft-player-report', publicWriteRateLimit, async (req, res) => {
+    try {
+      const body = supportPlayerReportSchema.parse(req.body);
+      return createPublicSupportSubmission(client, res, {
+        prefix: 'SHD-RPT',
+        formType: 'player_report',
+        title: 'Minecraft Player Report Submitted',
+        body: [
+          { name: 'Incident Time', value: body.incidentTime, inline: true },
+          body.location ? { name: 'Location', value: body.location, inline: true } : null,
+          { name: 'Incident', value: body.description },
+          { name: 'Evidence', value: body.evidence },
+          body.witnesses ? { name: 'Witnesses', value: body.witnesses } : null,
+          body.extra ? { name: 'Extra', value: body.extra } : null
+        ].filter(Boolean),
+        discordUsername: body.discordUsername,
+        minecraftName: body.minecraftName,
+        subjectName: body.reportedPlayer,
+        category: body.category,
+        summary: body.description,
+        answers: {
+          incidentTime: body.incidentTime.trim(),
+          location: body.location?.trim() || null,
+          description: body.description.trim(),
+          evidence: body.evidence.trim(),
+          witnesses: body.witnesses?.trim() || null,
+          extra: body.extra?.trim() || null
+        },
+        requiresTicket: false,
+        logChannelId: config.modLogChannelId
+      });
+    } catch (error) {
+      return res.status(400).json({ ok: false, error: validationErrorMessage(error) });
+    }
+  });
+
+  app.post('/api/v1/public/support/minecraft-support', publicWriteRateLimit, async (req, res) => {
+    try {
+      const body = supportMinecraftRequestSchema.parse(req.body);
+      return createPublicSupportSubmission(client, res, {
+        prefix: 'SHD-SUP',
+        formType: 'minecraft_support',
+        title: 'Minecraft Support Request Submitted',
+        body: [
+          { name: 'Details', value: body.details },
+          body.error ? { name: 'Error Message', value: body.error } : null,
+          body.evidence ? { name: 'Evidence', value: body.evidence } : null
+        ].filter(Boolean),
+        discordUsername: body.discordUsername,
+        minecraftName: body.minecraftName,
+        category: body.category,
+        summary: body.summary,
+        answers: {
+          details: body.details.trim(),
+          error: body.error?.trim() || null,
+          evidence: body.evidence?.trim() || null
+        },
+        requiresTicket: true,
+        logChannelId: config.ticketNotifyChannelId
+      });
+    } catch (error) {
+      return res.status(400).json({ ok: false, error: validationErrorMessage(error) });
     }
   });
 

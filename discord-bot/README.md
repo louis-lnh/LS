@@ -68,6 +68,35 @@ cloudflared tunnel --url http://localhost:3000
 
 Set `PUBLIC_BASE_URL` to the tunnel URL, then restart the bot.
 
+## Admin portal OAuth
+
+The bot API now provides the first protected admin backend layer:
+
+```text
+GET  /api/v1/admin/auth/login
+GET  /api/v1/admin/auth/callback
+GET  /api/v1/admin/auth/session
+POST /api/v1/admin/auth/logout
+GET  /api/v1/admin/bootstrap
+```
+
+Add the exact callback URL to the Discord application under OAuth2 redirects. Production example:
+
+```text
+https://verify.shd-esports.com/api/v1/admin/auth/callback
+```
+
+Configure:
+
+```env
+ADMIN_PORTAL_URL=https://admin.shd-esports.com
+ADMIN_OAUTH_REDIRECT_URL=https://verify.shd-esports.com/api/v1/admin/auth/callback
+DISCORD_CLIENT_SECRET=your_discord_oauth_client_secret
+ADMIN_SESSION_SECRET=a_long_random_secret
+```
+
+Sessions use signed HTTP-only cookies. The API checks current guild membership and staff permissions before returning protected data. Owners and administrators receive all workspaces; configured staff roles and moderators currently receive Lifesteal access.
+
 ## Minecraft RCON
 
 In `server.properties`:

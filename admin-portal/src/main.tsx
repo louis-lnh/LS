@@ -1,0 +1,1088 @@
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createRoot } from 'react-dom/client'
+import {
+  Activity,
+  ArrowLeft,
+  Ban,
+  Bot,
+  Building2,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  CircleUserRound,
+  Clock3,
+  Crosshair,
+  ExternalLink,
+  FileWarning,
+  Gamepad2,
+  Headphones,
+  Inbox,
+  KeyRound,
+  LayoutDashboard,
+  LifeBuoy,
+  LockKeyhole,
+  LogOut,
+  Menu,
+  MessageSquareText,
+  Network,
+  Search,
+  Send,
+  Settings2,
+  ShieldCheck,
+  UserCheck,
+  UserRoundSearch,
+  Users,
+  X,
+  XCircle,
+} from 'lucide-react'
+import './styles.css'
+import logo from './assets/shd-logo-no-text.png'
+import {
+  adminDemoMode,
+  beginDiscordLogin,
+  demoAdminUser,
+  endAdminSession,
+  getAdminSession,
+  type AdminUser,
+} from './api'
+
+type SubmissionType = 'Application' | 'Appeal' | 'Player Report' | 'Support'
+type SubmissionStatus = 'New' | 'In review' | 'Waiting on player' | 'Approved' | 'Denied'
+type WorkspaceId = 'global' | 'lifesteal' | 'general' | 'valorant'
+type AdminView =
+  | 'global-overview'
+  | 'global-inbox'
+  | 'global-staff'
+  | 'global-integrations'
+  | 'global-audit'
+  | 'lifesteal-overview'
+  | 'lifesteal-queue'
+  | 'lifesteal-players'
+  | 'lifesteal-applications'
+  | 'lifesteal-appeals'
+  | 'lifesteal-reports'
+  | 'lifesteal-support'
+  | 'general-overview'
+  | 'general-inbox'
+  | 'valorant-overview'
+  | 'valorant-inbox'
+type Submission = {
+  id: string
+  type: SubmissionType
+  status: SubmissionStatus
+  title: string
+  discord: string
+  minecraft: string
+  submitted: string
+  priority: 'Normal' | 'High'
+  claimedBy?: string
+  summary: string
+  fields: Array<{ label: string; value: string }>
+  notes: Array<{ author: string; body: string; time: string }>
+  activity: Array<{ type: 'player' | 'staff' | 'system'; author: string; body: string; time: string }>
+}
+
+const seedStaffName = 'PrimeLuigi'
+
+const viewPaths: Record<AdminView, string> = {
+  'global-overview': '/',
+  'global-inbox': '/inbox',
+  'global-staff': '/staff',
+  'global-integrations': '/integrations',
+  'global-audit': '/audit',
+  'lifesteal-overview': '/lifesteal',
+  'lifesteal-queue': '/lifesteal/queue',
+  'lifesteal-players': '/lifesteal/players',
+  'lifesteal-applications': '/lifesteal/applications',
+  'lifesteal-appeals': '/lifesteal/appeals',
+  'lifesteal-reports': '/lifesteal/reports',
+  'lifesteal-support': '/lifesteal/support',
+  'general-overview': '/general',
+  'general-inbox': '/general/inbox',
+  'valorant-overview': '/valorant',
+  'valorant-inbox': '/valorant/inbox',
+}
+
+function viewFromPath(): AdminView {
+  const path = window.location.pathname.replace(/\/+$/, '') || '/'
+  const legacyPaths: Record<string, AdminView> = {
+    '/overview': 'lifesteal-overview',
+    '/players': 'lifesteal-players',
+    '/applications': 'lifesteal-applications',
+    '/appeals': 'lifesteal-appeals',
+    '/reports': 'lifesteal-reports',
+    '/support': 'lifesteal-support',
+  }
+  return legacyPaths[path]
+    ?? (Object.entries(viewPaths).find(([, value]) => value === path)?.[0] as AdminView)
+    ?? 'global-overview'
+}
+
+function workspaceFromView(view: AdminView): WorkspaceId {
+  if (view.startsWith('lifesteal-')) return 'lifesteal'
+  if (view.startsWith('general-')) return 'general'
+  if (view.startsWith('valorant-')) return 'valorant'
+  return 'global'
+}
+
+const seedSubmissions: Submission[] = [
+  {
+    id: 'SHD-APP-K8F2QZ',
+    type: 'Application',
+    status: 'New',
+    title: 'Lifesteal Season 1 application',
+    discord: 'voidism',
+    minecraft: 'xvoidism',
+    submitted: '8 min ago',
+    priority: 'Normal',
+    summary: 'Experienced SMP player applying with a duo and available most evenings in CEST.',
+    fields: [
+      { label: 'Region / timezone', value: 'EU / CEST' },
+      { label: 'Experience', value: 'Three competitive SMP seasons, strong survival and building focus, intermediate PvP.' },
+      { label: 'Motivation', value: 'Looking for a long-form competitive season with meaningful objectives and team politics.' },
+      { label: 'Team', value: 'Applying with TlzMax5454' },
+      { label: 'Rules key', value: 'SHD-RULES-JQ8K2M' },
+    ],
+    notes: [],
+    activity: [
+      { type: 'system', author: 'Support Portal', body: 'Application submitted and validation completed.', time: '15:18' },
+      { type: 'player', author: 'voidism', body: 'SHD-APP-K8F2QZ', time: '15:22' },
+      { type: 'system', author: 'Discord Bot', body: 'Discord identity verified. Ticket attached.', time: '15:22' },
+    ],
+  },
+  {
+    id: 'SHD-APL-3JD91P',
+    type: 'Appeal',
+    status: 'In review',
+    title: 'Combat logging ban appeal',
+    discord: 'northstar.',
+    minecraft: 'NorthStarMC',
+    submitted: '24 min ago',
+    priority: 'High',
+    claimedBy: 'TlzMax5454',
+    summary: 'Player claims their connection dropped during combat and provided a router outage screenshot.',
+    fields: [
+      { label: 'Case ID', value: 'BAN-1042' },
+      { label: 'Punishment', value: 'Minecraft ban' },
+      { label: 'Reason shown', value: 'Combat logging during an active tag' },
+      { label: 'Player context', value: 'My internet went down for around 12 minutes. I did not intentionally disconnect.' },
+      { label: 'Evidence', value: 'status.isp.example/outage-1406' },
+    ],
+    notes: [
+      { author: 'TlzMax5454', body: 'Checking combat timestamps against the server disconnect log.', time: '15:07' },
+    ],
+    activity: [
+      { type: 'system', author: 'Support Portal', body: 'Appeal submitted.', time: '14:52' },
+      { type: 'player', author: 'northstar.', body: 'I added the outage screenshot. Let me know if another timestamp is needed.', time: '14:58' },
+      { type: 'staff', author: 'TlzMax5454', body: 'Review claimed. We are checking the server logs.', time: '15:03' },
+    ],
+  },
+  {
+    id: 'SHD-RPT-M4Q7VN',
+    type: 'Player Report',
+    status: 'New',
+    title: 'Suspected minimap use',
+    discord: 'emberlane',
+    minecraft: 'EmberLane',
+    submitted: '41 min ago',
+    priority: 'High',
+    summary: 'Reporter believes another player repeatedly located hidden bases without a visible trail.',
+    fields: [
+      { label: 'Reported player', value: 'QuartzPvP' },
+      { label: 'Category', value: 'Cheating or prohibited mods' },
+      { label: 'Incident time', value: '14 June 2026, 14:20 CEST' },
+      { label: 'Location', value: 'Overworld, approximately 8,200 / -3,400' },
+      { label: 'Evidence', value: 'Three unedited video clips and server chat timestamps' },
+    ],
+    notes: [],
+    activity: [
+      { type: 'system', author: 'Support Portal', body: 'Private player report submitted. Reporter identity restricted to staff.', time: '14:35' },
+    ],
+  },
+  {
+    id: 'SHD-SUP-T2PX6A',
+    type: 'Support',
+    status: 'Waiting on player',
+    title: 'Whitelist access not updating',
+    discord: 'novaforge',
+    minecraft: 'NovaForge',
+    submitted: '1h ago',
+    priority: 'Normal',
+    claimedBy: seedStaffName,
+    summary: 'Application is approved but the player still receives a whitelist error when joining.',
+    fields: [
+      { label: 'Category', value: 'Whitelist or application access' },
+      { label: 'Error', value: 'You are not whitelisted on this server!' },
+      { label: 'Expected', value: 'Join access after application approval.' },
+      { label: 'Last attempt', value: '14 June 2026, 14:02 CEST' },
+    ],
+    notes: [
+      { author: seedStaffName, body: 'RCON was offline during the first approval attempt. Asked player to retry.', time: '14:18' },
+    ],
+    activity: [
+      { type: 'system', author: 'Support Portal', body: 'Support request submitted.', time: '14:06' },
+      { type: 'staff', author: seedStaffName, body: 'Please try joining once more. The whitelist sync has been retried.', time: '14:19' },
+      { type: 'system', author: 'Discord Bot', body: 'Message posted to linked support ticket.', time: '14:19' },
+    ],
+  },
+  {
+    id: 'SHD-APP-7UZ5CY',
+    type: 'Application',
+    status: 'Approved',
+    title: 'Lifesteal Season 1 application',
+    discord: 'riverbytes',
+    minecraft: 'RiverBytes',
+    submitted: 'Yesterday',
+    priority: 'Normal',
+    claimedBy: seedStaffName,
+    summary: 'Approved solo applicant. Minecraft account linked and whitelist sync completed.',
+    fields: [
+      { label: 'Region / timezone', value: 'NA / EST' },
+      { label: 'Experience', value: 'Vanilla survival, building, light PvP.' },
+      { label: 'Motivation', value: 'Interested in collaborative events and objective progression.' },
+      { label: 'Team', value: 'Solo' },
+    ],
+    notes: [],
+    activity: [
+      { type: 'system', author: 'Discord Bot', body: 'Application approved, account linked, public status enabled.', time: 'Yesterday, 21:14' },
+    ],
+  },
+]
+
+const typeIcons = {
+  Application: UserCheck,
+  Appeal: Ban,
+  'Player Report': FileWarning,
+  Support: LifeBuoy,
+}
+
+function App() {
+  const [user, setUser] = useState<AdminUser | null>(null)
+  const [authState, setAuthState] = useState<'loading' | 'ready' | 'error'>('loading')
+
+  useEffect(() => {
+    getAdminSession()
+      .then((session) => {
+        setUser(session)
+        setAuthState('ready')
+      })
+      .catch(() => setAuthState('error'))
+  }, [])
+
+  const authError = new URLSearchParams(window.location.search).get('auth')
+
+  if (authState === 'loading') return <AuthLoading />
+  if (!user) {
+    return <LoginScreen
+      authError={authState === 'error' ? 'api_error' : authError}
+      onSignIn={() => {
+        if (adminDemoMode) setUser(demoAdminUser)
+        else beginDiscordLogin()
+      }}
+    />
+  }
+  return <AdminWorkspace
+    user={user}
+    onSignOut={async () => {
+      await endAdminSession().catch(() => null)
+      setUser(null)
+    }}
+  />
+}
+
+function AuthLoading() {
+  return <main className="auth-loading"><img src={logo} alt="" /><span className="eyebrow">SHD Internal</span><strong>Checking staff session...</strong></main>
+}
+
+function LoginScreen({ authError, onSignIn }: { authError: string | null; onSignIn: () => void }) {
+  const errorMessages: Record<string, string> = {
+    denied: 'Your Discord account does not have an approved staff role.',
+    not_member: 'Your Discord account is not a member of the configured SHD guild.',
+    invalid_state: 'The login request expired or could not be verified. Please try again.',
+    unavailable: 'Discord OAuth is not configured on the bot yet.',
+    error: 'Discord login failed. Please try again or check the bot logs.',
+    api_error: 'The admin API could not be reached.',
+  }
+  return (
+    <main className="login-shell">
+      <section className="login-panel">
+        <img src={logo} alt="SHD" />
+        <span className="eyebrow">SHD Internal</span>
+        <h1>Staff Review</h1>
+        <p>Use your Discord staff identity to access applications, appeals, reports, and support requests.</p>
+        <button className="discord-button" onClick={onSignIn} type="button">
+          <MessageSquareText size={18} />
+          {adminDemoMode ? 'Continue in demo mode' : 'Continue with Discord'}
+        </button>
+        {authError && <p className="login-error">{errorMessages[authError] ?? 'Access could not be verified.'}</p>}
+        <div className="login-security">
+          <LockKeyhole size={16} />
+          <span>Guild membership and staff roles will control access.</span>
+        </div>
+      </section>
+      <aside className="login-context">
+        <span className="eyebrow">{adminDemoMode ? 'Frontend Prototype' : 'Discord Protected'}</span>
+        <strong>One review surface.</strong>
+        <p>Discord stays the player conversation. This portal holds review state, claims, decisions, notes, and audit context.</p>
+      </aside>
+    </main>
+  )
+}
+
+function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: AdminUser }) {
+  const [submissions, setSubmissions] = useState(seedSubmissions)
+  const [view, setView] = useState<AdminView>(() => viewFromPath())
+  const [selectedId, setSelectedId] = useState(seedSubmissions[0].id)
+  const [filter, setFilter] = useState<'All' | SubmissionType>('All')
+  const [search, setSearch] = useState('')
+  const [note, setNote] = useState('')
+  const [mobileNav, setMobileNav] = useState(false)
+  const [mobileDetail, setMobileDetail] = useState(false)
+  const workspace = workspaceFromView(view)
+  const reviewerName = user.displayName
+
+  useEffect(() => {
+    if (user.workspaces.includes(workspace)) return
+    const fallback: AdminView = user.workspaces.includes('global') ? 'global-overview' : 'lifesteal-overview'
+    window.history.replaceState(null, '', viewPaths[fallback])
+    setView(fallback)
+  }, [user.workspaces, workspace])
+
+  useEffect(() => {
+    const onPopState = () => {
+      setView(viewFromPath())
+      setMobileDetail(false)
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
+
+  const navigate = (nextView: AdminView) => {
+    window.history.pushState(null, '', viewPaths[nextView])
+    setView(nextView)
+    setMobileDetail(false)
+    setMobileNav(false)
+  }
+
+  const selected = submissions.find((submission) => submission.id === selectedId) ?? submissions[0]
+  const viewType: Partial<Record<AdminView, SubmissionType>> = {
+    'lifesteal-applications': 'Application',
+    'lifesteal-appeals': 'Appeal',
+    'lifesteal-reports': 'Player Report',
+    'lifesteal-support': 'Support',
+  }
+  const activeType = viewType[view]
+  const queueTitle: Partial<Record<SubmissionType, string>> = {
+    Application: 'Applications',
+    Appeal: 'Appeals',
+    'Player Report': 'Player Reports',
+    Support: 'Support Requests',
+  }
+  const visible = useMemo(() => submissions.filter((submission) => {
+    const matchesFilter = activeType ? submission.type === activeType : filter === 'All' || submission.type === filter
+    const query = search.trim().toLowerCase()
+    const matchesSearch = !query || [submission.id, submission.title, submission.discord, submission.minecraft]
+      .some((value) => value.toLowerCase().includes(query))
+    return matchesFilter && matchesSearch
+  }), [submissions, activeType, filter, search])
+
+  const updateSelected = (updater: (submission: Submission) => Submission) => {
+    setSubmissions((current) => current.map((submission) => submission.id === selected.id ? updater(submission) : submission))
+  }
+
+  const claim = () => updateSelected((submission) => ({
+    ...submission,
+    status: submission.status === 'New' ? 'In review' : submission.status,
+    claimedBy: reviewerName,
+    activity: [...submission.activity, {
+      type: 'staff',
+      author: reviewerName,
+      body: 'Review claimed in the admin portal.',
+      time: 'Just now',
+    }],
+  }))
+
+  const decide = (status: SubmissionStatus, body: string) => updateSelected((submission) => ({
+    ...submission,
+    status,
+    claimedBy: submission.claimedBy ?? reviewerName,
+    activity: [...submission.activity, { type: 'staff', author: reviewerName, body, time: 'Just now' }],
+  }))
+
+  const addNote = () => {
+    if (!note.trim()) return
+    updateSelected((submission) => ({
+      ...submission,
+      notes: [...submission.notes, { author: reviewerName, body: note.trim(), time: 'Just now' }],
+    }))
+    setNote('')
+  }
+
+  return (
+    <div className="admin-shell">
+      <Sidebar active={view} workspace={workspace} user={user} mobileOpen={mobileNav} onClose={() => setMobileNav(false)} onNavigate={navigate} onSignOut={onSignOut} />
+      <header className="mobile-header">
+        <button aria-label="Open navigation" onClick={() => setMobileNav(true)} type="button"><Menu /></button>
+        <span>{workspace === 'global' ? 'SHD Admin' : workspace}</span>
+        <div className="avatar">PL</div>
+      </header>
+      {view === 'global-overview' && <GlobalOverviewPage submissions={submissions} onNavigate={navigate} />}
+      {view === 'global-inbox' && <UnifiedInboxPage submissions={submissions} onNavigate={navigate} />}
+      {view === 'global-staff' && <StaffAccessPage />}
+      {view === 'global-integrations' && <IntegrationsPage />}
+      {view === 'global-audit' && <AuditPage submissions={submissions} />}
+      {view === 'lifesteal-overview' && <LifestealOverviewPage submissions={submissions} onNavigate={navigate} />}
+      {view === 'lifesteal-players' && <PlayersPage />}
+      {view === 'general-overview' && <ProjectOverviewPage project="General Support" onOpenInbox={() => navigate('general-inbox')} />}
+      {view === 'general-inbox' && <WorkspaceInboxPage project="General Support" />}
+      {view === 'valorant-overview' && <ProjectOverviewPage project="Valorant" onOpenInbox={() => navigate('valorant-inbox')} />}
+      {view === 'valorant-inbox' && <WorkspaceInboxPage project="Valorant" />}
+      {['lifesteal-queue', 'lifesteal-applications', 'lifesteal-appeals', 'lifesteal-reports', 'lifesteal-support'].includes(view) && <main className={`workspace ${mobileDetail ? 'show-detail' : ''}`}>
+        <section className="queue-pane">
+          <header className="queue-header">
+            <div>
+              <span className="eyebrow">{activeType ?? 'Review Queue'}</span>
+              <h1>{activeType ? queueTitle[activeType] : 'Submissions'}</h1>
+            </div>
+            <span className="queue-total">{visible.length}</span>
+          </header>
+          <div className="queue-tools">
+            <label className="search-field">
+              <Search size={16} />
+              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search player or reference" />
+            </label>
+            {!activeType && <div className="filter-row" aria-label="Submission filters">
+              {(['All', 'Application', 'Appeal', 'Player Report', 'Support'] as const).map((item) => (
+                <button className={filter === item ? 'active' : ''} onClick={() => setFilter(item)} type="button" key={item}>{item}</button>
+              ))}
+            </div>}
+          </div>
+          <div className="queue-list">
+            {visible.map((submission) => (
+              <QueueItem
+                active={submission.id === selected.id}
+                key={submission.id}
+                onSelect={() => {
+                  setSelectedId(submission.id)
+                  setMobileDetail(true)
+                }}
+                submission={submission}
+              />
+            ))}
+            {visible.length === 0 && <div className="empty-state"><Inbox /><strong>No matching submissions</strong></div>}
+          </div>
+        </section>
+        <section className="review-pane">
+          <ReviewHeader staffName={reviewerName} submission={selected} onBack={() => setMobileDetail(false)} onClaim={claim} onDecide={decide} />
+          <div className="review-scroll">
+            <section className="review-overview">
+              <div className="identity-block">
+                <div className="player-avatar">{selected.minecraft.slice(0, 2).toUpperCase()}</div>
+                <div>
+                  <span className="eyebrow">Applicant</span>
+                  <h2>{selected.minecraft}</h2>
+                  <p>@{selected.discord}</p>
+                </div>
+              </div>
+              <div className="quick-facts">
+                <Fact label="Reference" value={selected.id} />
+                <Fact label="Submitted" value={selected.submitted} />
+                <Fact label="Reviewer" value={selected.claimedBy ?? 'Unclaimed'} />
+              </div>
+            </section>
+            <section className="content-section">
+              <div className="section-heading">
+                <div><span className="eyebrow">Submission</span><h2>{selected.title}</h2></div>
+                <StatusPill status={selected.status} />
+              </div>
+              <p className="summary">{selected.summary}</p>
+              <dl className="field-grid">
+                {selected.fields.map((field) => (
+                  <div key={field.label}><dt>{field.label}</dt><dd>{field.value}</dd></div>
+                ))}
+              </dl>
+            </section>
+            <section className="content-section">
+              <div className="section-heading">
+                <div><span className="eyebrow">Internal</span><h2>Staff Notes</h2></div>
+                <span className="count-label">{selected.notes.length}</span>
+              </div>
+              <div className="notes-list">
+                {selected.notes.map((item, index) => (
+                  <article className="staff-note" key={`${item.time}-${index}`}>
+                    <strong>{item.author}</strong><span>{item.time}</span><p>{item.body}</p>
+                  </article>
+                ))}
+                {selected.notes.length === 0 && <p className="muted">No internal notes yet.</p>}
+              </div>
+              <div className="note-composer">
+                <textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Add a private staff note..." />
+                <button aria-label="Add staff note" disabled={!note.trim()} onClick={addNote} title="Add staff note" type="button"><Send size={17} /></button>
+              </div>
+            </section>
+          </div>
+        </section>
+        <aside className="activity-pane">
+          <header>
+            <div><span className="eyebrow">Discord Context</span><h2>Ticket Activity</h2></div>
+            <button aria-label="Open in Discord" title="Open in Discord" type="button"><ExternalLink size={17} /></button>
+          </header>
+          <div className="sync-state"><Activity size={15} /><span>Live update mock</span></div>
+          <div className="activity-list">
+            {selected.activity.map((item, index) => (
+              <article className={`activity-item ${item.type}`} key={`${item.time}-${index}`}>
+                <div className="activity-icon">
+                  {item.type === 'system' ? <Activity size={15} /> : item.type === 'staff' ? <ShieldCheck size={15} /> : <CircleUserRound size={15} />}
+                </div>
+                <div><strong>{item.author}</strong><span>{item.time}</span><p>{item.body}</p></div>
+              </article>
+            ))}
+          </div>
+          <div className="ticket-composer">
+            <textarea placeholder="Request information from the player..." />
+            <button type="button"><Send size={16} /> Send to Discord</button>
+          </div>
+        </aside>
+      </main>}
+    </div>
+  )
+}
+
+function Sidebar({ active, workspace, user, mobileOpen, onClose, onNavigate, onSignOut }: {
+  active: AdminView
+  workspace: WorkspaceId
+  user: AdminUser
+  mobileOpen: boolean
+  onClose: () => void
+  onNavigate: (view: AdminView) => void
+  onSignOut: () => void
+}) {
+  const [workspaceMenu, setWorkspaceMenu] = useState(false)
+  const workspaces: Array<{ id: WorkspaceId; label: string; detail: string; icon: ReactNode; target: AdminView }> = [
+    { id: 'global', label: 'SHD Global', detail: 'All operations', icon: <Building2 size={17} />, target: 'global-overview' },
+    { id: 'lifesteal', label: 'Lifesteal', detail: 'Minecraft network', icon: <Gamepad2 size={17} />, target: 'lifesteal-overview' },
+    { id: 'general', label: 'General Support', detail: 'Community guild', icon: <Headphones size={17} />, target: 'general-overview' },
+    { id: 'valorant', label: 'Valorant', detail: 'Competitive team', icon: <Crosshair size={17} />, target: 'valorant-overview' },
+  ]
+  const availableWorkspaces = workspaces.filter((item) => user.workspaces.includes(item.id))
+  const currentWorkspace = availableWorkspaces.find((item) => item.id === workspace) ?? availableWorkspaces[0]
+
+  const switchWorkspace = (target: AdminView) => {
+    setWorkspaceMenu(false)
+    onNavigate(target)
+  }
+
+  return (
+    <>
+      {mobileOpen && <button className="nav-scrim" aria-label="Close navigation" onClick={onClose} type="button" />}
+      <aside className={`sidebar ${mobileOpen ? 'open' : ''}`}>
+        <header className="brand">
+          <img src={logo} alt="SHD" />
+          <div><strong>SHD Admin</strong><span>Internal tools</span></div>
+          <button className="mobile-close" aria-label="Close navigation" onClick={onClose} type="button"><X /></button>
+        </header>
+        <div className="workspace-switcher">
+          <span>Workspace</span>
+          <button
+            aria-expanded={workspaceMenu}
+            aria-haspopup="menu"
+            className="workspace-current"
+            onClick={() => setWorkspaceMenu((open) => !open)}
+            type="button"
+          >
+            <span className="workspace-icon">{currentWorkspace.icon}</span>
+            <span><strong>{currentWorkspace.label}</strong><small>{currentWorkspace.detail}</small></span>
+            <ChevronDown className={workspaceMenu ? 'rotated' : ''} size={16} />
+          </button>
+          {workspaceMenu && <div className="workspace-menu" role="menu">
+            {availableWorkspaces.map((item) => (
+              <button className={item.id === workspace ? 'selected' : ''} key={item.id} onClick={() => switchWorkspace(item.target)} role="menuitem" type="button">
+                <span className="workspace-icon">{item.icon}</span>
+                <span><strong>{item.label}</strong><small>{item.detail}</small></span>
+                {item.id === workspace && <Check size={15} />}
+              </button>
+            ))}
+          </div>}
+        </div>
+        {workspace === 'global' && <>
+          <nav>
+            <NavButton active={active === 'global-overview'} icon={<LayoutDashboard size={18} />} label="Overview" onClick={() => onNavigate('global-overview')} />
+            <NavButton active={active === 'global-inbox'} icon={<Inbox size={18} />} label="Unified Inbox" badge="4" onClick={() => onNavigate('global-inbox')} />
+            <NavButton active={active === 'global-staff'} icon={<KeyRound size={18} />} label="Staff & Access" onClick={() => onNavigate('global-staff')} />
+            <NavButton active={active === 'global-integrations'} icon={<Network size={18} />} label="Integrations" onClick={() => onNavigate('global-integrations')} />
+            <NavButton active={active === 'global-audit'} icon={<Activity size={18} />} label="Global Audit" onClick={() => onNavigate('global-audit')} />
+          </nav>
+        </>}
+        {workspace === 'lifesteal' && <>
+          <nav>
+            <NavButton active={active === 'lifesteal-overview'} icon={<LayoutDashboard size={18} />} label="Overview" onClick={() => onNavigate('lifesteal-overview')} />
+            <NavButton active={active === 'lifesteal-queue'} icon={<Inbox size={18} />} label="Review Queue" badge="4" onClick={() => onNavigate('lifesteal-queue')} />
+            <NavButton active={active === 'lifesteal-players'} icon={<Users size={18} />} label="Players" onClick={() => onNavigate('lifesteal-players')} />
+          </nav>
+          <div className="sidebar-section">
+            <span>Queues</span>
+            <NavButton active={active === 'lifesteal-applications'} icon={<UserCheck size={17} />} label="Applications" onClick={() => onNavigate('lifesteal-applications')} />
+            <NavButton active={active === 'lifesteal-appeals'} icon={<Ban size={17} />} label="Appeals" onClick={() => onNavigate('lifesteal-appeals')} />
+            <NavButton active={active === 'lifesteal-reports'} icon={<FileWarning size={17} />} label="Reports" onClick={() => onNavigate('lifesteal-reports')} />
+            <NavButton active={active === 'lifesteal-support'} icon={<LifeBuoy size={17} />} label="Support" onClick={() => onNavigate('lifesteal-support')} />
+          </div>
+        </>}
+        {workspace === 'general' && <nav>
+          <NavButton active={active === 'general-overview'} icon={<LayoutDashboard size={18} />} label="Overview" onClick={() => onNavigate('general-overview')} />
+          <NavButton active={active === 'general-inbox'} icon={<Inbox size={18} />} label="Support Inbox" onClick={() => onNavigate('general-inbox')} />
+        </nav>}
+        {workspace === 'valorant' && <nav>
+          <NavButton active={active === 'valorant-overview'} icon={<LayoutDashboard size={18} />} label="Overview" onClick={() => onNavigate('valorant-overview')} />
+          <NavButton active={active === 'valorant-inbox'} icon={<Inbox size={18} />} label="Support Inbox" onClick={() => onNavigate('valorant-inbox')} />
+        </nav>}
+        <footer>
+          <div className="staff-profile">
+            <div className="avatar">{user.displayName.slice(0, 2).toUpperCase()}</div>
+            <div><strong>{user.displayName}</strong><span>{user.role}</span></div>
+          </div>
+          <button aria-label="Sign out" onClick={onSignOut} title="Sign out" type="button"><LogOut size={17} /></button>
+        </footer>
+      </aside>
+    </>
+  )
+}
+
+function NavButton({ active, badge, icon, label, onClick }: {
+  active: boolean
+  badge?: string
+  icon: ReactNode
+  label: string
+  onClick: () => void
+}) {
+  return <button className={active ? 'active' : ''} onClick={onClick} type="button">{icon}{label}{badge && <span>{badge}</span>}</button>
+}
+
+function GlobalOverviewPage({ submissions, onNavigate }: { submissions: Submission[]; onNavigate: (view: AdminView) => void }) {
+  const open = submissions.filter((item) => !['Approved', 'Denied'].includes(item.status)).length
+  const projects = [
+    {
+      name: 'Lifesteal',
+      description: 'Applications, appeals, reports, linked players, and the Minecraft bridge.',
+      status: 'Operational',
+      work: `${open} open reviews`,
+      icon: Gamepad2,
+      target: 'lifesteal-overview' as AdminView,
+      tone: 'green',
+    },
+    {
+      name: 'General Support',
+      description: 'Community support for SHD accounts, services, and general questions.',
+      status: 'Frontend ready',
+      work: 'Inbox awaiting backend',
+      icon: Headphones,
+      target: 'general-overview' as AdminView,
+      tone: 'blue',
+    },
+    {
+      name: 'Valorant',
+      description: 'Competitive operations, player reports, appeals, and team support.',
+      status: 'Workspace staged',
+      work: 'Workflows not active',
+      icon: Crosshair,
+      target: 'valorant-overview' as AdminView,
+      tone: 'red',
+    },
+  ]
+
+  return (
+    <main className="page-workspace">
+      <PageHeader
+        eyebrow="SHD Operations"
+        title="Global Overview"
+        detail="One staff surface across every SHD project, with each Discord guild and workflow kept in its own workspace."
+        action={<button className="page-action" onClick={() => onNavigate('global-inbox')} type="button"><Inbox size={16} />Open unified inbox</button>}
+      />
+      <section className="metric-grid">
+        <MetricCard label="Open work" value={String(open)} detail="Across all connected workspaces" icon={<Inbox size={18} />} />
+        <MetricCard label="Active workspaces" value="3" detail="Lifesteal, General Support, Valorant" icon={<Building2 size={18} />} />
+        <MetricCard label="Bot connections" value="1 / 2" detail="Lifesteal online, SHD bot pending" icon={<Bot size={18} />} />
+        <MetricCard label="Staff online" value="2" detail="Authorized through Discord roles" icon={<ShieldCheck size={18} />} />
+      </section>
+      <section className="project-grid">
+        {projects.map(({ name, description, status, work, icon: Icon, target, tone }) => (
+          <button className="project-card" key={name} onClick={() => onNavigate(target)} type="button">
+            <span className={`project-icon ${tone}`}><Icon size={20} /></span>
+            <span className="project-copy">
+              <span className="eyebrow">{status}</span>
+              <strong>{name}</strong>
+              <p>{description}</p>
+            </span>
+            <span className="project-footer"><span>{work}</span><ArrowLeft className="project-arrow" size={17} /></span>
+          </button>
+        ))}
+      </section>
+      <section className="overview-grid">
+        <article className="dashboard-panel">
+          <header><div><span className="eyebrow">Service map</span><h2>Connected Systems</h2></div><button onClick={() => onNavigate('global-integrations')} type="button">Manage</button></header>
+          <div className="health-list">
+            <HealthRow label="Admin frontend" detail="Global workspace routing active" status="Online" />
+            <HealthRow label="Lifesteal bot" detail="Minecraft guild and API bridge" status="Online" />
+            <HealthRow label="SHD bot" detail="General Support and Valorant guild" status="Planned" muted />
+            <HealthRow label="Shared admin API" detail="Backend implementation is next" status="Mock" muted />
+          </div>
+        </article>
+        <article className="dashboard-panel">
+          <header><div><span className="eyebrow">Access model</span><h2>One Login, Scoped Roles</h2></div><button onClick={() => onNavigate('global-staff')} type="button">Review access</button></header>
+          <div className="access-model">
+            <div><ShieldCheck size={17} /><span><strong>Global</strong><small>Owners and platform administrators</small></span></div>
+            <div><Gamepad2 size={17} /><span><strong>Lifesteal</strong><small>Minecraft reviewers and moderators</small></span></div>
+            <div><Headphones size={17} /><span><strong>Support</strong><small>General and Valorant support teams</small></span></div>
+          </div>
+        </article>
+      </section>
+    </main>
+  )
+}
+
+function UnifiedInboxPage({ submissions, onNavigate }: { submissions: Submission[]; onNavigate: (view: AdminView) => void }) {
+  const active = submissions.filter((item) => !['Approved', 'Denied'].includes(item.status))
+  return (
+    <main className="page-workspace">
+      <PageHeader eyebrow="Cross-project Work" title="Unified Inbox" detail="A single triage view for new work. Opening an item moves staff into the owning project workspace." />
+      <section className="inbox-sources">
+        <button onClick={() => onNavigate('lifesteal-queue')} type="button"><span className="project-icon green"><Gamepad2 size={18} /></span><span><strong>Lifesteal</strong><small>{active.length} open</small></span></button>
+        <button onClick={() => onNavigate('general-inbox')} type="button"><span className="project-icon blue"><Headphones size={18} /></span><span><strong>General Support</strong><small>Backend pending</small></span></button>
+        <button onClick={() => onNavigate('valorant-inbox')} type="button"><span className="project-icon red"><Crosshair size={18} /></span><span><strong>Valorant</strong><small>Workflows staged</small></span></button>
+      </section>
+      <section className="unified-list">
+        <header><span>Workspace</span><span>Submission</span><span>Owner</span><span>Status</span><span>Received</span></header>
+        {active.map((item) => (
+          <button key={item.id} onClick={() => onNavigate('lifesteal-queue')} type="button">
+            <span className="workspace-tag"><Gamepad2 size={14} />Lifesteal</span>
+            <span><strong>{item.title}</strong><small>{item.minecraft} · {item.id}</small></span>
+            <span>{item.claimedBy ?? 'Unclaimed'}</span>
+            <StatusPill status={item.status} />
+            <time>{item.submitted}</time>
+          </button>
+        ))}
+      </section>
+    </main>
+  )
+}
+
+function StaffAccessPage() {
+  const staff = [
+    { name: 'PrimeLuigi', discord: '@primeluigi', role: 'Owner', scopes: ['Global', 'Lifesteal', 'General', 'Valorant'], state: 'Active' },
+    { name: 'TlzMax5454', discord: '@tlzmax5454', role: 'SHD Team', scopes: ['Lifesteal'], state: 'Active' },
+    { name: 'xvoidism', discord: '@voidism', role: 'SHD Team', scopes: ['Lifesteal'], state: 'Active' },
+  ]
+  return (
+    <main className="page-workspace">
+      <PageHeader eyebrow="Authorization" title="Staff & Access" detail="Discord remains the identity source; the admin portal translates guild roles into explicit workspace permissions." action={<button className="page-action" type="button"><UserCheck size={16} />Invite staff</button>} />
+      <section className="permission-summary">
+        <article><KeyRound size={19} /><strong>Discord OAuth</strong><p>One login for the complete SHD admin surface.</p></article>
+        <article><ShieldCheck size={19} /><strong>Scoped permissions</strong><p>Staff only see workspaces granted by their roles.</p></article>
+        <article><Activity size={19} /><strong>Audited actions</strong><p>Claims, decisions, messages, and access changes are recorded.</p></article>
+      </section>
+      <section className="staff-table">
+        <header><span>Staff member</span><span>Portal role</span><span>Workspace access</span><span>Status</span></header>
+        {staff.map((member) => (
+          <article key={member.name}>
+            <span className="staff-identity"><span className="avatar">{member.name.slice(0, 2).toUpperCase()}</span><span><strong>{member.name}</strong><small>{member.discord}</small></span></span>
+            <strong>{member.role}</strong>
+            <span className="scope-list">{member.scopes.map((scope) => <small key={scope}>{scope}</small>)}</span>
+            <span className="health-label"><CheckCircle2 size={14} />{member.state}</span>
+          </article>
+        ))}
+      </section>
+    </main>
+  )
+}
+
+function IntegrationsPage() {
+  const integrations = [
+    { name: 'Lifesteal Bot', scope: 'Lifesteal Discord guild', detail: 'Tickets, role sync, approvals, roster state, and Minecraft actions.', state: 'Online', icon: Gamepad2, live: true },
+    { name: 'SHD Bot', scope: 'General + Valorant Discord guild', detail: 'Future general support, Valorant reports, appeals, and staff notifications.', state: 'Backend pending', icon: Headphones, live: false },
+    { name: 'Shared Admin API', scope: 'All workspaces', detail: 'Central authorization, review state, audit events, and action dispatch.', state: 'Planned', icon: Network, live: false },
+    { name: 'Support Portal', scope: 'Public intake', detail: 'Minecraft forms are ready to feed the shared review platform.', state: 'Online', icon: LifeBuoy, live: true },
+  ]
+  return (
+    <main className="page-workspace">
+      <PageHeader eyebrow="Platform" title="Integrations" detail="Two guild bots can stay independent while one admin backend owns authorization, review state, and cross-project actions." action={<button className="page-action secondary" type="button"><Settings2 size={16} />Configuration</button>} />
+      <section className="integration-grid">
+        {integrations.map(({ name, scope, detail, state, icon: Icon, live }) => (
+          <article key={name}>
+            <header><span className="integration-icon"><Icon size={20} /></span><span className={`service-state ${live ? 'live' : ''}`}><span />{state}</span></header>
+            <span className="eyebrow">{scope}</span>
+            <h2>{name}</h2>
+            <p>{detail}</p>
+            <footer><span>Secrets isolated per service</span><button aria-label={`Configure ${name}`} title="Configure" type="button"><Settings2 size={16} /></button></footer>
+          </article>
+        ))}
+      </section>
+      <article className="architecture-strip">
+        <span><CircleUserRound size={18} /><strong>Discord OAuth</strong></span>
+        <i />
+        <span><Building2 size={18} /><strong>Admin API</strong></span>
+        <i />
+        <span><Bot size={18} /><strong>Two guild bots</strong></span>
+        <i />
+        <span><Activity size={18} /><strong>Live ticket updates</strong></span>
+      </article>
+    </main>
+  )
+}
+
+function ProjectOverviewPage({ project, onOpenInbox }: { project: 'General Support' | 'Valorant'; onOpenInbox: () => void }) {
+  const general = project === 'General Support'
+  const Icon = general ? Headphones : Crosshair
+  return (
+    <main className="page-workspace">
+      <PageHeader
+        eyebrow={`${project} Workspace`}
+        title={project}
+        detail={general
+          ? 'The home for community questions and SHD-wide support that does not belong to a game-specific workflow.'
+          : 'A dedicated operational surface for competitive team support, reports, appeals, and future event workflows.'}
+        action={<button className="page-action" onClick={onOpenInbox} type="button"><Inbox size={16} />Open inbox</button>}
+      />
+      <section className="project-hero-panel">
+        <span className={`project-icon ${general ? 'blue' : 'red'}`}><Icon size={24} /></span>
+        <div><span className="eyebrow">Frontend workspace ready</span><h2>Clear boundary, shared platform.</h2><p>This workspace will use the same login, staff permissions, review state, and audit system without coupling its Discord bot to Lifesteal.</p></div>
+      </section>
+      <section className="permission-summary">
+        <article><Inbox size={19} /><strong>Intake queue</strong><p>{general ? 'General support requests and account questions.' : 'Reports, appeals, and competitive support.'}</p></article>
+        <article><Bot size={19} /><strong>Guild bot</strong><p>Discord ticket updates remain native to the owning community.</p></article>
+        <article><Activity size={19} /><strong>Shared audit</strong><p>Every staff action still appears in the global accountability trail.</p></article>
+      </section>
+    </main>
+  )
+}
+
+function WorkspaceInboxPage({ project }: { project: 'General Support' | 'Valorant' }) {
+  const general = project === 'General Support'
+  return (
+    <main className="page-workspace">
+      <PageHeader eyebrow={`${project} Workspace`} title="Support Inbox" detail={`The ${project} review queue is structurally ready for its backend intake and Discord ticket bridge.`} />
+      <section className="empty-workspace">
+        <span className={`project-icon ${general ? 'blue' : 'red'}`}>{general ? <Headphones size={22} /> : <Crosshair size={22} />}</span>
+        <span className="eyebrow">No live source connected</span>
+        <h2>Queue ready for real submissions.</h2>
+        <p>The frontend intentionally stays empty until the shared admin API and the second guild bot are connected.</p>
+      </section>
+    </main>
+  )
+}
+
+function MetricCard({ label, value, detail, icon }: { label: string; value: string; detail: string; icon: ReactNode }) {
+  return <article className="metric-card"><div><span>{label}</span>{icon}</div><strong>{value}</strong><p>{detail}</p></article>
+}
+
+function LifestealOverviewPage({ submissions, onNavigate }: { submissions: Submission[]; onNavigate: (view: AdminView) => void }) {
+  const open = submissions.filter((item) => !['Approved', 'Denied'].includes(item.status)).length
+  const unclaimed = submissions.filter((item) => !item.claimedBy && !['Approved', 'Denied'].includes(item.status)).length
+  const highPriority = submissions.filter((item) => item.priority === 'High' && !['Approved', 'Denied'].includes(item.status)).length
+  const metrics = [
+    { label: 'Open reviews', value: String(open), detail: 'Across every Minecraft workflow', icon: Inbox },
+    { label: 'Unclaimed', value: String(unclaimed), detail: 'Waiting for a staff owner', icon: UserRoundSearch },
+    { label: 'High priority', value: String(highPriority), detail: 'Appeals or reports needing attention', icon: FileWarning },
+    { label: 'Bot bridge', value: 'Online', detail: 'Last staff sync 18 seconds ago', icon: Activity },
+  ]
+  return (
+    <main className="page-workspace">
+      <PageHeader eyebrow="Lifesteal Operations" title="Overview" detail="Minecraft reviews, player access, service health, and staff activity." />
+      <section className="metric-grid">
+        {metrics.map(({ label, value, detail, icon: Icon }) => (
+          <article className="metric-card" key={label}>
+            <div><span>{label}</span><Icon size={18} /></div>
+            <strong>{value}</strong>
+            <p>{detail}</p>
+          </article>
+        ))}
+      </section>
+      <section className="overview-grid">
+        <article className="dashboard-panel">
+          <header><div><span className="eyebrow">Workload</span><h2>Queue Breakdown</h2></div><button onClick={() => onNavigate('lifesteal-queue')} type="button">Open queue</button></header>
+          <div className="queue-breakdown">
+            {(['Application', 'Appeal', 'Player Report', 'Support'] as SubmissionType[]).map((type) => {
+              const count = submissions.filter((item) => item.type === type && !['Approved', 'Denied'].includes(item.status)).length
+              const total = Math.max(1, submissions.filter((item) => item.type === type).length)
+              return (
+                <div key={type}>
+                  <div><strong>{type}</strong><span>{count} open</span></div>
+                  <div className="progress-track"><i style={{ width: `${Math.max(8, count / total * 100)}%` }} /></div>
+                </div>
+              )
+            })}
+          </div>
+        </article>
+        <article className="dashboard-panel">
+          <header><div><span className="eyebrow">Integrations</span><h2>System Health</h2></div><span className="health-label"><CheckCircle2 size={14} />Healthy</span></header>
+          <div className="health-list">
+            <HealthRow label="Discord bot" detail="Connected to SHD guild" status="Online" />
+            <HealthRow label="Support API" detail="Public intake responding" status="Online" />
+            <HealthRow label="Minecraft bridge" detail="Last gameplay sync 32s ago" status="Online" />
+            <HealthRow label="Admin storage" detail="Frontend prototype data" status="Mock" muted />
+          </div>
+        </article>
+        <article className="dashboard-panel wide">
+          <header><div><span className="eyebrow">Recent</span><h2>Review Activity</h2></div><button onClick={() => onNavigate('global-audit')} type="button">Full audit</button></header>
+          <div className="compact-activity">
+            <ActivityRow actor="PrimeLuigi" action="approved application" target="SHD-APP-7UZ5CY" time="Yesterday, 21:14" />
+            <ActivityRow actor="TlzMax5454" action="claimed appeal" target="SHD-APL-3JD91P" time="15:03" />
+            <ActivityRow actor="Discord Bot" action="retried whitelist sync" target="NovaForge" time="14:19" />
+            <ActivityRow actor="Support Portal" action="received private report" target="SHD-RPT-M4Q7VN" time="14:35" />
+          </div>
+        </article>
+      </section>
+    </main>
+  )
+}
+
+const players = [
+  { minecraft: 'PrimeLuigi', discord: 'primeluigi', badge: 'Owner', status: 'Whitelisted', hearts: '10', risk: 'Low', updated: '2 min ago' },
+  { minecraft: 'TlzMax5454', discord: 'tlzmax5454', badge: 'SHD Team', status: 'Whitelisted', hearts: '10', risk: 'Low', updated: '8 min ago' },
+  { minecraft: 'xvoidism', discord: 'voidism', badge: 'SHD Team', status: 'Whitelisted', hearts: '10', risk: 'Low', updated: '12 min ago' },
+  { minecraft: 'RiverBytes', discord: 'riverbytes', badge: 'Player', status: 'Registered', hearts: '10', risk: 'Low', updated: 'Yesterday' },
+  { minecraft: 'NorthStarMC', discord: 'northstar.', badge: 'Player', status: 'Banned', hearts: '-', risk: 'High', updated: '24 min ago' },
+]
+
+function PlayersPage() {
+  const [query, setQuery] = useState('')
+  const [status, setStatus] = useState('All')
+  const visible = players.filter((player) => {
+    const matchesQuery = !query.trim() || [player.minecraft, player.discord].some((value) => value.toLowerCase().includes(query.toLowerCase()))
+    return matchesQuery && (status === 'All' || player.status === status)
+  })
+  return (
+    <main className="page-workspace">
+      <PageHeader eyebrow="Identity & Access" title="Players" detail="Inspect linked accounts, public state, access status, and risk signals." action={<button className="page-action" type="button"><UserCheck size={16} />Link player</button>} />
+      <section className="table-toolbar">
+        <label className="search-field"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Minecraft or Discord" /></label>
+        <div className="segmented-control">
+          {['All', 'Whitelisted', 'Registered', 'Banned'].map((item) => <button className={status === item ? 'active' : ''} onClick={() => setStatus(item)} type="button" key={item}>{item}</button>)}
+        </div>
+      </section>
+      <section className="data-table players-table">
+        <div className="table-head"><span>Player</span><span>Badge</span><span>Status</span><span>Hearts</span><span>Risk</span><span>Updated</span><span /></div>
+        {visible.map((player) => (
+          <article className="table-row" key={player.minecraft}>
+            <div className="player-cell"><div className="player-avatar small">{player.minecraft.slice(0, 2).toUpperCase()}</div><div><strong>{player.minecraft}</strong><span>@{player.discord}</span></div></div>
+            <span className="badge-label">{player.badge}</span>
+            <span className={`access-status ${player.status.toLowerCase()}`}>{player.status}</span>
+            <strong>{player.hearts}</strong>
+            <span className={`risk-label ${player.risk.toLowerCase()}`}>{player.risk}</span>
+            <span className="muted">{player.updated}</span>
+            <button aria-label={`Open ${player.minecraft}`} title="Open player" type="button"><ExternalLink size={16} /></button>
+          </article>
+        ))}
+        {visible.length === 0 && <div className="empty-state"><Users /><strong>No matching players</strong></div>}
+      </section>
+    </main>
+  )
+}
+
+function AuditPage({ submissions }: { submissions: Submission[] }) {
+  const [scope, setScope] = useState('All')
+  const events = [
+    { actor: 'PrimeLuigi', type: 'Review', action: 'Approved application and enabled public status', target: 'SHD-APP-7UZ5CY', time: 'Yesterday, 21:14', result: 'Success' },
+    { actor: 'TlzMax5454', type: 'Review', action: 'Claimed appeal review', target: 'SHD-APL-3JD91P', time: '15:03', result: 'Success' },
+    { actor: 'Discord Bot', type: 'Integration', action: 'Posted staff request to linked ticket', target: 'SHD-SUP-T2PX6A', time: '14:19', result: 'Success' },
+    { actor: 'Minecraft Bridge', type: 'Integration', action: 'Whitelist synchronization failed', target: 'NovaForge', time: '14:07', result: 'Warning' },
+    { actor: 'Support Portal', type: 'Submission', action: 'Received private player report', target: 'SHD-RPT-M4Q7VN', time: '14:35', result: 'Success' },
+    { actor: 'System', type: 'Security', action: 'Rejected expired rules acknowledgement key', target: 'Public API', time: '13:48', result: 'Blocked' },
+  ]
+  const visible = events.filter((event) => scope === 'All' || event.type === scope)
+  return (
+    <main className="page-workspace">
+      <PageHeader eyebrow="Accountability" title="Audit Log" detail={`${submissions.length} seeded submissions and the recent actions surrounding them.`} action={<button className="page-action secondary" type="button"><ExternalLink size={16} />Export</button>} />
+      <section className="audit-summary">
+        <Fact label="Events today" value="28" />
+        <Fact label="Staff actions" value="11" />
+        <Fact label="Integration events" value="14" />
+        <Fact label="Warnings" value="3" />
+      </section>
+      <section className="table-toolbar">
+        <div className="segmented-control">
+          {['All', 'Review', 'Submission', 'Integration', 'Security'].map((item) => <button className={scope === item ? 'active' : ''} onClick={() => setScope(item)} type="button" key={item}>{item}</button>)}
+        </div>
+      </section>
+      <section className="audit-list">
+        {visible.map((event, index) => (
+          <article key={`${event.time}-${index}`}>
+            <span className={`audit-result ${event.result.toLowerCase()}`}><Activity size={15} /></span>
+            <div><strong>{event.action}</strong><p><b>{event.actor}</b> · {event.target}</p></div>
+            <span className="audit-type">{event.type}</span>
+            <time>{event.time}</time>
+          </article>
+        ))}
+      </section>
+    </main>
+  )
+}
+
+function PageHeader({ action, detail, eyebrow, title }: { action?: ReactNode; detail: string; eyebrow: string; title: string }) {
+  return <header className="page-header"><div><span className="eyebrow">{eyebrow}</span><h1>{title}</h1><p>{detail}</p></div>{action}</header>
+}
+
+function HealthRow({ detail, label, muted = false, status }: { detail: string; label: string; muted?: boolean; status: string }) {
+  return <div><span className={`health-dot ${muted ? 'muted' : ''}`} /><div><strong>{label}</strong><p>{detail}</p></div><b>{status}</b></div>
+}
+
+function ActivityRow({ actor, action, target, time }: { actor: string; action: string; target: string; time: string }) {
+  return <div><div className="activity-icon"><Activity size={14} /></div><p><strong>{actor}</strong> {action} <b>{target}</b></p><time>{time}</time></div>
+}
+
+function QueueItem({ submission, active, onSelect }: { submission: Submission; active: boolean; onSelect: () => void }) {
+  const Icon = typeIcons[submission.type]
+  return (
+    <button className={`queue-item ${active ? 'active' : ''}`} onClick={onSelect} type="button">
+      <span className={`type-icon ${submission.type.toLowerCase().replace(' ', '-')}`}><Icon size={17} /></span>
+      <span className="queue-copy">
+        <span className="queue-topline"><strong>{submission.minecraft}</strong><time>{submission.submitted}</time></span>
+        <span className="queue-title">{submission.title}</span>
+        <span className="queue-meta">{submission.id} · {submission.type}</span>
+      </span>
+      {submission.priority === 'High' && <span className="priority-dot" title="High priority" />}
+      <StatusPill status={submission.status} />
+    </button>
+  )
+}
+
+function ReviewHeader({ staffName, submission, onBack, onClaim, onDecide }: {
+  staffName: string
+  submission: Submission
+  onBack: () => void
+  onClaim: () => void
+  onDecide: (status: SubmissionStatus, body: string) => void
+}) {
+  const owned = submission.claimedBy === staffName
+  const decided = ['Approved', 'Denied'].includes(submission.status)
+  return (
+    <header className="review-header">
+      <div>
+        <button className="back-button" aria-label="Back to queue" onClick={onBack} type="button"><ArrowLeft size={17} /></button>
+        <div><span className="eyebrow">{submission.type}</span><strong>{submission.id}</strong></div>
+      </div>
+      <div className="review-actions">
+        {!submission.claimedBy && <button className="claim-button" onClick={onClaim} type="button"><UserRoundSearch size={16} />Claim</button>}
+        {submission.claimedBy && !owned && <span className="claimed-label"><LockKeyhole size={14} />{submission.claimedBy}</span>}
+        {owned && !decided && (
+          <>
+            <button className="icon-action request" onClick={() => onDecide('Waiting on player', 'Staff requested more information in Discord.')} title="Request information" type="button"><MessageSquareText size={17} /></button>
+            <button className="icon-action deny" onClick={() => onDecide('Denied', 'Submission denied from the admin portal.')} title="Deny" type="button"><XCircle size={18} /></button>
+            <button className="approve-button" onClick={() => onDecide('Approved', 'Submission approved from the admin portal.')} type="button"><Check size={17} />Approve</button>
+          </>
+        )}
+      </div>
+    </header>
+  )
+}
+
+function Fact({ label, value }: { label: string; value: string }) {
+  return <div><span>{label}</span><strong>{value}</strong></div>
+}
+
+function StatusPill({ status }: { status: SubmissionStatus }) {
+  const Icon = status === 'Approved' ? CheckCircle2 : status === 'Denied' ? XCircle : status === 'Waiting on player' ? MessageSquareText : status === 'In review' ? UserRoundSearch : Clock3
+  return <span className={`status-pill ${status.toLowerCase().replaceAll(' ', '-')}`}><Icon size={12} />{status}</span>
+}
+
+const root = import.meta.hot?.data.root ?? createRoot(document.getElementById('root')!)
+if (import.meta.hot) import.meta.hot.data.root = root
+root.render(<App />)

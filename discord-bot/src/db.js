@@ -18,6 +18,7 @@ const initialState = {
   signup_answers: [],
   support_rule_acknowledgements: [],
   support_applications: [],
+  support_submissions: [],
   appeals: [],
   staff_notes: [],
   shared_ip_exceptions: [],
@@ -50,6 +51,7 @@ const initialState = {
   nextAppealId: 1,
   nextSupportRuleAckId: 1,
   nextSupportApplicationId: 1,
+  nextSupportSubmissionId: 1,
   nextNoteId: 1,
   nextTicketId: 1
 };
@@ -515,6 +517,53 @@ export const statements = {
       application.review_reason = row.reason;
       persist();
       return application;
+    }
+  },
+  createSupportSubmission: {
+    run(row) {
+      const submission = {
+        id: state.nextSupportSubmissionId++,
+        code: row.code,
+        project: row.project,
+        game: row.game,
+        form_type: row.formType,
+        discord_username: row.discordUsername,
+        minecraft_name: row.minecraftName ?? null,
+        subject_name: row.subjectName ?? null,
+        category: row.category,
+        summary: row.summary,
+        answers: row.answers,
+        requires_ticket: Boolean(row.requiresTicket),
+        status: 'submitted',
+        created_at: row.createdAt,
+        ticket_thread_id: null,
+        claimed_by: null,
+        claimed_at: null,
+        reviewed_at: null,
+        reviewed_by: null,
+        review_reason: null
+      };
+      state.support_submissions.push(submission);
+      persist();
+      return submission;
+    }
+  },
+  findSupportSubmissionByCode: {
+    get(code) {
+      return state.support_submissions.find((row) => row.code === code) ?? null;
+    }
+  },
+  findOpenSupportSubmission: {
+    get({ formType, discordUsername, minecraftName, subjectName }) {
+      const normalizedDiscord = String(discordUsername ?? '').trim().replace(/^@/, '').toLowerCase();
+      const normalizedMinecraft = String(minecraftName ?? '').trim().toLowerCase();
+      const normalizedSubject = String(subjectName ?? '').trim().toLowerCase();
+      return state.support_submissions.find((row) => {
+        if (row.form_type !== formType || !['submitted', 'ticket_verified', 'in_review'].includes(row.status)) return false;
+        if (normalizedDiscord && String(row.discord_username ?? '').trim().replace(/^@/, '').toLowerCase() === normalizedDiscord) return true;
+        if (normalizedMinecraft && String(row.minecraft_name ?? '').trim().toLowerCase() === normalizedMinecraft) return true;
+        return normalizedSubject && String(row.subject_name ?? '').trim().toLowerCase() === normalizedSubject;
+      }) ?? null;
     }
   },
   createAppeal: {
