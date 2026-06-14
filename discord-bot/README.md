@@ -104,6 +104,8 @@ Sessions use signed HTTP-only cookies. The API checks current guild membership a
 
 `POST /api/v1/admin/submissions/:code/claim` provides exclusive review ownership. Application claims reuse the linked Discord ticket claim, while other support records use their own atomic claim state. Repeated claims by the same staff member are idempotent; competing staff receive HTTP `409` with the current owner.
 
+`GET /api/v1/admin/bootstrap` powers the global operations overview with live open/unclaimed workload, high-priority reports, active linked-player totals, authorized staff access, project readiness, service state, Minecraft sync health, and recent meaningful audit activity. Repetitive gameplay-sync events are suppressed when more useful staff or intake events exist.
+
 ## Minecraft RCON
 
 In `server.properties`:
