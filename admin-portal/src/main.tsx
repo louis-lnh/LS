@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
   Activity,
@@ -25,6 +25,10 @@ import {
   Menu,
   MessageSquareText,
   Network,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
   Search,
   Send,
   Settings2,
@@ -37,6 +41,7 @@ import {
 } from 'lucide-react'
 import './styles.css'
 import logo from './assets/shd-logo-no-text.png'
+import logoWithText from './assets/shd-logo.png'
 import {
   adminDemoMode,
   AdminApiError,
@@ -343,7 +348,7 @@ function LoginScreen({ authError, onSignIn }: { authError: string | null; onSign
   return (
     <main className="login-shell">
       <section className="login-panel">
-        <img src={logo} alt="SHD" />
+        <img className="login-wordmark" src={logoWithText} alt="SHD" />
         <span className="eyebrow">SHD Internal</span>
         <h1>Staff Review</h1>
         <p>Use your Discord staff identity to access applications, appeals, reports, and support requests.</p>
@@ -373,6 +378,10 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
   const [claimError, setClaimError] = useState('')
   const [overview, setOverview] = useState<AdminOverview | null>(null)
   const [overviewState, setOverviewState] = useState<'loading' | 'ready' | 'error'>(adminDemoMode ? 'ready' : 'loading')
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('shd-admin-sidebar') === 'collapsed')
+  const [queueWidth, setQueueWidth] = useState(() => Number(localStorage.getItem('shd-admin-queue-width')) || 352)
+  const [activityWidth, setActivityWidth] = useState(() => Number(localStorage.getItem('shd-admin-activity-width')) || 320)
+  const [activityVisible, setActivityVisible] = useState(() => localStorage.getItem('shd-admin-activity') !== 'hidden')
   const [view, setView] = useState<AdminView>(() => viewFromPath())
   const [selectedId, setSelectedId] = useState(adminDemoMode ? seedSubmissions[0].id : '')
   const [filter, setFilter] = useState<'All' | SubmissionType>('All')
@@ -382,6 +391,10 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
   const [mobileDetail, setMobileDetail] = useState(false)
   const workspace = workspaceFromView(view)
   const reviewerName = user.displayName
+  const workspaceStyle = {
+    '--queue-width': `${queueWidth}px`,
+    '--activity-width': `${activityWidth}px`,
+  } as CSSProperties
 
   useEffect(() => {
     if (user.workspaces.includes(workspace)) return
@@ -426,6 +439,51 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
     setView(nextView)
     setMobileDetail(false)
     setMobileNav(false)
+  }
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed((collapsed) => {
+      const next = !collapsed
+      localStorage.setItem('shd-admin-sidebar', next ? 'collapsed' : 'expanded')
+      return next
+    })
+  }
+
+  const toggleActivity = () => {
+    setActivityVisible((visible) => {
+      const next = !visible
+      localStorage.setItem('shd-admin-activity', next ? 'visible' : 'hidden')
+      return next
+    })
+  }
+
+  const startResize = (pane: 'queue' | 'activity', event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (window.innerWidth <= 900) return
+    event.preventDefault()
+    const startX = event.clientX
+    const startWidth = pane === 'queue' ? queueWidth : activityWidth
+    document.body.classList.add('resizing-layout')
+
+    const move = (moveEvent: PointerEvent) => {
+      const delta = moveEvent.clientX - startX
+      const next = pane === 'queue'
+        ? Math.min(520, Math.max(280, startWidth + delta))
+        : Math.min(460, Math.max(260, startWidth - delta))
+      if (pane === 'queue') setQueueWidth(next)
+      else setActivityWidth(next)
+    }
+    const stop = (upEvent: PointerEvent) => {
+      const delta = upEvent.clientX - startX
+      const next = pane === 'queue'
+        ? Math.min(520, Math.max(280, startWidth + delta))
+        : Math.min(460, Math.max(260, startWidth - delta))
+      localStorage.setItem(pane === 'queue' ? 'shd-admin-queue-width' : 'shd-admin-activity-width', String(next))
+      document.body.classList.remove('resizing-layout')
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', stop)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', stop)
   }
 
   const selected = submissions.find((submission) => submission.id === selectedId) ?? submissions[0]
@@ -507,8 +565,8 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
   }
 
   return (
-    <div className="admin-shell">
-      <Sidebar active={view} workspace={workspace} user={user} mobileOpen={mobileNav} onClose={() => setMobileNav(false)} onNavigate={navigate} onSignOut={onSignOut} />
+    <div className={`admin-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+      <Sidebar active={view} collapsed={sidebarCollapsed} workspace={workspace} user={user} mobileOpen={mobileNav} onClose={() => setMobileNav(false)} onNavigate={navigate} onSignOut={onSignOut} onToggleCollapse={toggleSidebar} />
       <header className="mobile-header">
         <button aria-label="Open navigation" onClick={() => setMobileNav(true)} type="button"><Menu /></button>
         <span>{workspace === 'global' ? 'SHD Admin' : workspace}</span>
@@ -525,7 +583,7 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
       {view === 'general-inbox' && <WorkspaceInboxPage project="General Support" />}
       {view === 'valorant-overview' && <ProjectOverviewPage project="Valorant" onOpenInbox={() => navigate('valorant-inbox')} />}
       {view === 'valorant-inbox' && <WorkspaceInboxPage project="Valorant" />}
-      {['lifesteal-queue', 'lifesteal-applications', 'lifesteal-appeals', 'lifesteal-reports', 'lifesteal-support'].includes(view) && <main className={`workspace ${mobileDetail ? 'show-detail' : ''}`}>
+      {['lifesteal-queue', 'lifesteal-applications', 'lifesteal-appeals', 'lifesteal-reports', 'lifesteal-support'].includes(view) && <main className={`workspace ${mobileDetail ? 'show-detail' : ''} ${activityVisible ? '' : 'activity-hidden'}`} style={workspaceStyle}>
         <section className="queue-pane">
           <header className="queue-header">
             <div>
@@ -563,8 +621,9 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
             {submissionState === 'ready' && visible.length === 0 && <div className="empty-state"><Inbox /><strong>No matching submissions</strong></div>}
           </div>
         </section>
+        <button className="pane-resizer queue-resizer" aria-label="Resize submission queue" onPointerDown={(event) => startResize('queue', event)} type="button"><span /></button>
         {selected ? <><section className="review-pane">
-          <ReviewHeader actionsLive={adminDemoMode} claimLoading={claimState === 'loading'} staffId={user.id} staffName={reviewerName} submission={selected} onBack={() => setMobileDetail(false)} onClaim={claim} onDecide={decide} />
+          <ReviewHeader actionsLive={adminDemoMode} activityVisible={activityVisible} claimLoading={claimState === 'loading'} staffId={user.id} staffName={reviewerName} submission={selected} onBack={() => setMobileDetail(false)} onClaim={claim} onDecide={decide} onToggleActivity={toggleActivity} />
           {claimError && <div className="review-alert"><FileWarning size={15} /><span>{claimError}</span><button aria-label="Dismiss claim error" onClick={() => setClaimError('')} type="button"><X size={14} /></button></div>}
           <div className="review-scroll">
             <section className="review-overview">
@@ -594,7 +653,7 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
                 ))}
               </dl>
             </section>
-            <section className="content-section">
+            <section className="content-section staff-notes-section">
               <div className="section-heading">
                 <div><span className="eyebrow">Internal</span><h2>Staff Notes</h2></div>
                 <span className="count-label">{selected.notes.length}</span>
@@ -614,7 +673,8 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
             </section>
           </div>
         </section>
-        <aside className="activity-pane">
+        {activityVisible && <button className="pane-resizer activity-resizer" aria-label="Resize ticket activity" onPointerDown={(event) => startResize('activity', event)} type="button"><span /></button>}
+        {activityVisible && <aside className="activity-pane">
           <header>
             <div><span className="eyebrow">Discord Context</span><h2>Ticket Activity</h2></div>
             <button aria-label="Open in Discord" title="Open in Discord" type="button"><ExternalLink size={17} /></button>
@@ -634,20 +694,22 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
             <textarea disabled={!adminDemoMode} placeholder="Request information from the player..." />
             <button disabled={!adminDemoMode} type="button"><Send size={16} /> Send to Discord</button>
           </div>
-        </aside></> : <section className="review-pane empty-review"><Inbox /><strong>Select a submission</strong><p>Review details will appear here.</p></section>}
+        </aside>}</> : <section className="review-pane empty-review"><Inbox /><strong>Select a submission</strong><p>Review details will appear here.</p></section>}
       </main>}
     </div>
   )
 }
 
-function Sidebar({ active, workspace, user, mobileOpen, onClose, onNavigate, onSignOut }: {
+function Sidebar({ active, collapsed, workspace, user, mobileOpen, onClose, onNavigate, onSignOut, onToggleCollapse }: {
   active: AdminView
+  collapsed: boolean
   workspace: WorkspaceId
   user: AdminUser
   mobileOpen: boolean
   onClose: () => void
   onNavigate: (view: AdminView) => void
   onSignOut: () => void
+  onToggleCollapse: () => void
 }) {
   const [workspaceMenu, setWorkspaceMenu] = useState(false)
   const workspaces: Array<{ id: WorkspaceId; label: string; detail: string; icon: ReactNode; target: AdminView }> = [
@@ -670,7 +732,10 @@ function Sidebar({ active, workspace, user, mobileOpen, onClose, onNavigate, onS
       <aside className={`sidebar ${mobileOpen ? 'open' : ''}`}>
         <header className="brand">
           <img src={logo} alt="SHD" />
-          <div><strong>SHD Admin</strong><span>Internal tools</span></div>
+          <div className="brand-copy"><strong>SHD Admin</strong><span>Internal tools</span></div>
+          <button className="sidebar-collapse" aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} onClick={onToggleCollapse} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} type="button">
+            {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+          </button>
           <button className="mobile-close" aria-label="Close navigation" onClick={onClose} type="button"><X /></button>
         </header>
         <div className="workspace-switcher">
@@ -746,7 +811,7 @@ function NavButton({ active, badge, icon, label, onClick }: {
   label: string
   onClick: () => void
 }) {
-  return <button className={active ? 'active' : ''} onClick={onClick} type="button">{icon}{label}{badge && <span>{badge}</span>}</button>
+  return <button aria-label={label} className={active ? 'active' : ''} onClick={onClick} title={label} type="button">{icon}<span className="nav-label">{label}</span>{badge && <span className="nav-badge">{badge}</span>}</button>
 }
 
 function GlobalOverviewPage({ overview, state, submissions, onNavigate }: {
@@ -1182,8 +1247,9 @@ function QueueItem({ submission, active, onSelect }: { submission: Submission; a
   )
 }
 
-function ReviewHeader({ actionsLive, claimLoading, staffId, staffName, submission, onBack, onClaim, onDecide }: {
+function ReviewHeader({ actionsLive, activityVisible, claimLoading, staffId, staffName, submission, onBack, onClaim, onDecide, onToggleActivity }: {
   actionsLive: boolean
+  activityVisible: boolean
   claimLoading: boolean
   staffId: string
   staffName: string
@@ -1191,6 +1257,7 @@ function ReviewHeader({ actionsLive, claimLoading, staffId, staffName, submissio
   onBack: () => void
   onClaim: () => void
   onDecide: (status: SubmissionStatus, body: string) => void
+  onToggleActivity: () => void
 }) {
   const owned = submission.claimedById ? submission.claimedById === staffId : submission.claimedBy === staffName
   const decided = ['Approved', 'Denied'].includes(submission.status)
@@ -1201,6 +1268,9 @@ function ReviewHeader({ actionsLive, claimLoading, staffId, staffName, submissio
         <div><span className="eyebrow">{submission.type}</span><strong>{submission.id}</strong></div>
       </div>
       <div className="review-actions">
+        <button className="icon-action activity-toggle" aria-label={activityVisible ? 'Hide ticket activity' : 'Show ticket activity'} onClick={onToggleActivity} title={activityVisible ? 'Hide ticket activity' : 'Show ticket activity'} type="button">
+          {activityVisible ? <PanelRightClose size={17} /> : <PanelRightOpen size={17} />}
+        </button>
         {!submission.claimedBy && <button className="claim-button" disabled={claimLoading} onClick={onClaim} type="button"><UserRoundSearch size={16} />{claimLoading ? 'Claiming...' : 'Claim'}</button>}
         {submission.claimedBy && !owned && <span className="claimed-label"><LockKeyhole size={14} />{submission.claimedBy}</span>}
         {owned && !decided && (
