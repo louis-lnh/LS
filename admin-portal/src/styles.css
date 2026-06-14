@@ -312,6 +312,7 @@ a { color: inherit; text-decoration: none; }
 .unified-list > button > span:nth-child(2) strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.76rem; }
 .unified-list small, .unified-list time, .unified-list > button > span:nth-child(3) { color: var(--muted); font-size: 0.67rem; }
 .workspace-tag { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--green); font-size: 0.67rem; font-weight: 700; }
+.unified-list .status-pill { justify-self: start; align-self: center; width: max-content; }
 
 .permission-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.8rem; margin-top: 1rem; }
 .permission-summary article { min-height: 8.5rem; padding: 1rem; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
