@@ -34,6 +34,7 @@ import {
   Send,
   Settings2,
   ShieldCheck,
+  Trash2,
   UserCheck,
   UserRoundSearch,
   Users,
@@ -52,6 +53,8 @@ import {
   decideAdminSubmission,
   demoAdminUser,
   endAdminSession,
+  deleteAdminPlayer,
+  getAdminPlayers,
   getAdminSubmissions,
   getAdminOverview,
   getAdminSession,
@@ -59,8 +62,12 @@ import {
   getSubmissionTicketActivity,
   sendSubmissionTicketMessage,
   sendLifestealStaffChatMessage,
+  updateAdminPlayer,
   type AdminApiSubmission,
   type AdminOverview,
+  type AdminPlayer,
+  type AdminPlayerBadge,
+  type AdminPlayerStatus,
   type AdminUser,
   type StaffChatMessage,
   type TicketActivityMessage,
@@ -1409,44 +1416,172 @@ function LifestealOverviewPage({ submissions, onNavigate }: { submissions: Submi
   )
 }
 
-const players = [
-  { minecraft: 'PrimeLuigi', discord: 'primeluigi', badge: 'Owner', status: 'Whitelisted', hearts: '10', risk: 'Low', updated: '2 min ago' },
-  { minecraft: 'TlzMax5454', discord: 'tlzmax5454', badge: 'SHD Team', status: 'Whitelisted', hearts: '10', risk: 'Low', updated: '8 min ago' },
-  { minecraft: 'xvoidism', discord: 'voidism', badge: 'SHD Team', status: 'Whitelisted', hearts: '10', risk: 'Low', updated: '12 min ago' },
-  { minecraft: 'RiverBytes', discord: 'riverbytes', badge: 'Player', status: 'Registered', hearts: '10', risk: 'Low', updated: 'Yesterday' },
-  { minecraft: 'NorthStarMC', discord: 'northstar.', badge: 'Player', status: 'Banned', hearts: '-', risk: 'High', updated: '24 min ago' },
+const playerStatuses: AdminPlayerStatus[] = ['Whitelisted', 'Registered', 'Applied', 'Review', 'Banned', 'Denied']
+const editablePlayerStatuses: AdminPlayerStatus[] = ['Whitelisted', 'Registered', 'Review', 'Banned', 'Denied']
+const playerBadges: AdminPlayerBadge[] = ['Owner', 'Admin', 'Mod', 'SHD Team', 'Player']
+
+const players: AdminPlayer[] = [
+  { id: 'linked:demo-1', source: 'linked', discordId: 'demo-1', discord: 'primeluigi', minecraftUuid: null, minecraft: 'PrimeLuigi', badge: 'Owner', badgeValue: 'owner', status: 'Whitelisted', sourceStatus: 'active', hearts: 10, risk: 'low', updatedAt: Date.now() - 2 * 60_000, applicationCode: null, application: null },
+  { id: 'linked:demo-2', source: 'linked', discordId: 'demo-2', discord: 'tlzmax5454', minecraftUuid: null, minecraft: 'TlzMax5454', badge: 'SHD Team', badgeValue: 'shd-team', status: 'Whitelisted', sourceStatus: 'active', hearts: 10, risk: 'low', updatedAt: Date.now() - 8 * 60_000, applicationCode: null, application: null },
+  { id: 'linked:demo-3', source: 'linked', discordId: 'demo-3', discord: 'voidism', minecraftUuid: null, minecraft: 'xvoidism', badge: 'SHD Team', badgeValue: 'shd-team', status: 'Whitelisted', sourceStatus: 'active', hearts: 10, risk: 'low', updatedAt: Date.now() - 12 * 60_000, applicationCode: 'SHD-APP-K8F2QZ', application: seedSubmissions[0] ? { code: seedSubmissions[0].id, status: 'ticket_verified', discord: seedSubmissions[0].discord, minecraft: seedSubmissions[0].minecraft, createdAt: Date.now() - 25 * 60_000, verifiedAt: Date.now() - 20 * 60_000, ticketThreadId: null, summary: seedSubmissions[0].summary, fields: seedSubmissions[0].fields } : null },
+  { id: 'linked:demo-4', source: 'linked', discordId: 'demo-4', discord: 'riverbytes', minecraftUuid: null, minecraft: 'RiverBytes', badge: 'Player', badgeValue: 'player', status: 'Registered', sourceStatus: 'active', hearts: 10, risk: 'low', updatedAt: Date.now() - 24 * 60 * 60_000, applicationCode: 'SHD-APP-7UZ5CY', application: seedSubmissions[4] ? { code: seedSubmissions[4].id, status: 'approved', discord: seedSubmissions[4].discord, minecraft: seedSubmissions[4].minecraft, createdAt: Date.now() - 30 * 60 * 60_000, verifiedAt: Date.now() - 29 * 60 * 60_000, ticketThreadId: null, summary: seedSubmissions[4].summary, fields: seedSubmissions[4].fields } : null },
+  { id: 'application:SHD-APP-DEMO', source: 'application', discordId: null, discord: 'newplayer', minecraftUuid: null, minecraft: 'NewPlayer', badge: 'Player', badgeValue: 'player', status: 'Applied', sourceStatus: 'ticket_verified', hearts: null, risk: 'low', updatedAt: Date.now() - 36 * 60_000, applicationCode: 'SHD-APP-DEMO', application: { code: 'SHD-APP-DEMO', status: 'ticket_verified', discord: 'newplayer', minecraft: 'NewPlayer', createdAt: Date.now() - 42 * 60_000, verifiedAt: Date.now() - 36 * 60_000, ticketThreadId: null, summary: 'Demo application waiting for review.', fields: [{ label: 'Experience', value: 'Vanilla SMP and PvP practice.' }, { label: 'Motivation', value: 'Wants to join Season 1 with a small group.' }] } },
 ]
 
 function PlayersPage() {
+  const [items, setItems] = useState<AdminPlayer[]>(adminDemoMode ? players : [])
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('All')
-  const visible = players.filter((player) => {
+  const [state, setState] = useState<'loading' | 'ready' | 'error'>(adminDemoMode ? 'ready' : 'loading')
+  const [error, setError] = useState('')
+  const [selectedId, setSelectedId] = useState<string | null>(adminDemoMode ? players[0]?.id ?? null : null)
+  const [actionId, setActionId] = useState<string | null>(null)
+  const [timeNow, setTimeNow] = useState(Date.now())
+  const selected = items.find((player) => player.id === selectedId) ?? null
+
+  const loadPlayers = async (silent = false) => {
+    if (adminDemoMode) return
+    if (!silent) {
+      setState('loading')
+      setError('')
+    }
+    try {
+      const payload = await getAdminPlayers()
+      setItems(payload.players)
+      setSelectedId((current) => payload.players.some((player) => player.id === current) ? current : payload.players[0]?.id ?? null)
+      setState('ready')
+    } catch (loadError) {
+      setError(loadError instanceof AdminApiError ? loadError.message : 'Could not load players.')
+      setState('error')
+    }
+  }
+
+  useEffect(() => {
+    loadPlayers()
+    if (adminDemoMode) return
+    const timer = window.setInterval(() => loadPlayers(true), 12_000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setTimeNow(Date.now()), 30_000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  const replacePlayers = (next: AdminPlayer[]) => {
+    setItems(next)
+    setSelectedId((current) => next.some((player) => player.id === current) ? current : next[0]?.id ?? null)
+  }
+
+  const updatePlayer = async (player: AdminPlayer, patch: { status?: AdminPlayerStatus; badge?: AdminPlayerBadge }) => {
+    if (player.source === 'application' && patch.badge) return
+    setActionId(player.id)
+    setError('')
+    if (adminDemoMode) {
+      replacePlayers(items.map((item) => item.id === player.id ? { ...item, ...patch, updatedAt: Date.now() } : item))
+      setActionId(null)
+      return
+    }
+    try {
+      const payload = await updateAdminPlayer(player.id, patch)
+      replacePlayers(payload.players)
+    } catch (actionError) {
+      setError(actionError instanceof AdminApiError ? actionError.message : 'Could not update player.')
+    } finally {
+      setActionId(null)
+    }
+  }
+
+  const removePlayer = async (player: AdminPlayer) => {
+    const confirmed = window.confirm(`Remove ${player.minecraft} from the admin player list?`)
+    if (!confirmed) return
+    setActionId(player.id)
+    setError('')
+    if (adminDemoMode) {
+      replacePlayers(items.filter((item) => item.id !== player.id))
+      setActionId(null)
+      return
+    }
+    try {
+      const payload = await deleteAdminPlayer(player.id)
+      replacePlayers(payload.players)
+    } catch (actionError) {
+      setError(actionError instanceof AdminApiError ? actionError.message : 'Could not delete player.')
+    } finally {
+      setActionId(null)
+    }
+  }
+
+  const visible = items.filter((player) => {
     const matchesQuery = !query.trim() || [player.minecraft, player.discord].some((value) => value.toLowerCase().includes(query.toLowerCase()))
     return matchesQuery && (status === 'All' || player.status === status)
   })
   return (
     <main className="page-workspace">
-      <PageHeader eyebrow="Identity & Access" title="Players" detail="Inspect linked accounts, public state, access status, and risk signals." action={<button className="page-action" type="button"><UserCheck size={16} />Link player</button>} />
+      <PageHeader eyebrow="Identity & Access" title="Players" detail="Inspect linked accounts, public state, access status, and saved application context." action={<button className="page-action secondary" disabled={state === 'loading'} onClick={() => loadPlayers()} type="button"><RefreshCw size={16} />Refresh</button>} />
+      {error && <div className="operations-state error"><FileWarning size={16} /><span>{error}</span></div>}
       <section className="table-toolbar">
         <label className="search-field"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Minecraft or Discord" /></label>
         <div className="segmented-control">
-          {['All', 'Whitelisted', 'Registered', 'Banned'].map((item) => <button className={status === item ? 'active' : ''} onClick={() => setStatus(item)} type="button" key={item}>{item}</button>)}
+          {['All', ...playerStatuses].map((item) => <button className={status === item ? 'active' : ''} onClick={() => setStatus(item)} type="button" key={item}>{item}</button>)}
         </div>
       </section>
-      <section className="data-table players-table">
-        <div className="table-head"><span>Player</span><span>Badge</span><span>Status</span><span>Hearts</span><span>Risk</span><span>Updated</span><span /></div>
-        {visible.map((player) => (
-          <article className="table-row" key={player.minecraft}>
-            <div className="player-cell"><img className="player-avatar small" alt="" src={minecraftHeadUrl(player.minecraft)} /><div><strong>{player.minecraft}</strong><span>@{player.discord}</span></div></div>
-            <span className="badge-label">{player.badge}</span>
-            <span className={`access-status ${player.status.toLowerCase()}`}>{player.status}</span>
-            <strong>{player.hearts}</strong>
-            <span className={`risk-label ${player.risk.toLowerCase()}`}>{player.risk}</span>
-            <span className="muted">{player.updated}</span>
-            <button aria-label={`Open ${player.minecraft}`} title="Open player" type="button"><ExternalLink size={16} /></button>
-          </article>
-        ))}
-        {visible.length === 0 && <div className="empty-state"><Users /><strong>No matching players</strong></div>}
+      <section className="players-manager">
+        <div className="data-table players-table">
+          <div className="table-head"><span>Player</span><span>Badge</span><span>Status</span><span>Hearts</span><span>Risk</span><span>Updated</span><span /></div>
+          {state === 'loading' && visible.length === 0 && <div className="empty-state"><Activity /><strong>Loading players</strong></div>}
+          {visible.map((player) => (
+            <article className={`table-row ${selectedId === player.id ? 'selected' : ''}`} key={player.id}>
+              <button className="player-cell player-open" onClick={() => setSelectedId(player.id)} type="button"><img className="player-avatar small" alt="" src={minecraftHeadUrl(player.minecraft)} /><div><strong>{player.minecraft}</strong><span>@{player.discord}</span></div></button>
+              <label className="table-select">
+                <select disabled={player.source === 'application' || actionId === player.id} value={player.badge} onChange={(event) => updatePlayer(player, { badge: event.target.value as AdminPlayerBadge })}>
+                  {playerBadges.map((badge) => <option key={badge} value={badge}>{badge}</option>)}
+                </select>
+              </label>
+              <label className="table-select">
+                <select disabled={actionId === player.id} value={player.status} onChange={(event) => updatePlayer(player, { status: event.target.value as AdminPlayerStatus })}>
+                  {(player.source === 'application' ? ['Applied', 'Denied'] : editablePlayerStatuses).map((item) => <option key={item} value={item}>{item}</option>)}
+                </select>
+              </label>
+              <strong>{player.hearts ?? '-'}</strong>
+              <span className={`risk-label ${player.risk.toLowerCase()}`}>{player.risk}</span>
+              <span className="muted">{relativeTime(player.updatedAt, timeNow)}</span>
+              <div className="row-actions">
+                <button aria-label={`View ${player.minecraft} application`} disabled={!player.application} onClick={() => setSelectedId(player.id)} title={player.application ? 'View application' : 'No saved application'} type="button"><ExternalLink size={16} /></button>
+                <button aria-label={`Delete ${player.minecraft}`} disabled={actionId === player.id} onClick={() => removePlayer(player)} title="Delete player listing" type="button"><Trash2 size={16} /></button>
+              </div>
+            </article>
+          ))}
+          {state !== 'loading' && visible.length === 0 && <div className="empty-state"><Users /><strong>No matching players</strong></div>}
+        </div>
+        <aside className="player-detail-panel">
+          {selected ? (
+            <>
+              <header>
+                <img className="player-avatar" alt="" src={minecraftHeadUrl(selected.minecraft)} />
+                <div><span className="eyebrow">{selected.source === 'linked' ? 'Linked Player' : 'Applied Player'}</span><h2>{selected.minecraft}</h2><p>@{selected.discord}</p></div>
+              </header>
+              <div className="player-detail-facts">
+                <Fact label="Status" value={selected.status} />
+                <Fact label="Badge" value={selected.badge} />
+                <Fact label="Risk" value={selected.risk} />
+                <Fact label="Updated" value={relativeTime(selected.updatedAt, timeNow)} />
+              </div>
+              {selected.application ? (
+                <section className="player-application">
+                  <div><span className="eyebrow">Saved Application</span><strong>{selected.application.code}</strong><p>{selected.application.summary}</p></div>
+                  <div className="field-list compact">
+                    {selected.application.fields.map((field) => <div key={field.label}><span>{field.label}</span><strong>{field.value}</strong></div>)}
+                  </div>
+                </section>
+              ) : (
+                <div className="panel-empty"><FileWarning size={17} /><span>No saved application was found for this player.</span></div>
+              )}
+            </>
+          ) : (
+            <div className="panel-empty"><Users size={17} /><span>Select a player to view saved context.</span></div>
+          )}
+        </aside>
       </section>
     </main>
   )

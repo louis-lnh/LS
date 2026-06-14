@@ -95,7 +95,7 @@ function adminCors(req, res, next) {
     res.set('Vary', 'Origin');
   }
   res.set('Access-Control-Allow-Headers', 'Content-Type');
-  res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.set('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   return next();
 }
@@ -297,6 +297,146 @@ function adminSubmissionStatus(status, claimedBy) {
   if (status === 'approved_whitelist_pending' || status === 'waiting_on_player') return 'Waiting on player';
   if (status === 'in_review' || claimedBy) return 'In review';
   return 'New';
+}
+
+const adminPlayerStatusMap = new Map([
+  ['whitelisted', { label: 'Whitelisted', status: 'active', publicStatsOptIn: true, suspicious: 0 }],
+  ['registered', { label: 'Registered', status: 'active', publicStatsOptIn: false, suspicious: 0 }],
+  ['review', { label: 'Review', status: 'review', publicStatsOptIn: false, suspicious: 1 }],
+  ['banned', { label: 'Banned', status: 'banned', publicStatsOptIn: false, suspicious: 1 }],
+  ['denied', { label: 'Denied', status: 'denied', publicStatsOptIn: false, suspicious: 0 }]
+]);
+
+const adminPlayerBadgeMap = new Map([
+  ['owner', 'Owner'],
+  ['admin', 'Admin'],
+  ['mod', 'Mod'],
+  ['shd-team', 'SHD Team'],
+  ['player', 'Player']
+]);
+
+function normalizePlayerStatus(value) {
+  return adminPlayerStatusMap.get(String(value ?? '').trim().toLowerCase().replaceAll('_', '-').replaceAll(' ', '-')) ?? null;
+}
+
+function normalizePlayerBadge(value) {
+  const badge = String(value ?? '').trim().toLowerCase().replaceAll('_', '-').replaceAll(' ', '-');
+  return adminPlayerBadgeMap.has(badge) ? badge : null;
+}
+
+function playerStatusLabel(linked) {
+  const status = String(linked.status ?? '').toLowerCase();
+  if (status === 'banned') return 'Banned';
+  if (status === 'denied') return 'Denied';
+  if (status === 'review') return 'Review';
+  return linked.public_stats_opt_in ? 'Whitelisted' : 'Registered';
+}
+
+function playerBadgeLabel(role) {
+  return adminPlayerBadgeMap.get(String(role ?? 'player').trim().toLowerCase().replaceAll('_', '-').replaceAll(' ', '-')) ?? 'Player';
+}
+
+function latestApplicationForPlayer(applications, linked) {
+  const minecraft = String(linked.minecraft_name ?? '').trim().toLowerCase();
+  return applications
+    .filter((application) =>
+      (linked.discord_id && application.discord_id_verified === linked.discord_id) ||
+      (minecraft && String(application.minecraft_name ?? '').trim().toLowerCase() === minecraft)
+    )
+    .sort((left, right) => (right.created_at ?? 0) - (left.created_at ?? 0))[0] ?? null;
+}
+
+function serializePlayerApplication(application) {
+  if (!application) return null;
+  return {
+    code: application.code,
+    status: application.status,
+    discord: application.discord_username,
+    minecraft: application.minecraft_name,
+    createdAt: application.created_at,
+    verifiedAt: application.verified_at ?? null,
+    ticketThreadId: application.ticket_thread_id ?? null,
+    summary: application.answers?.motivation || 'Lifesteal application submitted through the support portal.',
+    fields: applicationFields(application)
+  };
+}
+
+function playerSnapshotByLinked(publicSnapshot, linked) {
+  const names = new Set([String(linked.minecraft_name ?? '').trim().toLowerCase()].filter(Boolean));
+  const uuids = new Set([String(linked.minecraft_uuid ?? '').trim().toLowerCase(), String(linked.minecraft_uuid ?? '').replaceAll('-', '').trim().toLowerCase()].filter(Boolean));
+  return (publicSnapshot.players ?? []).find((player) => {
+    const playerUuid = String(player.minecraft_uuid ?? '').trim().toLowerCase();
+    const playerName = String(player.name ?? '').trim().toLowerCase();
+    return names.has(playerName) || uuids.has(playerUuid) || uuids.has(playerUuid.replaceAll('-', ''));
+  }) ?? null;
+}
+
+function serializeLinkedPlayer(linked, applications, publicSnapshot) {
+  const application = latestApplicationForPlayer(applications, linked);
+  const gameplay = playerSnapshotByLinked(publicSnapshot, linked);
+  return {
+    id: `linked:${linked.discord_id}`,
+    source: 'linked',
+    discordId: linked.discord_id,
+    discord: linked.discord_username || linked.discord_id,
+    minecraftUuid: linked.minecraft_uuid,
+    minecraft: linked.minecraft_name || 'Unknown',
+    badge: playerBadgeLabel(linked.role),
+    badgeValue: String(linked.role ?? 'player').trim().toLowerCase().replaceAll('_', '-').replaceAll(' ', '-'),
+    status: playerStatusLabel(linked),
+    sourceStatus: linked.status,
+    hearts: gameplay?.hearts_current ?? gameplay?.hearts ?? null,
+    risk: linked.risk_band || (linked.suspicious ? 'high' : 'low'),
+    updatedAt: linked.roster_status_updated_at ?? linked.last_seen_at ?? linked.verified_at,
+    applicationCode: application?.code ?? null,
+    application: serializePlayerApplication(application)
+  };
+}
+
+function serializeAppliedPlayer(application) {
+  return {
+    id: `application:${application.code}`,
+    source: 'application',
+    discordId: application.discord_id_verified ?? application.discord_id_claimed ?? null,
+    discord: application.discord_username || 'Unknown',
+    minecraftUuid: null,
+    minecraft: application.minecraft_name || 'Unknown',
+    badge: 'Player',
+    badgeValue: 'player',
+    status: 'Applied',
+    sourceStatus: application.status,
+    hearts: null,
+    risk: 'low',
+    updatedAt: application.verified_at ?? application.created_at,
+    applicationCode: application.code,
+    application: serializePlayerApplication(application)
+  };
+}
+
+function buildAdminPlayers() {
+  const snapshot = statements.snapshot.get();
+  const applications = snapshot.support_applications ?? [];
+  const publicSnapshot = snapshot.public_lifesteal_snapshot ?? { players: [] };
+  const linked = (snapshot.linked_accounts ?? []).map((account) => serializeLinkedPlayer(account, applications, publicSnapshot));
+  const linkedNames = new Set(linked.map((player) => player.minecraft.trim().toLowerCase()));
+  const linkedDiscordIds = new Set(linked.map((player) => player.discordId).filter(Boolean));
+  const applied = applications
+    .filter((application) => ['submitted', 'ticket_verified', 'approved_whitelist_pending'].includes(application.status))
+    .filter((application) => !linkedNames.has(String(application.minecraft_name ?? '').trim().toLowerCase()))
+    .filter((application) => !application.discord_id_verified || !linkedDiscordIds.has(application.discord_id_verified))
+    .map(serializeAppliedPlayer);
+
+  const statusRank = { Whitelisted: 0, Registered: 1, Applied: 2, Review: 3, Banned: 4, Denied: 5 };
+  const badgeRank = { Owner: 0, Admin: 1, Mod: 2, 'SHD Team': 3, Player: 4 };
+  return [...linked, ...applied].sort((left, right) =>
+    (statusRank[left.status] ?? 9) - (statusRank[right.status] ?? 9) ||
+    (badgeRank[left.badge] ?? 9) - (badgeRank[right.badge] ?? 9) ||
+    left.minecraft.localeCompare(right.minecraft)
+  );
+}
+
+function findAdminPlayer(id) {
+  return buildAdminPlayers().find((player) => player.id === id) ?? null;
 }
 
 const finalSupportSubmissionStatuses = new Set(['approved', 'denied', 'rejected', 'closed', 'resolved', 'completed']);
@@ -670,6 +810,153 @@ export function createAdminRouter(client) {
       console.error('Admin submission lookup failed', error);
       return res.status(500).json({ ok: false, code: 'ADMIN_SUBMISSIONS_FAILED', error: 'Could not load submissions.' });
     }
+  });
+
+  router.get('/players', requireAdminSession(client), (req, res) => {
+    if (!req.adminSession.workspaces.includes('lifesteal')) {
+      return res.status(403).json({ ok: false, code: 'ADMIN_WORKSPACE_DENIED', error: 'Lifesteal access required.' });
+    }
+    try {
+      return res.json({ ok: true, players: buildAdminPlayers(), updatedAt: Date.now() });
+    } catch (error) {
+      console.error('Admin player lookup failed', error);
+      return res.status(500).json({ ok: false, code: 'ADMIN_PLAYERS_FAILED', error: 'Could not load players.' });
+    }
+  });
+
+  router.patch('/players/:playerId', requireAdminSession(client), async (req, res) => {
+    if (!req.adminSession.workspaces.includes('lifesteal')) {
+      return res.status(403).json({ ok: false, code: 'ADMIN_WORKSPACE_DENIED', error: 'Lifesteal access required.' });
+    }
+
+    const playerId = decodeURIComponent(String(req.params.playerId ?? ''));
+    const [source, rawId] = playerId.split(':');
+    if (!source || !rawId) {
+      return res.status(400).json({ ok: false, code: 'ADMIN_PLAYER_ID_INVALID', error: 'Player id is invalid.' });
+    }
+
+    const now = Date.now();
+    if (source === 'application') {
+      const application = statements.findSupportApplicationByCode.get(rawId);
+      if (!application) return res.status(404).json({ ok: false, code: 'ADMIN_PLAYER_NOT_FOUND', error: 'Player not found.' });
+      const nextStatus = normalizePlayerStatus(req.body?.status);
+      if (!nextStatus || !['Denied'].includes(nextStatus.label)) {
+        return res.status(400).json({ ok: false, code: 'ADMIN_APPLICATION_PLAYER_STATUS_INVALID', error: 'Applied players can only be removed or denied until they are linked.' });
+      }
+      statements.updateSupportApplicationStatus.run({
+        code: rawId,
+        status: 'denied',
+        reviewedAt: now,
+        reviewedBy: req.adminSession.id,
+        reason: 'Marked denied from the admin player manager.'
+      });
+      audit('admin.player_application_status_updated', {
+        discordId: req.adminSession.id,
+        data: { playerId, applicationCode: rawId, status: 'denied' }
+      });
+      await staffAuditLog(client, 'Admin Player Status Updated', [
+        { name: 'Player', value: application.minecraft_name || rawId, inline: true },
+        { name: 'Status', value: 'Denied', inline: true },
+        { name: 'Staff', value: `${req.adminSession.displayName} (${req.adminSession.id})`, inline: true }
+      ]);
+      return res.json({ ok: true, player: findAdminPlayer(playerId), players: buildAdminPlayers() });
+    }
+
+    if (source !== 'linked') {
+      return res.status(400).json({ ok: false, code: 'ADMIN_PLAYER_ID_INVALID', error: 'Player id is invalid.' });
+    }
+
+    const linked = statements.findLinkedByDiscord.get(rawId);
+    if (!linked) return res.status(404).json({ ok: false, code: 'ADMIN_PLAYER_NOT_FOUND', error: 'Player not found.' });
+
+    const nextStatus = req.body?.status === undefined ? null : normalizePlayerStatus(req.body.status);
+    const nextBadge = req.body?.badge === undefined ? null : normalizePlayerBadge(req.body.badge);
+    if (req.body?.status !== undefined && !nextStatus) {
+      return res.status(400).json({ ok: false, code: 'ADMIN_PLAYER_STATUS_INVALID', error: 'Player status is invalid.' });
+    }
+    if (req.body?.badge !== undefined && !nextBadge) {
+      return res.status(400).json({ ok: false, code: 'ADMIN_PLAYER_BADGE_INVALID', error: 'Player badge is invalid.' });
+    }
+
+    statements.updateLinkedAdminProfile.run({
+      discordId: rawId,
+      status: nextStatus?.status,
+      publicStatsOptIn: nextStatus?.publicStatsOptIn,
+      suspicious: nextStatus?.suspicious,
+      role: nextBadge ?? undefined,
+      reason: 'Updated from the admin player manager.',
+      updatedAt: now
+    });
+    audit('admin.player_updated', {
+      discordId: req.adminSession.id,
+      minecraftUuid: linked.minecraft_uuid,
+      data: { playerId, status: nextStatus?.label ?? null, badge: nextBadge ?? null }
+    });
+    await staffAuditLog(client, 'Admin Player Updated', [
+      { name: 'Player', value: linked.minecraft_name || rawId, inline: true },
+      nextStatus ? { name: 'Status', value: nextStatus.label, inline: true } : null,
+      nextBadge ? { name: 'Badge', value: playerBadgeLabel(nextBadge), inline: true } : null,
+      { name: 'Staff', value: `${req.adminSession.displayName} (${req.adminSession.id})`, inline: true }
+    ].filter(Boolean));
+
+    return res.json({ ok: true, player: findAdminPlayer(playerId), players: buildAdminPlayers() });
+  });
+
+  router.delete('/players/:playerId', requireAdminSession(client), async (req, res) => {
+    if (!req.adminSession.workspaces.includes('lifesteal')) {
+      return res.status(403).json({ ok: false, code: 'ADMIN_WORKSPACE_DENIED', error: 'Lifesteal access required.' });
+    }
+
+    const playerId = decodeURIComponent(String(req.params.playerId ?? ''));
+    const [source, rawId] = playerId.split(':');
+    const now = Date.now();
+
+    if (source === 'application') {
+      const removed = statements.removeSupportApplicationFromRoster.run({
+        code: rawId,
+        reviewedAt: now,
+        reviewedBy: req.adminSession.id,
+        reason: 'Removed from the admin player manager roster.'
+      });
+      if (!removed) return res.status(404).json({ ok: false, code: 'ADMIN_PLAYER_NOT_FOUND', error: 'Player not found.' });
+      audit('admin.player_application_removed', {
+        discordId: req.adminSession.id,
+        data: { playerId, applicationCode: rawId }
+      });
+      await staffAuditLog(client, 'Admin Player Removed', [
+        { name: 'Player', value: removed.minecraft_name || rawId, inline: true },
+        { name: 'Source', value: 'Application roster entry', inline: true },
+        { name: 'Staff', value: `${req.adminSession.displayName} (${req.adminSession.id})`, inline: true }
+      ]);
+      return res.json({ ok: true, players: buildAdminPlayers() });
+    }
+
+    if (source !== 'linked') {
+      return res.status(400).json({ ok: false, code: 'ADMIN_PLAYER_ID_INVALID', error: 'Player id is invalid.' });
+    }
+
+    const removed = statements.deleteLinkedAccount.run(rawId);
+    if (!removed) return res.status(404).json({ ok: false, code: 'ADMIN_PLAYER_NOT_FOUND', error: 'Player not found.' });
+    const relatedApplication = latestApplicationForPlayer(statements.snapshot.get().support_applications ?? [], removed);
+    if (relatedApplication && ['submitted', 'ticket_verified', 'approved_whitelist_pending'].includes(relatedApplication.status)) {
+      statements.removeSupportApplicationFromRoster.run({
+        code: relatedApplication.code,
+        reviewedAt: now,
+        reviewedBy: req.adminSession.id,
+        reason: 'Linked player was deleted from the admin player manager.'
+      });
+    }
+    audit('admin.player_deleted', {
+      discordId: req.adminSession.id,
+      minecraftUuid: removed.minecraft_uuid,
+      data: { playerId, targetDiscordId: rawId, minecraftName: removed.minecraft_name }
+    });
+    await staffAuditLog(client, 'Admin Player Deleted', [
+      { name: 'Player', value: removed.minecraft_name || rawId, inline: true },
+      { name: 'Discord', value: removed.discord_username || rawId, inline: true },
+      { name: 'Staff', value: `${req.adminSession.displayName} (${req.adminSession.id})`, inline: true }
+    ]);
+    return res.json({ ok: true, players: buildAdminPlayers() });
   });
 
   router.get('/staff-chat/lifesteal', requireAdminSession(client), async (req, res) => {

@@ -462,6 +462,15 @@ function configuredPrestigeBadges(minecraftUuid) {
   return [];
 }
 
+function linkedRolePrestigeBadges(linked) {
+  const role = String(linked?.role ?? 'player').trim().toLowerCase().replaceAll('_', '-');
+  return ['owner', 'admin', 'mod', 'shd-team'].includes(role) ? [role] : [];
+}
+
+function linkedPrestigeBadges(linked) {
+  return [...new Set([...configuredPrestigeBadges(linked?.minecraft_uuid), ...linkedRolePrestigeBadges(linked)])];
+}
+
 function findLinkedMinecraftAccount(minecraftUuid) {
   for (const uuid of minecraftUuidVariants(minecraftUuid)) {
     const linked = statements.findLinkedByMinecraft.get(uuid);
@@ -515,7 +524,7 @@ function publicPlayersFromSnapshots(snapshots, updatedAt) {
       continue;
     }
 
-    const prestige = [...configuredPrestigeBadges(linked.minecraft_uuid)];
+    const prestige = linkedPrestigeBadges(linked);
     if (snapshot.dragonEggHolder) prestige.push('dragon-egg');
     if (snapshot.maceWielder) prestige.push('mace-1');
 
@@ -600,7 +609,7 @@ function publicPlayersWithApplications(snapshot) {
     .filter((linked) => !existingNames.has(String(linked.minecraft_name ?? '').toLowerCase()))
     .filter((linked) => !minecraftUuidVariants(linked.minecraft_uuid).some((uuid) => existingUuids.has(uuid)))
     .map((linked) => {
-      const prestige = configuredPrestigeBadges(linked.minecraft_uuid);
+      const prestige = linkedPrestigeBadges(linked);
       existingNames.add(String(linked.minecraft_name ?? '').toLowerCase());
       minecraftUuidVariants(linked.minecraft_uuid).forEach((uuid) => existingUuids.add(uuid));
 

@@ -99,6 +99,44 @@ export type TicketActivityPayload = {
   updatedAt: number
 }
 
+export type AdminPlayerStatus = 'Whitelisted' | 'Registered' | 'Applied' | 'Review' | 'Banned' | 'Denied'
+export type AdminPlayerBadge = 'Owner' | 'Admin' | 'Mod' | 'SHD Team' | 'Player'
+
+export type AdminPlayerApplication = {
+  code: string
+  status: string
+  discord: string
+  minecraft: string
+  createdAt: number
+  verifiedAt: number | null
+  ticketThreadId: string | null
+  summary: string
+  fields: Array<{ label: string; value: string }>
+}
+
+export type AdminPlayer = {
+  id: string
+  source: 'linked' | 'application'
+  discordId: string | null
+  discord: string
+  minecraftUuid: string | null
+  minecraft: string
+  badge: AdminPlayerBadge
+  badgeValue: string
+  status: AdminPlayerStatus
+  sourceStatus: string
+  hearts: number | null
+  risk: string
+  updatedAt: number
+  applicationCode: string | null
+  application: AdminPlayerApplication | null
+}
+
+export type AdminPlayersPayload = {
+  players: AdminPlayer[]
+  updatedAt: number
+}
+
 type SessionResponse = {
   ok: boolean
   user: AdminUser | null
@@ -249,4 +287,30 @@ export async function sendSubmissionTicketMessage(code: string, content: string)
     },
   )
   return response.message
+}
+
+export async function getAdminPlayers(): Promise<AdminPlayersPayload> {
+  if (adminDemoMode) return { players: [], updatedAt: Date.now() }
+  const response = await adminRequest<AdminPlayersPayload & { ok: boolean }>('/players')
+  return response
+}
+
+export async function updateAdminPlayer(id: string, patch: { status?: AdminPlayerStatus; badge?: AdminPlayerBadge }): Promise<AdminPlayersPayload> {
+  const response = await adminRequest<{ ok: boolean; players: AdminPlayer[]; updatedAt?: number }>(
+    `/players/${encodeURIComponent(id)}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    },
+  )
+  return { players: response.players, updatedAt: response.updatedAt ?? Date.now() }
+}
+
+export async function deleteAdminPlayer(id: string): Promise<AdminPlayersPayload> {
+  const response = await adminRequest<{ ok: boolean; players: AdminPlayer[]; updatedAt?: number }>(
+    `/players/${encodeURIComponent(id)}`,
+    { method: 'DELETE' },
+  )
+  return { players: response.players, updatedAt: response.updatedAt ?? Date.now() }
 }

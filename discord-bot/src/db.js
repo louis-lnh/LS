@@ -150,6 +150,15 @@ export const statements = {
       return [...state.linked_accounts];
     }
   },
+  deleteLinkedAccount: {
+    run(discordId) {
+      const index = state.linked_accounts.findIndex((row) => row.discord_id === discordId);
+      if (index === -1) return null;
+      const [deleted] = state.linked_accounts.splice(index, 1);
+      persist();
+      return deleted;
+    }
+  },
   upsertLinked: {
     run(row) {
       const existingMinecraft = state.linked_accounts.find(
@@ -359,6 +368,23 @@ export const statements = {
       return linked;
     }
   },
+  updateLinkedAdminProfile: {
+    run(row) {
+      const linked = state.linked_accounts.find((item) => item.discord_id === row.discordId);
+      if (!linked) return null;
+      if (row.role !== undefined) linked.role = row.role;
+      if (row.publicStatsOptIn !== undefined) linked.public_stats_opt_in = row.publicStatsOptIn;
+      if (row.status !== undefined) {
+        const statusChanged = linked.status !== row.status;
+        linked.status = row.status;
+        if (statusChanged) linked.roster_status_updated_at = row.updatedAt;
+      }
+      if (row.suspicious !== undefined) linked.suspicious = row.suspicious;
+      if (row.reason !== undefined) linked.suspicious_reason = row.reason;
+      persist();
+      return linked;
+    }
+  },
   upsertRulesAcceptance: {
     run(row) {
       upsertBy('rules_acceptances', 'discord_id', {
@@ -512,6 +538,18 @@ export const statements = {
       const application = state.support_applications.find((item) => item.code === row.code);
       if (!application) return null;
       application.status = row.status;
+      application.reviewed_at = row.reviewedAt;
+      application.reviewed_by = row.reviewedBy;
+      application.review_reason = row.reason;
+      persist();
+      return application;
+    }
+  },
+  removeSupportApplicationFromRoster: {
+    run(row) {
+      const application = state.support_applications.find((item) => item.code === row.code);
+      if (!application) return null;
+      application.status = 'removed_from_roster';
       application.reviewed_at = row.reviewedAt;
       application.reviewed_by = row.reviewedBy;
       application.review_reason = row.reason;
