@@ -45,8 +45,10 @@ import logoWithText from './assets/shd-logo.png'
 import {
   adminDemoMode,
   AdminApiError,
+  addAdminSubmissionNote,
   beginDiscordLogin,
   claimAdminSubmission,
+  decideAdminSubmission,
   demoAdminUser,
   endAdminSession,
   getAdminSubmissions,
@@ -119,7 +121,7 @@ function submissionFromApi(submission: AdminApiSubmission): Submission {
     claimedById: submission.claimedById ?? undefined,
     summary: submission.summary,
     fields: submission.fields,
-    notes: [],
+    notes: submission.notes.map((item) => ({ ...item, time: relativeTime(item.time) })),
     activity: submission.activity.map((item) => ({ ...item, time: relativeTime(item.time) })),
   }
 }
@@ -375,6 +377,7 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
   const [submissions, setSubmissions] = useState<Submission[]>(adminDemoMode ? seedSubmissions : [])
   const [submissionState, setSubmissionState] = useState<'loading' | 'ready' | 'error'>(adminDemoMode ? 'ready' : 'loading')
   const [claimState, setClaimState] = useState<'idle' | 'loading'>('idle')
+  const [actionState, setActionState] = useState<'idle' | 'note' | 'decision'>('idle')
   const [claimError, setClaimError] = useState('')
   const [overview, setOverview] = useState<AdminOverview | null>(null)
   const [overviewState, setOverviewState] = useState<'loading' | 'ready' | 'error'>(adminDemoMode ? 'ready' : 'loading')
@@ -487,6 +490,10 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
   }
 
   const selected = submissions.find((submission) => submission.id === selectedId) ?? submissions[0]
+  const selectedDecided = selected ? ['Approved', 'Denied'].includes(selected.status) : false
+  const selectedOwned = selected ? (selected.claimedById ? selected.claimedById === user.id : selected.claimedBy === reviewerName) : false
+  const selectedSupportsAdminActions = Boolean(selected && (adminDemoMode || selected.type !== 'Application'))
+  const canWriteSelected = Boolean(selected && selectedSupportsAdminActions && (adminDemoMode || (selectedOwned && !selectedDecided)))
   const viewType: Partial<Record<AdminView, SubmissionType>> = {
     'lifesteal-applications': 'Application',
     'lifesteal-appeals': 'Appeal',
@@ -548,20 +555,56 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
     }
   }
 
-  const decide = (status: SubmissionStatus, body: string) => updateSelected((submission) => ({
-    ...submission,
-    status,
-    claimedBy: submission.claimedBy ?? reviewerName,
-    activity: [...submission.activity, { type: 'staff', author: reviewerName, body, time: 'Just now' }],
-  }))
+  const decide = async (status: SubmissionStatus, body: string) => {
+    if (!selected || !canWriteSelected || actionState !== 'idle') return
+    setClaimError('')
+    if (adminDemoMode) {
+      updateSelected((submission) => ({
+        ...submission,
+        status,
+        claimedBy: submission.claimedBy ?? reviewerName,
+        activity: [...submission.activity, { type: 'staff', author: reviewerName, body, time: 'Just now' }],
+      }))
+      return
+    }
+    if (selected.type === 'Application') {
+      setClaimError('Applications still use the Discord approval command so whitelist automation stays intact.')
+      return
+    }
+    const apiStatus = status === 'Waiting on player' ? 'waiting_on_player' : status === 'Denied' ? 'denied' : 'resolved'
+    setActionState('decision')
+    try {
+      const updated = submissionFromApi(await decideAdminSubmission(selected.id, apiStatus, body))
+      setSubmissions((current) => current.map((item) => item.id === updated.id ? updated : item))
+    } catch (error) {
+      setClaimError(error instanceof AdminApiError ? error.message : 'Could not update this review.')
+    } finally {
+      setActionState('idle')
+    }
+  }
 
-  const addNote = () => {
-    if (!adminDemoMode || !note.trim()) return
+  const addNote = async () => {
+    const text = note.trim()
+    if (!selected || !canWriteSelected || !text || actionState !== 'idle') return
+    setClaimError('')
     updateSelected((submission) => ({
       ...submission,
-      notes: [...submission.notes, { author: reviewerName, body: note.trim(), time: 'Just now' }],
+      notes: adminDemoMode ? [...submission.notes, { author: reviewerName, body: text, time: 'Just now' }] : submission.notes,
     }))
-    setNote('')
+    if (adminDemoMode) {
+      setNote('')
+      return
+    }
+    setActionState('note')
+    try {
+      const updated = submissionFromApi(await addAdminSubmissionNote(selected.id, text))
+      setSubmissions((current) => current.map((item) => item.id === updated.id ? updated : item))
+      setNote('')
+    } catch (error) {
+      setClaimError(error instanceof AdminApiError ? error.message : 'Could not add this staff note.')
+    } finally {
+      setActionState('idle')
+    }
   }
 
   return (
@@ -623,7 +666,7 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
         </section>
         <button className="pane-resizer queue-resizer" aria-label="Resize submission queue" onPointerDown={(event) => startResize('queue', event)} type="button"><span /></button>
         {selected ? <><section className="review-pane">
-          <ReviewHeader actionsLive={adminDemoMode} activityVisible={activityVisible} claimLoading={claimState === 'loading'} staffId={user.id} staffName={reviewerName} submission={selected} onBack={() => setMobileDetail(false)} onClaim={claim} onDecide={decide} onToggleActivity={toggleActivity} />
+          <ReviewHeader actionsLive={selectedSupportsAdminActions} actionLoading={actionState === 'decision'} activityVisible={activityVisible} claimLoading={claimState === 'loading'} staffId={user.id} staffName={reviewerName} submission={selected} onBack={() => setMobileDetail(false)} onClaim={claim} onDecide={decide} onToggleActivity={toggleActivity} />
           {claimError && <div className="review-alert"><FileWarning size={15} /><span>{claimError}</span><button aria-label="Dismiss claim error" onClick={() => setClaimError('')} type="button"><X size={14} /></button></div>}
           <div className="review-scroll">
             <section className="review-overview">
@@ -667,8 +710,8 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
                 {selected.notes.length === 0 && <p className="muted">No internal notes yet.</p>}
               </div>
               <div className="note-composer">
-                <textarea disabled={!adminDemoMode} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Add a private staff note..." />
-                <button aria-label="Add staff note" disabled={!adminDemoMode || !note.trim()} onClick={addNote} title="Add staff note" type="button"><Send size={17} /></button>
+                <textarea disabled={!canWriteSelected || actionState === 'note'} value={note} onChange={(event) => setNote(event.target.value)} placeholder={selected.type === 'Application' ? 'Application notes stay in the Discord approval workflow...' : 'Add a private staff note...'} />
+                <button aria-label="Add staff note" disabled={!canWriteSelected || actionState === 'note' || !note.trim()} onClick={addNote} title="Add staff note" type="button"><Send size={17} /></button>
               </div>
             </section>
           </div>
@@ -1247,8 +1290,9 @@ function QueueItem({ submission, active, onSelect }: { submission: Submission; a
   )
 }
 
-function ReviewHeader({ actionsLive, activityVisible, claimLoading, staffId, staffName, submission, onBack, onClaim, onDecide, onToggleActivity }: {
+function ReviewHeader({ actionsLive, actionLoading, activityVisible, claimLoading, staffId, staffName, submission, onBack, onClaim, onDecide, onToggleActivity }: {
   actionsLive: boolean
+  actionLoading: boolean
   activityVisible: boolean
   claimLoading: boolean
   staffId: string
@@ -1275,9 +1319,9 @@ function ReviewHeader({ actionsLive, activityVisible, claimLoading, staffId, sta
         {submission.claimedBy && !owned && <span className="claimed-label"><LockKeyhole size={14} />{submission.claimedBy}</span>}
         {owned && !decided && (
           <>
-            <button className="icon-action request" disabled={!actionsLive} onClick={() => onDecide('Waiting on player', 'Staff requested more information in Discord.')} title={actionsLive ? 'Request information' : 'Not connected yet'} type="button"><MessageSquareText size={17} /></button>
-            <button className="icon-action deny" disabled={!actionsLive} onClick={() => onDecide('Denied', 'Submission denied from the admin portal.')} title={actionsLive ? 'Deny' : 'Not connected yet'} type="button"><XCircle size={18} /></button>
-            <button className="approve-button" disabled={!actionsLive} onClick={() => onDecide('Approved', 'Submission approved from the admin portal.')} title={actionsLive ? 'Approve' : 'Not connected yet'} type="button"><Check size={17} />Approve</button>
+            <button className="icon-action request" disabled={!actionsLive || actionLoading} onClick={() => onDecide('Waiting on player', 'Staff requested more information in Discord.')} title={actionsLive ? 'Request information' : 'Application approval still uses the Discord command'} type="button"><MessageSquareText size={17} /></button>
+            <button className="icon-action deny" disabled={!actionsLive || actionLoading} onClick={() => onDecide('Denied', 'Submission denied from the admin portal.')} title={actionsLive ? 'Deny' : 'Application denial still uses the Discord command'} type="button"><XCircle size={18} /></button>
+            <button className="approve-button" disabled={!actionsLive || actionLoading} onClick={() => onDecide('Approved', 'Submission resolved from the admin portal.')} title={actionsLive ? 'Resolve' : 'Application approval still uses the Discord command'} type="button"><Check size={17} />Resolve</button>
           </>
         )}
       </div>

@@ -28,6 +28,7 @@ export type AdminApiSubmission = {
   fields: Array<{ label: string; value: string }>
   ticketThreadId: string | null
   requiresTicket: boolean
+  notes: Array<{ author: string; body: string; time: number }>
   activity: Array<{ type: 'player' | 'staff' | 'system'; author: string; body: string; time: number }>
 }
 
@@ -146,6 +147,30 @@ export async function claimAdminSubmission(code: string): Promise<AdminApiSubmis
   const response = await adminRequest<{ ok: boolean; submission: AdminApiSubmission }>(
     `/submissions/${encodeURIComponent(code)}/claim`,
     { method: 'POST' },
+  )
+  return response.submission
+}
+
+export async function addAdminSubmissionNote(code: string, text: string): Promise<AdminApiSubmission> {
+  const response = await adminRequest<{ ok: boolean; submission: AdminApiSubmission }>(
+    `/submissions/${encodeURIComponent(code)}/notes`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    },
+  )
+  return response.submission
+}
+
+export async function decideAdminSubmission(code: string, status: 'waiting_on_player' | 'resolved' | 'denied', reason: string): Promise<AdminApiSubmission> {
+  const response = await adminRequest<{ ok: boolean; submission: AdminApiSubmission }>(
+    `/submissions/${encodeURIComponent(code)}/decision`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, reason }),
+    },
   )
   return response.submission
 }

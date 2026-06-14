@@ -541,7 +541,8 @@ export const statements = {
         claimed_at: null,
         reviewed_at: null,
         reviewed_by: null,
-        review_reason: null
+        review_reason: null,
+        notes: []
       };
       state.support_submissions.push(submission);
       persist();
@@ -570,6 +571,38 @@ export const statements = {
       }
       persist();
       return { ok: true, changed: true, submission };
+    }
+  },
+  addSupportSubmissionNote: {
+    run(row) {
+      const submission = state.support_submissions.find((item) => item.code === row.code);
+      if (!submission) return null;
+      submission.notes ??= [];
+      const note = {
+        id: state.nextNoteId++,
+        author_id: row.authorId,
+        text: row.text,
+        created_at: row.createdAt
+      };
+      submission.notes.push(note);
+      persist();
+      return note;
+    }
+  },
+  updateSupportSubmissionReview: {
+    run(row) {
+      const submission = state.support_submissions.find((item) => item.code === row.code);
+      if (!submission) return null;
+      submission.status = row.status;
+      submission.reviewed_at = row.reviewedAt;
+      submission.reviewed_by = row.reviewedBy;
+      submission.review_reason = row.reason;
+      if (!submission.claimed_by) {
+        submission.claimed_by = row.reviewedBy;
+        submission.claimed_at = row.reviewedAt;
+      }
+      persist();
+      return submission;
     }
   },
   findOpenSupportSubmission: {

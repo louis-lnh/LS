@@ -299,6 +299,28 @@ function adminSubmissionStatus(status, claimedBy) {
   return 'New';
 }
 
+const finalSupportSubmissionStatuses = new Set(['approved', 'denied', 'rejected', 'closed', 'resolved', 'completed']);
+
+function normalizeAdminText(value, maxLength = 2000) {
+  return String(value ?? '').trim().slice(0, maxLength);
+}
+
+function supportDecisionStatus(value) {
+  const action = String(value ?? '').trim().toLowerCase();
+  if (['waiting_on_player', 'waiting', 'request_info'].includes(action)) return 'waiting_on_player';
+  if (['approved', 'approve', 'resolved', 'resolve', 'completed'].includes(action)) return 'resolved';
+  if (['denied', 'deny', 'rejected', 'reject', 'closed', 'close'].includes(action)) return 'denied';
+  return null;
+}
+
+function supportReviewOwnershipError(submission, sessionId) {
+  if (!submission) return 'not_found';
+  if (finalSupportSubmissionStatuses.has(submission.status)) return 'final';
+  if (!submission.claimed_by) return 'unclaimed';
+  if (submission.claimed_by !== sessionId) return 'claimed';
+  return null;
+}
+
 function compactFields(entries) {
   return entries
     .filter(([, value]) => value !== null && value !== undefined && String(value).trim() !== '')
@@ -379,7 +401,11 @@ export async function buildAdminSubmissions(client) {
     ...snapshot.support_applications.map((item) =>
       ticketsByThread.get(item.ticket_thread_id)?.claimed_by || item.reviewed_by
     ),
-    ...snapshot.support_submissions.flatMap((item) => [item.claimed_by, item.reviewed_by])
+    ...snapshot.support_submissions.flatMap((item) => [
+      item.claimed_by,
+      item.reviewed_by,
+      ...(item.notes ?? []).map((note) => note.author_id)
+    ])
   ];
   const staffNames = await resolveStaffNames(client, staffIds);
 
@@ -404,6 +430,7 @@ export async function buildAdminSubmissions(client) {
       fields: applicationFields(application),
       ticketThreadId: application.ticket_thread_id,
       requiresTicket: true,
+      notes: [],
       activity: [
         { type: 'system', author: 'Support Portal', body: 'Application submitted.', time: application.created_at },
         application.verified_at
@@ -437,10 +464,18 @@ export async function buildAdminSubmissions(client) {
       fields: meta.fields,
       ticketThreadId: submission.ticket_thread_id,
       requiresTicket: submission.requires_ticket,
+      notes: (submission.notes ?? []).map((note) => ({
+        author: staffNames.get(note.author_id) || note.author_id,
+        body: note.text,
+        time: note.created_at
+      })),
       activity: [
         { type: 'system', author: 'Support Portal', body: `${meta.type} submitted.`, time: submission.created_at },
         submission.claimed_at && claimedById
           ? { type: 'staff', author: staffNames.get(claimedById), body: 'Review claimed.', time: submission.claimed_at }
+          : null,
+        submission.reviewed_at && submission.reviewed_by
+          ? { type: 'staff', author: staffNames.get(submission.reviewed_by), body: submission.review_reason || `Review marked ${submission.status}.`, time: submission.reviewed_at }
           : null
       ].filter(Boolean)
     };
@@ -623,6 +658,93 @@ export function createAdminRouter(client) {
 
     const submission = await findAdminSubmission(client, code);
     return res.json({ ok: true, changed: result.changed, submission });
+  });
+
+  router.post('/submissions/:code/notes', requireAdminSession(client), async (req, res) => {
+    if (!req.adminSession.workspaces.includes('lifesteal')) {
+      return res.status(403).json({ ok: false, code: 'ADMIN_WORKSPACE_DENIED', error: 'Lifesteal access required.' });
+    }
+
+    const code = String(req.params.code ?? '').trim().toUpperCase();
+    if (code.startsWith('SHD-APP-')) {
+      return res.status(409).json({ ok: false, code: 'ADMIN_APPLICATION_COMMAND_ONLY', error: 'Application reviews still use the Discord approval workflow.' });
+    }
+
+    const text = normalizeAdminText(req.body?.text);
+    if (text.length < 2) {
+      return res.status(400).json({ ok: false, code: 'ADMIN_NOTE_TOO_SHORT', error: 'Staff note must contain at least 2 characters.' });
+    }
+
+    const current = statements.findSupportSubmissionByCode.get(code);
+    const ownershipError = supportReviewOwnershipError(current, req.adminSession.id);
+    if (ownershipError === 'not_found') return res.status(404).json({ ok: false, code: 'ADMIN_SUBMISSION_NOT_FOUND', error: 'Submission not found.' });
+    if (ownershipError === 'final') return res.status(409).json({ ok: false, code: 'ADMIN_SUBMISSION_FINAL', error: 'This submission has already been decided.' });
+    if (ownershipError === 'unclaimed') return res.status(409).json({ ok: false, code: 'ADMIN_SUBMISSION_UNCLAIMED', error: 'Claim this review before adding notes.' });
+    if (ownershipError === 'claimed') return res.status(409).json({ ok: false, code: 'ADMIN_SUBMISSION_ALREADY_CLAIMED', error: 'This review is claimed by another staff member.' });
+
+    const now = Date.now();
+    statements.addSupportSubmissionNote.run({
+      code,
+      authorId: req.adminSession.id,
+      text,
+      createdAt: now
+    });
+    audit('admin.submission_note_added', {
+      discordId: req.adminSession.id,
+      data: { submissionCode: code }
+    });
+    await staffAuditLog(client, 'Admin Staff Note Added', [
+      { name: 'Submission', value: code, inline: true },
+      { name: 'Staff', value: `${req.adminSession.displayName} (${req.adminSession.id})`, inline: true }
+    ]);
+
+    const submission = await findAdminSubmission(client, code);
+    return res.json({ ok: true, submission });
+  });
+
+  router.post('/submissions/:code/decision', requireAdminSession(client), async (req, res) => {
+    if (!req.adminSession.workspaces.includes('lifesteal')) {
+      return res.status(403).json({ ok: false, code: 'ADMIN_WORKSPACE_DENIED', error: 'Lifesteal access required.' });
+    }
+
+    const code = String(req.params.code ?? '').trim().toUpperCase();
+    if (code.startsWith('SHD-APP-')) {
+      return res.status(409).json({ ok: false, code: 'ADMIN_APPLICATION_COMMAND_ONLY', error: 'Application approvals still use the Discord approval command so whitelist automation stays intact.' });
+    }
+
+    const status = supportDecisionStatus(req.body?.status);
+    const reason = normalizeAdminText(req.body?.reason, 3000) || 'Reviewed from the admin portal.';
+    if (!status) {
+      return res.status(400).json({ ok: false, code: 'ADMIN_DECISION_INVALID', error: 'Decision status must be waiting_on_player, resolved, or denied.' });
+    }
+
+    const current = statements.findSupportSubmissionByCode.get(code);
+    const ownershipError = supportReviewOwnershipError(current, req.adminSession.id);
+    if (ownershipError === 'not_found') return res.status(404).json({ ok: false, code: 'ADMIN_SUBMISSION_NOT_FOUND', error: 'Submission not found.' });
+    if (ownershipError === 'final') return res.status(409).json({ ok: false, code: 'ADMIN_SUBMISSION_FINAL', error: 'This submission has already been decided.' });
+    if (ownershipError === 'unclaimed') return res.status(409).json({ ok: false, code: 'ADMIN_SUBMISSION_UNCLAIMED', error: 'Claim this review before deciding it.' });
+    if (ownershipError === 'claimed') return res.status(409).json({ ok: false, code: 'ADMIN_SUBMISSION_ALREADY_CLAIMED', error: 'This review is claimed by another staff member.' });
+
+    const now = Date.now();
+    statements.updateSupportSubmissionReview.run({
+      code,
+      status,
+      reviewedAt: now,
+      reviewedBy: req.adminSession.id,
+      reason
+    });
+    audit('admin.submission_decided', {
+      discordId: req.adminSession.id,
+      data: { submissionCode: code, status }
+    });
+    await staffAuditLog(client, 'Admin Review Decision', [
+      { name: 'Submission', value: code, inline: true },
+      { name: 'Decision', value: status, inline: true },
+      { name: 'Staff', value: `${req.adminSession.displayName} (${req.adminSession.id})`, inline: true }
+    ]);
+
+    const submission = await findAdminSubmission(client, code);
+    return res.json({ ok: true, submission });
   });
 
   return router;
