@@ -138,6 +138,7 @@ export const config = {
     portalUrl: (process.env.ADMIN_PORTAL_URL ?? 'http://127.0.0.1:4177').replace(/\/+$/, ''),
     clientSecret: process.env.DISCORD_CLIENT_SECRET ?? '',
     sessionSecret: process.env.ADMIN_SESSION_SECRET ?? '',
+    lifestealStaffChannelId: process.env.ADMIN_LIFESTEAL_STAFF_CHANNEL_ID ?? '',
     ownerIds: (process.env.ADMIN_OWNER_IDS ?? '1224803434675572827')
       .split(',')
       .map((value) => value.trim())

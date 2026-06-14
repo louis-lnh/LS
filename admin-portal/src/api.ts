@@ -64,6 +64,23 @@ export type AdminOverview = {
   generatedAt: number
 }
 
+export type StaffChatMessage = {
+  id: string
+  authorId: string | null
+  authorName: string
+  authorAvatarUrl: string | null
+  content: string
+  createdAt: number
+}
+
+export type StaffChatPayload = {
+  scope: 'lifesteal'
+  channelId: string
+  channelName: string
+  messages: StaffChatMessage[]
+  updatedAt: number
+}
+
 type SessionResponse = {
   ok: boolean
   user: AdminUser | null
@@ -178,4 +195,21 @@ export async function decideAdminSubmission(code: string, status: 'waiting_on_pl
 export async function getAdminOverview(): Promise<AdminOverview> {
   const response = await adminRequest<AdminOverview & { ok: boolean }>('/bootstrap')
   return response
+}
+
+export async function getLifestealStaffChat(): Promise<StaffChatPayload> {
+  const response = await adminRequest<StaffChatPayload & { ok: boolean }>('/staff-chat/lifesteal')
+  return response
+}
+
+export async function sendLifestealStaffChatMessage(content: string): Promise<StaffChatMessage> {
+  const response = await adminRequest<{ ok: boolean; message: StaffChatMessage }>(
+    '/staff-chat/lifesteal',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content }),
+    },
+  )
+  return response.message
 }

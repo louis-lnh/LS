@@ -29,6 +29,7 @@ import {
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
+  RefreshCw,
   Search,
   Send,
   Settings2,
@@ -54,9 +55,12 @@ import {
   getAdminSubmissions,
   getAdminOverview,
   getAdminSession,
+  getLifestealStaffChat,
+  sendLifestealStaffChatMessage,
   type AdminApiSubmission,
   type AdminOverview,
   type AdminUser,
+  type StaffChatMessage,
 } from './api'
 
 type SubmissionType = 'Application' | 'Appeal' | 'Player Report' | 'Support'
@@ -75,6 +79,7 @@ type AdminView =
   | 'lifesteal-appeals'
   | 'lifesteal-reports'
   | 'lifesteal-support'
+  | 'lifesteal-staff-chat'
   | 'general-overview'
   | 'general-inbox'
   | 'valorant-overview'
@@ -141,6 +146,7 @@ const viewPaths: Record<AdminView, string> = {
   'lifesteal-appeals': '/lifesteal/appeals',
   'lifesteal-reports': '/lifesteal/reports',
   'lifesteal-support': '/lifesteal/support',
+  'lifesteal-staff-chat': '/lifesteal/staff-chat',
   'general-overview': '/general',
   'general-inbox': '/general/inbox',
   'valorant-overview': '/valorant',
@@ -622,6 +628,7 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
       {view === 'global-audit' && <AuditPage submissions={submissions} />}
       {view === 'lifesteal-overview' && <LifestealOverviewPage submissions={submissions} onNavigate={navigate} />}
       {view === 'lifesteal-players' && <PlayersPage />}
+      {view === 'lifesteal-staff-chat' && <LifestealStaffChatPage user={user} />}
       {view === 'general-overview' && <ProjectOverviewPage project="General Support" onOpenInbox={() => navigate('general-inbox')} />}
       {view === 'general-inbox' && <WorkspaceInboxPage project="General Support" />}
       {view === 'valorant-overview' && <ProjectOverviewPage project="Valorant" onOpenInbox={() => navigate('valorant-inbox')} />}
@@ -818,6 +825,7 @@ function Sidebar({ active, collapsed, workspace, user, mobileOpen, onClose, onNa
             <NavButton active={active === 'lifesteal-overview'} icon={<LayoutDashboard size={18} />} label="Overview" onClick={() => onNavigate('lifesteal-overview')} />
             <NavButton active={active === 'lifesteal-queue'} icon={<Inbox size={18} />} label="Review Queue" badge="4" onClick={() => onNavigate('lifesteal-queue')} />
             <NavButton active={active === 'lifesteal-players'} icon={<Users size={18} />} label="Players" onClick={() => onNavigate('lifesteal-players')} />
+            <NavButton active={active === 'lifesteal-staff-chat'} icon={<MessageSquareText size={18} />} label="Staff Chat" onClick={() => onNavigate('lifesteal-staff-chat')} />
           </nav>
           <div className="sidebar-section">
             <span>Queues</span>
@@ -1110,6 +1118,101 @@ function WorkspaceInboxPage({ project }: { project: 'General Support' | 'Valoran
         <span className="eyebrow">No live source connected</span>
         <h2>Queue ready for real submissions.</h2>
         <p>The frontend intentionally stays empty until the shared admin API and the second guild bot are connected.</p>
+      </section>
+    </main>
+  )
+}
+
+function LifestealStaffChatPage({ user }: { user: AdminUser }) {
+  const demoMessages: StaffChatMessage[] = [
+    { id: 'demo-chat-1', authorId: 'staff-1', authorName: 'PrimeLuigi', authorAvatarUrl: null, content: 'Event launch checklist is almost clean. Website and support flows are the current focus.', createdAt: Date.now() - 18 * 60_000 },
+    { id: 'demo-chat-2', authorId: 'staff-2', authorName: 'TlzMax5454', authorAvatarUrl: null, content: 'Roster state looks good. Waiting on final ticket copy polish.', createdAt: Date.now() - 9 * 60_000 },
+  ]
+  const [messages, setMessages] = useState<StaffChatMessage[]>(adminDemoMode ? demoMessages : [])
+  const [message, setMessage] = useState('')
+  const [channelName, setChannelName] = useState(adminDemoMode ? 'lifesteal-staff' : '')
+  const [state, setState] = useState<'loading' | 'ready' | 'error'>(adminDemoMode ? 'ready' : 'loading')
+  const [sendState, setSendState] = useState<'idle' | 'sending'>('idle')
+  const [error, setError] = useState('')
+
+  const loadChat = async () => {
+    if (adminDemoMode) return
+    setState('loading')
+    setError('')
+    try {
+      const payload = await getLifestealStaffChat()
+      setMessages(payload.messages)
+      setChannelName(payload.channelName)
+      setState('ready')
+    } catch (loadError) {
+      setError(loadError instanceof AdminApiError ? loadError.message : 'Could not load staff chat.')
+      setState('error')
+    }
+  }
+
+  useEffect(() => {
+    loadChat()
+  }, [])
+
+  const sendMessage = async () => {
+    const content = message.trim()
+    if (!content || sendState === 'sending') return
+    setError('')
+    if (adminDemoMode) {
+      setMessages((current) => [...current, {
+        id: `demo-chat-${Date.now()}`,
+        authorId: user.id,
+        authorName: `${user.displayName} via Admin Portal`,
+        authorAvatarUrl: user.avatarUrl,
+        content,
+        createdAt: Date.now(),
+      }])
+      setMessage('')
+      return
+    }
+    setSendState('sending')
+    try {
+      const sent = await sendLifestealStaffChatMessage(content)
+      setMessages((current) => [...current, sent])
+      setMessage('')
+    } catch (sendError) {
+      setError(sendError instanceof AdminApiError ? sendError.message : 'Could not send staff message.')
+    } finally {
+      setSendState('idle')
+    }
+  }
+
+  return (
+    <main className="page-workspace staff-chat-page">
+      <PageHeader
+        eyebrow="Lifesteal Staff"
+        title="Staff Chat"
+        detail="A protected bridge into the configured Lifesteal Discord staff channel."
+        action={<button className="page-action secondary" disabled={state === 'loading'} onClick={loadChat} type="button"><RefreshCw size={16} />Refresh</button>}
+      />
+      <section className="staff-chat-shell">
+        <header>
+          <div><span className="eyebrow">Discord Bridge</span><h2>#{channelName || 'not configured'}</h2></div>
+          <span className={`service-state ${state === 'ready' ? 'live' : ''}`}><span />{state === 'ready' ? 'Connected' : state === 'loading' ? 'Loading' : 'Needs attention'}</span>
+        </header>
+        {error && <div className="operations-state error"><FileWarning size={16} /><span>{error}</span></div>}
+        <div className="staff-chat-list" aria-live="polite">
+          {state === 'loading' && messages.length === 0 && <div className="panel-empty"><Activity size={17} /><span>Loading staff messages...</span></div>}
+          {messages.map((item) => (
+            <article className={item.authorId === user.id ? 'own' : ''} key={item.id}>
+              <div className="chat-avatar">{item.authorName.slice(0, 2).toUpperCase()}</div>
+              <div>
+                <header><strong>{item.authorName}</strong><time>{relativeTime(item.createdAt)}</time></header>
+                <p>{item.content}</p>
+              </div>
+            </article>
+          ))}
+          {state !== 'loading' && messages.length === 0 && <div className="panel-empty"><MessageSquareText size={17} /><span>No staff messages found.</span></div>}
+        </div>
+        <div className="staff-chat-composer">
+          <textarea value={message} maxLength={1500} onChange={(event) => setMessage(event.target.value)} placeholder="Send a message to Lifesteal staff..." />
+          <button disabled={!message.trim() || sendState === 'sending'} onClick={sendMessage} type="button"><Send size={16} />{sendState === 'sending' ? 'Sending' : 'Send'}</button>
+        </div>
       </section>
     </main>
   )

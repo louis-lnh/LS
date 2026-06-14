@@ -305,6 +305,28 @@ function normalizeAdminText(value, maxLength = 2000) {
   return String(value ?? '').trim().slice(0, maxLength);
 }
 
+function staffChatContent(value) {
+  return String(value ?? '').trim().replace(/\r\n/g, '\n').slice(0, 1500);
+}
+
+function serializeStaffChatMessage(message) {
+  return {
+    id: message.id,
+    authorId: message.author?.id ?? null,
+    authorName: message.author?.globalName || message.member?.displayName || message.author?.username || 'Unknown staff',
+    authorAvatarUrl: message.author?.displayAvatarURL?.({ size: 64 }) ?? null,
+    content: message.content || '[Message content unavailable]',
+    createdAt: message.createdTimestamp
+  };
+}
+
+async function lifestealStaffChannel(client) {
+  if (!config.admin.lifestealStaffChannelId) return { ok: false, reason: 'not_configured', channel: null };
+  const channel = await client.channels.fetch(config.admin.lifestealStaffChannelId).catch(() => null);
+  if (!channel || !channel.isTextBased?.()) return { ok: false, reason: 'not_found', channel: null };
+  return { ok: true, channel };
+}
+
 function supportDecisionStatus(value) {
   const action = String(value ?? '').trim().toLowerCase();
   if (['waiting_on_player', 'waiting', 'request_info'].includes(action)) return 'waiting_on_player';
@@ -582,6 +604,73 @@ export function createAdminRouter(client) {
     } catch (error) {
       console.error('Admin submission lookup failed', error);
       return res.status(500).json({ ok: false, code: 'ADMIN_SUBMISSIONS_FAILED', error: 'Could not load submissions.' });
+    }
+  });
+
+  router.get('/staff-chat/lifesteal', requireAdminSession(client), async (req, res) => {
+    if (!req.adminSession.workspaces.includes('lifesteal')) {
+      return res.status(403).json({ ok: false, code: 'ADMIN_WORKSPACE_DENIED', error: 'Lifesteal access required.' });
+    }
+
+    const lookup = await lifestealStaffChannel(client);
+    if (!lookup.ok) {
+      return res.status(503).json({ ok: false, code: 'ADMIN_STAFF_CHAT_UNAVAILABLE', error: 'Lifesteal staff chat channel is not configured or not reachable.' });
+    }
+
+    try {
+      const fetched = await lookup.channel.messages.fetch({ limit: 50 });
+      const messages = [...fetched.values()]
+        .sort((left, right) => left.createdTimestamp - right.createdTimestamp)
+        .map(serializeStaffChatMessage);
+      return res.json({
+        ok: true,
+        scope: 'lifesteal',
+        channelId: lookup.channel.id,
+        channelName: lookup.channel.name ?? 'staff-chat',
+        messages,
+        updatedAt: Date.now()
+      });
+    } catch (error) {
+      console.error('Admin staff chat fetch failed', error);
+      return res.status(500).json({ ok: false, code: 'ADMIN_STAFF_CHAT_FETCH_FAILED', error: 'Could not load staff chat messages.' });
+    }
+  });
+
+  router.post('/staff-chat/lifesteal', requireAdminSession(client), async (req, res) => {
+    if (!req.adminSession.workspaces.includes('lifesteal')) {
+      return res.status(403).json({ ok: false, code: 'ADMIN_WORKSPACE_DENIED', error: 'Lifesteal access required.' });
+    }
+
+    const content = staffChatContent(req.body?.content);
+    if (content.length < 1) {
+      return res.status(400).json({ ok: false, code: 'ADMIN_STAFF_CHAT_EMPTY', error: 'Message cannot be empty.' });
+    }
+
+    const lookup = await lifestealStaffChannel(client);
+    if (!lookup.ok) {
+      return res.status(503).json({ ok: false, code: 'ADMIN_STAFF_CHAT_UNAVAILABLE', error: 'Lifesteal staff chat channel is not configured or not reachable.' });
+    }
+
+    try {
+      const sent = await lookup.channel.send({
+        content: `**${req.adminSession.displayName} via Admin Portal**\n${content}`,
+        allowedMentions: { parse: [] }
+      });
+      audit('admin.staff_chat_message_sent', {
+        discordId: req.adminSession.id,
+        data: {
+          scope: 'lifesteal',
+          channelId: lookup.channel.id,
+          messageId: sent.id
+        }
+      });
+      return res.status(201).json({
+        ok: true,
+        message: serializeStaffChatMessage(sent)
+      });
+    } catch (error) {
+      console.error('Admin staff chat send failed', error);
+      return res.status(500).json({ ok: false, code: 'ADMIN_STAFF_CHAT_SEND_FAILED', error: 'Could not send staff chat message.' });
     }
   });
 
