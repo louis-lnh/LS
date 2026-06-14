@@ -79,6 +79,7 @@ GET  /api/v1/admin/auth/session
 POST /api/v1/admin/auth/logout
 GET  /api/v1/admin/bootstrap
 GET  /api/v1/admin/submissions
+POST /api/v1/admin/submissions/:code/claim
 ```
 
 Add the exact callback URL to the Discord application under OAuth2 redirects. Production example:
@@ -100,6 +101,8 @@ ADMIN_OWNER_IDS=1224803434675572827
 Sessions use signed HTTP-only cookies. The API checks current guild membership and staff permissions before returning protected data. The Discord guild owner, configured `ADMIN_OWNER_IDS`, and administrators receive all workspaces; configured staff roles and moderators currently receive Lifesteal access.
 
 `GET /api/v1/admin/submissions` returns a normalized, newest-first review collection built from Lifesteal applications, ban appeals, player reports, and Minecraft support submissions. It resolves Discord ticket claims into staff display names and exposes only the review fields required by the admin portal.
+
+`POST /api/v1/admin/submissions/:code/claim` provides exclusive review ownership. Application claims reuse the linked Discord ticket claim, while other support records use their own atomic claim state. Repeated claims by the same staff member are idempotent; competing staff receive HTTP `409` with the current owner.
 
 ## Minecraft RCON
 

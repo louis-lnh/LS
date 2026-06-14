@@ -39,7 +39,9 @@ import './styles.css'
 import logo from './assets/shd-logo-no-text.png'
 import {
   adminDemoMode,
+  AdminApiError,
   beginDiscordLogin,
+  claimAdminSubmission,
   demoAdminUser,
   endAdminSession,
   getAdminSubmissions,
@@ -78,6 +80,7 @@ type Submission = {
   submitted: string
   priority: 'Normal' | 'High'
   claimedBy?: string
+  claimedById?: string
   summary: string
   fields: Array<{ label: string; value: string }>
   notes: Array<{ author: string; body: string; time: string }>
@@ -106,6 +109,7 @@ function submissionFromApi(submission: AdminApiSubmission): Submission {
     submitted: relativeTime(submission.createdAt),
     priority: submission.priority,
     claimedBy: submission.claimedBy ?? undefined,
+    claimedById: submission.claimedById ?? undefined,
     summary: submission.summary,
     fields: submission.fields,
     notes: [],
@@ -363,6 +367,8 @@ function LoginScreen({ authError, onSignIn }: { authError: string | null; onSign
 function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: AdminUser }) {
   const [submissions, setSubmissions] = useState<Submission[]>(adminDemoMode ? seedSubmissions : [])
   const [submissionState, setSubmissionState] = useState<'loading' | 'ready' | 'error'>(adminDemoMode ? 'ready' : 'loading')
+  const [claimState, setClaimState] = useState<'idle' | 'loading'>('idle')
+  const [claimError, setClaimError] = useState('')
   const [view, setView] = useState<AdminView>(() => viewFromPath())
   const [selectedId, setSelectedId] = useState(adminDemoMode ? seedSubmissions[0].id : '')
   const [filter, setFilter] = useState<'All' | SubmissionType>('All')
@@ -435,17 +441,40 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
     setSubmissions((current) => current.map((submission) => submission.id === selected.id ? updater(submission) : submission))
   }
 
-  const claim = () => updateSelected((submission) => ({
-    ...submission,
-    status: submission.status === 'New' ? 'In review' : submission.status,
-    claimedBy: reviewerName,
-    activity: [...submission.activity, {
-      type: 'staff',
-      author: reviewerName,
-      body: 'Review claimed in the admin portal.',
-      time: 'Just now',
-    }],
-  }))
+  const claim = async () => {
+    if (!selected || claimState === 'loading') return
+    setClaimError('')
+    if (adminDemoMode) {
+      updateSelected((submission) => ({
+        ...submission,
+        status: submission.status === 'New' ? 'In review' : submission.status,
+        claimedBy: reviewerName,
+        activity: [...submission.activity, {
+          type: 'staff',
+          author: reviewerName,
+          body: 'Review claimed in the admin portal.',
+          time: 'Just now',
+        }],
+      }))
+      return
+    }
+    setClaimState('loading')
+    try {
+      const claimed = submissionFromApi(await claimAdminSubmission(selected.id))
+      setSubmissions((current) => current.map((item) => item.id === claimed.id ? claimed : item))
+    } catch (error) {
+      setClaimError(error instanceof AdminApiError ? error.message : 'Could not claim this review.')
+      if (error instanceof AdminApiError && error.claimedBy) {
+        setSubmissions((current) => current.map((item) =>
+          item.id === selected.id
+            ? { ...item, claimedBy: error.claimedBy, claimedById: error.claimedById, status: 'In review' }
+            : item
+        ))
+      }
+    } finally {
+      setClaimState('idle')
+    }
+  }
 
   const decide = (status: SubmissionStatus, body: string) => updateSelected((submission) => ({
     ...submission,
@@ -455,7 +484,7 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
   }))
 
   const addNote = () => {
-    if (!note.trim()) return
+    if (!adminDemoMode || !note.trim()) return
     updateSelected((submission) => ({
       ...submission,
       notes: [...submission.notes, { author: reviewerName, body: note.trim(), time: 'Just now' }],
@@ -511,6 +540,7 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
                 key={submission.id}
                 onSelect={() => {
                   setSelectedId(submission.id)
+                  setClaimError('')
                   setMobileDetail(true)
                 }}
                 submission={submission}
@@ -520,7 +550,8 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
           </div>
         </section>
         {selected ? <><section className="review-pane">
-          <ReviewHeader staffName={reviewerName} submission={selected} onBack={() => setMobileDetail(false)} onClaim={claim} onDecide={decide} />
+          <ReviewHeader actionsLive={adminDemoMode} claimLoading={claimState === 'loading'} staffId={user.id} staffName={reviewerName} submission={selected} onBack={() => setMobileDetail(false)} onClaim={claim} onDecide={decide} />
+          {claimError && <div className="review-alert"><FileWarning size={15} /><span>{claimError}</span><button aria-label="Dismiss claim error" onClick={() => setClaimError('')} type="button"><X size={14} /></button></div>}
           <div className="review-scroll">
             <section className="review-overview">
               <div className="identity-block">
@@ -563,8 +594,8 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
                 {selected.notes.length === 0 && <p className="muted">No internal notes yet.</p>}
               </div>
               <div className="note-composer">
-                <textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Add a private staff note..." />
-                <button aria-label="Add staff note" disabled={!note.trim()} onClick={addNote} title="Add staff note" type="button"><Send size={17} /></button>
+                <textarea disabled={!adminDemoMode} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Add a private staff note..." />
+                <button aria-label="Add staff note" disabled={!adminDemoMode || !note.trim()} onClick={addNote} title="Add staff note" type="button"><Send size={17} /></button>
               </div>
             </section>
           </div>
@@ -574,7 +605,7 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
             <div><span className="eyebrow">Discord Context</span><h2>Ticket Activity</h2></div>
             <button aria-label="Open in Discord" title="Open in Discord" type="button"><ExternalLink size={17} /></button>
           </header>
-          <div className="sync-state"><Activity size={15} /><span>Live update mock</span></div>
+          <div className="sync-state"><Activity size={15} /><span>{adminDemoMode ? 'Live update mock' : 'Ticket context'}</span></div>
           <div className="activity-list">
             {selected.activity.map((item, index) => (
               <article className={`activity-item ${item.type}`} key={`${item.time}-${index}`}>
@@ -586,8 +617,8 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
             ))}
           </div>
           <div className="ticket-composer">
-            <textarea placeholder="Request information from the player..." />
-            <button type="button"><Send size={16} /> Send to Discord</button>
+            <textarea disabled={!adminDemoMode} placeholder="Request information from the player..." />
+            <button disabled={!adminDemoMode} type="button"><Send size={16} /> Send to Discord</button>
           </div>
         </aside></> : <section className="review-pane empty-review"><Inbox /><strong>Select a submission</strong><p>Review details will appear here.</p></section>}
       </main>}
@@ -1091,14 +1122,17 @@ function QueueItem({ submission, active, onSelect }: { submission: Submission; a
   )
 }
 
-function ReviewHeader({ staffName, submission, onBack, onClaim, onDecide }: {
+function ReviewHeader({ actionsLive, claimLoading, staffId, staffName, submission, onBack, onClaim, onDecide }: {
+  actionsLive: boolean
+  claimLoading: boolean
+  staffId: string
   staffName: string
   submission: Submission
   onBack: () => void
   onClaim: () => void
   onDecide: (status: SubmissionStatus, body: string) => void
 }) {
-  const owned = submission.claimedBy === staffName
+  const owned = submission.claimedById ? submission.claimedById === staffId : submission.claimedBy === staffName
   const decided = ['Approved', 'Denied'].includes(submission.status)
   return (
     <header className="review-header">
@@ -1107,13 +1141,13 @@ function ReviewHeader({ staffName, submission, onBack, onClaim, onDecide }: {
         <div><span className="eyebrow">{submission.type}</span><strong>{submission.id}</strong></div>
       </div>
       <div className="review-actions">
-        {!submission.claimedBy && <button className="claim-button" onClick={onClaim} type="button"><UserRoundSearch size={16} />Claim</button>}
+        {!submission.claimedBy && <button className="claim-button" disabled={claimLoading} onClick={onClaim} type="button"><UserRoundSearch size={16} />{claimLoading ? 'Claiming...' : 'Claim'}</button>}
         {submission.claimedBy && !owned && <span className="claimed-label"><LockKeyhole size={14} />{submission.claimedBy}</span>}
         {owned && !decided && (
           <>
-            <button className="icon-action request" onClick={() => onDecide('Waiting on player', 'Staff requested more information in Discord.')} title="Request information" type="button"><MessageSquareText size={17} /></button>
-            <button className="icon-action deny" onClick={() => onDecide('Denied', 'Submission denied from the admin portal.')} title="Deny" type="button"><XCircle size={18} /></button>
-            <button className="approve-button" onClick={() => onDecide('Approved', 'Submission approved from the admin portal.')} type="button"><Check size={17} />Approve</button>
+            <button className="icon-action request" disabled={!actionsLive} onClick={() => onDecide('Waiting on player', 'Staff requested more information in Discord.')} title={actionsLive ? 'Request information' : 'Not connected yet'} type="button"><MessageSquareText size={17} /></button>
+            <button className="icon-action deny" disabled={!actionsLive} onClick={() => onDecide('Denied', 'Submission denied from the admin portal.')} title={actionsLive ? 'Deny' : 'Not connected yet'} type="button"><XCircle size={18} /></button>
+            <button className="approve-button" disabled={!actionsLive} onClick={() => onDecide('Approved', 'Submission approved from the admin portal.')} title={actionsLive ? 'Approve' : 'Not connected yet'} type="button"><Check size={17} />Approve</button>
           </>
         )}
       </div>

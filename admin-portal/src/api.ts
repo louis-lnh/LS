@@ -36,6 +36,22 @@ type SessionResponse = {
   user: AdminUser | null
 }
 
+export class AdminApiError extends Error {
+  status: number
+  code?: string
+  claimedBy?: string
+  claimedById?: string
+
+  constructor(status: number, payload: { code?: string; error?: string; claimedBy?: string; claimedById?: string }) {
+    super(payload.error || `Admin API request failed with HTTP ${status}`)
+    this.name = 'AdminApiError'
+    this.status = status
+    this.code = payload.code
+    this.claimedBy = payload.claimedBy
+    this.claimedById = payload.claimedById
+  }
+}
+
 const configuredBaseUrl = import.meta.env.VITE_ADMIN_API_BASE_URL?.replace(/\/+$/, '') ?? ''
 export const adminDemoMode = import.meta.env.VITE_ADMIN_DEMO_MODE === 'true' || !configuredBaseUrl
 
@@ -59,9 +75,8 @@ async function adminRequest<T>(path: string, init?: RequestInit): Promise<T> {
     },
   })
   if (!response.ok) {
-    const error = new Error(`Admin API request failed with HTTP ${response.status}`)
-    Object.assign(error, { status: response.status })
-    throw error
+    const payload = await response.json().catch(() => ({}))
+    throw new AdminApiError(response.status, payload)
   }
   return response.json() as Promise<T>
 }
@@ -93,4 +108,12 @@ export async function getAdminSubmissions(): Promise<AdminApiSubmission[]> {
   if (adminDemoMode) return []
   const response = await adminRequest<{ ok: boolean; submissions: AdminApiSubmission[] }>('/submissions')
   return response.submissions
+}
+
+export async function claimAdminSubmission(code: string): Promise<AdminApiSubmission> {
+  const response = await adminRequest<{ ok: boolean; submission: AdminApiSubmission }>(
+    `/submissions/${encodeURIComponent(code)}/claim`,
+    { method: 'POST' },
+  )
+  return response.submission
 }

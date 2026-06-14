@@ -553,6 +553,25 @@ export const statements = {
       return state.support_submissions.find((row) => row.code === code) ?? null;
     }
   },
+  claimSupportSubmission: {
+    run(row) {
+      const submission = state.support_submissions.find((item) => item.code === row.code);
+      if (!submission) return { ok: false, reason: 'not_found', submission: null };
+      if (submission.claimed_by && submission.claimed_by !== row.staffId) {
+        return { ok: false, reason: 'claimed', submission };
+      }
+      if (submission.claimed_by === row.staffId) {
+        return { ok: true, changed: false, submission };
+      }
+      submission.claimed_by = row.staffId;
+      submission.claimed_at = row.claimedAt;
+      if (submission.status === 'submitted' || submission.status === 'ticket_verified') {
+        submission.status = 'in_review';
+      }
+      persist();
+      return { ok: true, changed: true, submission };
+    }
+  },
   findOpenSupportSubmission: {
     get({ formType, discordUsername, minecraftName, subjectName }) {
       const normalizedDiscord = String(discordUsername ?? '').trim().replace(/^@/, '').toLowerCase();

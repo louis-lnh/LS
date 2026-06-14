@@ -3,6 +3,7 @@ import express from 'express';
 import { PermissionFlagsBits } from 'discord.js';
 import { config } from './config.js';
 import { statements } from './db.js';
+import { audit, staffAuditLog } from './logger.js';
 
 const sessionCookieName = 'shd_admin_session';
 const oauthStateCookieName = 'shd_admin_oauth_state';
@@ -323,6 +324,9 @@ export async function buildAdminSubmissions(client) {
         { type: 'system', author: 'Support Portal', body: 'Application submitted.', time: application.created_at },
         application.verified_at
           ? { type: 'system', author: 'Discord Bot', body: 'Discord identity and application key verified.', time: application.verified_at }
+          : null,
+        ticket?.claimed_at && claimedById
+          ? { type: 'staff', author: staffNames.get(claimedById), body: 'Review claimed.', time: ticket.claimed_at }
           : null
       ].filter(Boolean)
     };
@@ -350,12 +354,20 @@ export async function buildAdminSubmissions(client) {
       ticketThreadId: submission.ticket_thread_id,
       requiresTicket: submission.requires_ticket,
       activity: [
-        { type: 'system', author: 'Support Portal', body: `${meta.type} submitted.`, time: submission.created_at }
-      ]
+        { type: 'system', author: 'Support Portal', body: `${meta.type} submitted.`, time: submission.created_at },
+        submission.claimed_at && claimedById
+          ? { type: 'staff', author: staffNames.get(claimedById), body: 'Review claimed.', time: submission.claimed_at }
+          : null
+      ].filter(Boolean)
     };
   });
 
   return [...applications, ...support].sort((left, right) => right.createdAt - left.createdAt);
+}
+
+async function findAdminSubmission(client, code) {
+  const submissions = await buildAdminSubmissions(client);
+  return submissions.find((item) => item.id === code) ?? null;
 }
 
 export function createAdminRouter(client) {
@@ -447,6 +459,81 @@ export function createAdminRouter(client) {
       console.error('Admin submission lookup failed', error);
       return res.status(500).json({ ok: false, code: 'ADMIN_SUBMISSIONS_FAILED', error: 'Could not load submissions.' });
     }
+  });
+
+  router.post('/submissions/:code/claim', requireAdminSession(client), async (req, res) => {
+    if (!req.adminSession.workspaces.includes('lifesteal')) {
+      return res.status(403).json({ ok: false, code: 'ADMIN_WORKSPACE_DENIED', error: 'Lifesteal access required.' });
+    }
+
+    const code = String(req.params.code ?? '').trim().toUpperCase();
+    const now = Date.now();
+    let result;
+
+    if (code.startsWith('SHD-APP-')) {
+      const application = statements.findSupportApplicationByCode.get(code);
+      if (!application) {
+        return res.status(404).json({ ok: false, code: 'ADMIN_SUBMISSION_NOT_FOUND', error: 'Submission not found.' });
+      }
+      if (!application.ticket_thread_id || !application.discord_id_verified) {
+        return res.status(409).json({
+          ok: false,
+          code: 'ADMIN_APPLICATION_NOT_VERIFIED',
+          error: 'The applicant must verify their application in Discord before staff can claim it.'
+        });
+      }
+      if (['approved', 'denied', 'rejected', 'closed'].includes(application.status)) {
+        return res.status(409).json({ ok: false, code: 'ADMIN_SUBMISSION_FINAL', error: 'This submission has already been decided.' });
+      }
+      result = statements.claimTicketReview.run({
+        threadId: application.ticket_thread_id,
+        staffId: req.adminSession.id,
+        claimedAt: now
+      });
+      if (!result.ok && result.reason === 'not_found') {
+        return res.status(409).json({ ok: false, code: 'ADMIN_TICKET_NOT_OPEN', error: 'The linked Discord ticket is no longer open.' });
+      }
+    } else {
+      const existing = statements.findSupportSubmissionByCode.get(code);
+      if (existing && ['approved', 'denied', 'rejected', 'closed', 'resolved'].includes(existing.status)) {
+        return res.status(409).json({ ok: false, code: 'ADMIN_SUBMISSION_FINAL', error: 'This submission has already been decided.' });
+      }
+      result = statements.claimSupportSubmission.run({
+        code,
+        staffId: req.adminSession.id,
+        claimedAt: now
+      });
+      if (!result.ok && result.reason === 'not_found') {
+        return res.status(404).json({ ok: false, code: 'ADMIN_SUBMISSION_NOT_FOUND', error: 'Submission not found.' });
+      }
+    }
+
+    if (!result.ok && result.reason === 'claimed') {
+      const ownerId = result.ticket?.claimed_by || result.submission?.claimed_by;
+      const owner = client.users.cache.get(ownerId) ?? await client.users.fetch(ownerId).catch(() => null);
+      const ownerName = owner?.globalName || owner?.username || ownerId;
+      return res.status(409).json({
+        ok: false,
+        code: 'ADMIN_SUBMISSION_ALREADY_CLAIMED',
+        error: `This review is already claimed by ${ownerName}.`,
+        claimedBy: ownerName,
+        claimedById: ownerId
+      });
+    }
+
+    audit('admin.submission_claimed', {
+      discordId: req.adminSession.id,
+      data: { submissionCode: code, changed: result.changed }
+    });
+    if (result.changed) {
+      await staffAuditLog(client, 'Admin Review Claimed', [
+        { name: 'Submission', value: code, inline: true },
+        { name: 'Staff', value: `${req.adminSession.displayName} (${req.adminSession.id})`, inline: true }
+      ]);
+    }
+
+    const submission = await findAdminSubmission(client, code);
+    return res.json({ ok: true, changed: result.changed, submission });
   });
 
   return router;
