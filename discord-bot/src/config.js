@@ -138,6 +138,10 @@ export const config = {
     portalUrl: (process.env.ADMIN_PORTAL_URL ?? 'http://127.0.0.1:4177').replace(/\/+$/, ''),
     clientSecret: process.env.DISCORD_CLIENT_SECRET ?? '',
     sessionSecret: process.env.ADMIN_SESSION_SECRET ?? '',
+    ownerIds: (process.env.ADMIN_OWNER_IDS ?? '1224803434675572827')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean),
     redirectUrl: process.env.ADMIN_OAUTH_REDIRECT_URL ??
       `${process.env.PUBLIC_BASE_URL ?? 'http://localhost:3000'}/api/v1/admin/auth/callback`,
     enabled: Boolean(process.env.DISCORD_CLIENT_SECRET && process.env.ADMIN_SESSION_SECRET)

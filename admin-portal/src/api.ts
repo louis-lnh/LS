@@ -10,6 +10,27 @@ export type AdminUser = {
   expiresAt: number
 }
 
+export type AdminApiSubmission = {
+  id: string
+  workspace: 'lifesteal'
+  type: 'Application' | 'Appeal' | 'Player Report' | 'Support'
+  status: 'New' | 'In review' | 'Waiting on player' | 'Approved' | 'Denied'
+  sourceStatus: string
+  title: string
+  discord: string
+  minecraft: string
+  subject: string | null
+  createdAt: number
+  priority: 'Normal' | 'High'
+  claimedBy: string | null
+  claimedById: string | null
+  summary: string
+  fields: Array<{ label: string; value: string }>
+  ticketThreadId: string | null
+  requiresTicket: boolean
+  activity: Array<{ type: 'player' | 'staff' | 'system'; author: string; body: string; time: number }>
+}
+
 type SessionResponse = {
   ok: boolean
   user: AdminUser | null
@@ -66,4 +87,10 @@ export function beginDiscordLogin(returnTo = window.location.pathname) {
 export async function endAdminSession() {
   if (adminDemoMode) return
   await adminRequest<{ ok: boolean }>('/auth/logout', { method: 'POST' })
+}
+
+export async function getAdminSubmissions(): Promise<AdminApiSubmission[]> {
+  if (adminDemoMode) return []
+  const response = await adminRequest<{ ok: boolean; submissions: AdminApiSubmission[] }>('/submissions')
+  return response.submissions
 }

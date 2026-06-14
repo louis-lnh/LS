@@ -42,7 +42,9 @@ import {
   beginDiscordLogin,
   demoAdminUser,
   endAdminSession,
+  getAdminSubmissions,
   getAdminSession,
+  type AdminApiSubmission,
   type AdminUser,
 } from './api'
 
@@ -80,6 +82,35 @@ type Submission = {
   fields: Array<{ label: string; value: string }>
   notes: Array<{ author: string; body: string; time: string }>
   activity: Array<{ type: 'player' | 'staff' | 'system'; author: string; body: string; time: string }>
+}
+
+function relativeTime(timestamp: number) {
+  const elapsed = Math.max(0, Date.now() - timestamp)
+  const minutes = Math.floor(elapsed / 60_000)
+  if (minutes < 1) return 'Just now'
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  return days === 1 ? 'Yesterday' : `${days}d ago`
+}
+
+function submissionFromApi(submission: AdminApiSubmission): Submission {
+  return {
+    id: submission.id,
+    type: submission.type,
+    status: submission.status,
+    title: submission.title,
+    discord: submission.discord,
+    minecraft: submission.minecraft,
+    submitted: relativeTime(submission.createdAt),
+    priority: submission.priority,
+    claimedBy: submission.claimedBy ?? undefined,
+    summary: submission.summary,
+    fields: submission.fields,
+    notes: [],
+    activity: submission.activity.map((item) => ({ ...item, time: relativeTime(item.time) })),
+  }
 }
 
 const seedStaffName = 'PrimeLuigi'
@@ -330,9 +361,10 @@ function LoginScreen({ authError, onSignIn }: { authError: string | null; onSign
 }
 
 function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: AdminUser }) {
-  const [submissions, setSubmissions] = useState(seedSubmissions)
+  const [submissions, setSubmissions] = useState<Submission[]>(adminDemoMode ? seedSubmissions : [])
+  const [submissionState, setSubmissionState] = useState<'loading' | 'ready' | 'error'>(adminDemoMode ? 'ready' : 'loading')
   const [view, setView] = useState<AdminView>(() => viewFromPath())
-  const [selectedId, setSelectedId] = useState(seedSubmissions[0].id)
+  const [selectedId, setSelectedId] = useState(adminDemoMode ? seedSubmissions[0].id : '')
   const [filter, setFilter] = useState<'All' | SubmissionType>('All')
   const [search, setSearch] = useState('')
   const [note, setNote] = useState('')
@@ -347,6 +379,18 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
     window.history.replaceState(null, '', viewPaths[fallback])
     setView(fallback)
   }, [user.workspaces, workspace])
+
+  useEffect(() => {
+    if (adminDemoMode || !user.workspaces.includes('lifesteal')) return
+    getAdminSubmissions()
+      .then((items) => {
+        const normalized = items.map(submissionFromApi)
+        setSubmissions(normalized)
+        setSelectedId((current) => normalized.some((item) => item.id === current) ? current : normalized[0]?.id ?? '')
+        setSubmissionState('ready')
+      })
+      .catch(() => setSubmissionState('error'))
+  }, [user.workspaces])
 
   useEffect(() => {
     const onPopState = () => {
@@ -387,6 +431,7 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
   }), [submissions, activeType, filter, search])
 
   const updateSelected = (updater: (submission: Submission) => Submission) => {
+    if (!selected) return
     setSubmissions((current) => current.map((submission) => submission.id === selected.id ? updater(submission) : submission))
   }
 
@@ -458,6 +503,8 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
             </div>}
           </div>
           <div className="queue-list">
+            {submissionState === 'loading' && <div className="empty-state"><Activity /><strong>Loading protected submissions...</strong></div>}
+            {submissionState === 'error' && <div className="empty-state error"><FileWarning /><strong>Could not load submissions</strong><span>Check the bot API and admin session.</span></div>}
             {visible.map((submission) => (
               <QueueItem
                 active={submission.id === selected.id}
@@ -469,10 +516,10 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
                 submission={submission}
               />
             ))}
-            {visible.length === 0 && <div className="empty-state"><Inbox /><strong>No matching submissions</strong></div>}
+            {submissionState === 'ready' && visible.length === 0 && <div className="empty-state"><Inbox /><strong>No matching submissions</strong></div>}
           </div>
         </section>
-        <section className="review-pane">
+        {selected ? <><section className="review-pane">
           <ReviewHeader staffName={reviewerName} submission={selected} onBack={() => setMobileDetail(false)} onClaim={claim} onDecide={decide} />
           <div className="review-scroll">
             <section className="review-overview">
@@ -542,7 +589,7 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
             <textarea placeholder="Request information from the player..." />
             <button type="button"><Send size={16} /> Send to Discord</button>
           </div>
-        </aside>
+        </aside></> : <section className="review-pane empty-review"><Inbox /><strong>Select a submission</strong><p>Review details will appear here.</p></section>}
       </main>}
     </div>
   )

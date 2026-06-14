@@ -130,7 +130,7 @@ function requireAdminSession(client) {
 }
 
 function workspaceAccess(member, guild) {
-  const owner = guild.ownerId === member.id;
+  const owner = guild.ownerId === member.id || config.admin.ownerIds.includes(member.id);
   const administrator = member.permissions.has(PermissionFlagsBits.Administrator);
   const moderator = member.permissions.has(PermissionFlagsBits.ModerateMembers);
   const configuredRole = config.staffRoleIds.some((roleId) => member.roles.cache.has(roleId));
@@ -204,6 +204,158 @@ function bootstrapPayload(session) {
       shdBot: 'pending'
     }
   };
+}
+
+function adminSubmissionStatus(status, claimedBy) {
+  if (['approved', 'completed', 'resolved'].includes(status)) return 'Approved';
+  if (['denied', 'rejected', 'closed'].includes(status)) return 'Denied';
+  if (status === 'approved_whitelist_pending' || status === 'waiting_on_player') return 'Waiting on player';
+  if (status === 'in_review' || claimedBy) return 'In review';
+  return 'New';
+}
+
+function compactFields(entries) {
+  return entries
+    .filter(([, value]) => value !== null && value !== undefined && String(value).trim() !== '')
+    .map(([label, value]) => ({ label, value: String(value) }));
+}
+
+function applicationFields(application) {
+  return compactFields([
+    ['Region', application.answers?.region],
+    ['Timezone', application.answers?.timezone],
+    ['Age', application.answers?.age],
+    ['How they found Lifesteal', application.answers?.foundLifesteal],
+    ['Experience', application.answers?.experience],
+    ['Motivation', application.answers?.motivation],
+    ['Team', application.answers?.team],
+    ['Content / extra', application.answers?.content],
+    ['Rules version', application.rules_version]
+  ]);
+}
+
+function supportSubmissionMeta(submission) {
+  if (submission.form_type === 'ban_appeal') {
+    return {
+      type: 'Appeal',
+      title: 'Minecraft ban appeal',
+      fields: compactFields([
+        ['Ban / case ID', submission.answers?.banId || submission.subject_name],
+        ['Punishment', submission.category],
+        ['Punishment date', submission.answers?.punishmentDate],
+        ['Reason shown', submission.answers?.punishmentReason],
+        ['What happened', submission.answers?.context],
+        ['Why staff should reconsider', submission.answers?.change],
+        ['Evidence', submission.answers?.evidence]
+      ])
+    };
+  }
+  if (submission.form_type === 'player_report') {
+    return {
+      type: 'Player Report',
+      title: `Player report: ${submission.subject_name || 'Minecraft player'}`,
+      fields: compactFields([
+        ['Reported player', submission.subject_name],
+        ['Category', submission.category],
+        ['Incident time', submission.answers?.incidentTime],
+        ['Location', submission.answers?.location],
+        ['Incident description', submission.answers?.description],
+        ['Evidence', submission.answers?.evidence],
+        ['Witnesses', submission.answers?.witnesses],
+        ['Extra context', submission.answers?.extra]
+      ])
+    };
+  }
+  return {
+    type: 'Support',
+    title: submission.summary || 'Minecraft support request',
+    fields: compactFields([
+      ['Category', submission.category],
+      ['Issue details', submission.answers?.details],
+      ['Error message', submission.answers?.error],
+      ['Evidence', submission.answers?.evidence]
+    ])
+  };
+}
+
+async function resolveStaffNames(client, ids) {
+  const names = new Map();
+  await Promise.all([...new Set(ids.filter(Boolean))].map(async (id) => {
+    const user = client.users.cache.get(id) ?? await client.users.fetch(id).catch(() => null);
+    names.set(id, user?.globalName || user?.username || id);
+  }));
+  return names;
+}
+
+export async function buildAdminSubmissions(client) {
+  const snapshot = statements.snapshot.get();
+  const ticketsByThread = new Map(snapshot.ticket_threads.map((ticket) => [ticket.thread_id, ticket]));
+  const staffIds = [
+    ...snapshot.support_applications.map((item) =>
+      ticketsByThread.get(item.ticket_thread_id)?.claimed_by || item.reviewed_by
+    ),
+    ...snapshot.support_submissions.flatMap((item) => [item.claimed_by, item.reviewed_by])
+  ];
+  const staffNames = await resolveStaffNames(client, staffIds);
+
+  const applications = snapshot.support_applications.map((application) => {
+    const ticket = ticketsByThread.get(application.ticket_thread_id);
+    const claimedById = ticket?.claimed_by || application.reviewed_by || null;
+    return {
+      id: application.code,
+      workspace: 'lifesteal',
+      type: 'Application',
+      status: adminSubmissionStatus(application.status, claimedById),
+      sourceStatus: application.status,
+      title: 'Lifesteal Season 1 application',
+      discord: application.discord_username,
+      minecraft: application.minecraft_name,
+      subject: null,
+      createdAt: application.created_at,
+      priority: 'Normal',
+      claimedBy: claimedById ? staffNames.get(claimedById) : null,
+      claimedById,
+      summary: application.answers?.motivation || 'Lifesteal application submitted through the support portal.',
+      fields: applicationFields(application),
+      ticketThreadId: application.ticket_thread_id,
+      requiresTicket: true,
+      activity: [
+        { type: 'system', author: 'Support Portal', body: 'Application submitted.', time: application.created_at },
+        application.verified_at
+          ? { type: 'system', author: 'Discord Bot', body: 'Discord identity and application key verified.', time: application.verified_at }
+          : null
+      ].filter(Boolean)
+    };
+  });
+
+  const support = snapshot.support_submissions.map((submission) => {
+    const meta = supportSubmissionMeta(submission);
+    const claimedById = submission.claimed_by || submission.reviewed_by || null;
+    return {
+      id: submission.code,
+      workspace: 'lifesteal',
+      type: meta.type,
+      status: adminSubmissionStatus(submission.status, claimedById),
+      sourceStatus: submission.status,
+      title: meta.title,
+      discord: submission.discord_username,
+      minecraft: submission.minecraft_name || submission.subject_name || 'Unknown',
+      subject: submission.subject_name,
+      createdAt: submission.created_at,
+      priority: submission.form_type === 'player_report' ? 'High' : 'Normal',
+      claimedBy: claimedById ? staffNames.get(claimedById) : null,
+      claimedById,
+      summary: submission.summary,
+      fields: meta.fields,
+      ticketThreadId: submission.ticket_thread_id,
+      requiresTicket: submission.requires_ticket,
+      activity: [
+        { type: 'system', author: 'Support Portal', body: `${meta.type} submitted.`, time: submission.created_at }
+      ]
+    };
+  });
+
+  return [...applications, ...support].sort((left, right) => right.createdAt - left.createdAt);
 }
 
 export function createAdminRouter(client) {
@@ -282,6 +434,19 @@ export function createAdminRouter(client) {
 
   router.get('/bootstrap', requireAdminSession(client), (req, res) => {
     return res.json(bootstrapPayload(req.adminSession));
+  });
+
+  router.get('/submissions', requireAdminSession(client), async (req, res) => {
+    if (!req.adminSession.workspaces.includes('lifesteal')) {
+      return res.status(403).json({ ok: false, code: 'ADMIN_WORKSPACE_DENIED', error: 'Lifesteal access required.' });
+    }
+    try {
+      const submissions = await buildAdminSubmissions(client);
+      return res.json({ ok: true, submissions, updatedAt: Date.now() });
+    } catch (error) {
+      console.error('Admin submission lookup failed', error);
+      return res.status(500).json({ ok: false, code: 'ADMIN_SUBMISSIONS_FAILED', error: 'Could not load submissions.' });
+    }
   });
 
   return router;
