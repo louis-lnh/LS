@@ -500,6 +500,7 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
   const selectedOwned = selected ? (selected.claimedById ? selected.claimedById === user.id : selected.claimedBy === reviewerName) : false
   const selectedSupportsAdminActions = Boolean(selected && (adminDemoMode || selected.type !== 'Application'))
   const canWriteSelected = Boolean(selected && selectedSupportsAdminActions && (adminDemoMode || (selectedOwned && !selectedDecided)))
+  const openSubmissionCount = submissions.filter((submission) => !['Approved', 'Denied'].includes(submission.status)).length
   const viewType: Partial<Record<AdminView, SubmissionType>> = {
     'lifesteal-applications': 'Application',
     'lifesteal-appeals': 'Appeal',
@@ -615,7 +616,7 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
 
   return (
     <div className={`admin-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-      <Sidebar active={view} collapsed={sidebarCollapsed} workspace={workspace} user={user} mobileOpen={mobileNav} onClose={() => setMobileNav(false)} onNavigate={navigate} onSignOut={onSignOut} onToggleCollapse={toggleSidebar} />
+      <Sidebar active={view} collapsed={sidebarCollapsed} openSubmissionCount={openSubmissionCount} workspace={workspace} user={user} mobileOpen={mobileNav} onClose={() => setMobileNav(false)} onNavigate={navigate} onSignOut={onSignOut} onToggleCollapse={toggleSidebar} />
       <header className="mobile-header">
         <button aria-label="Open navigation" onClick={() => setMobileNav(true)} type="button"><Menu /></button>
         <span>{workspace === 'global' ? 'SHD Admin' : workspace}</span>
@@ -750,9 +751,10 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
   )
 }
 
-function Sidebar({ active, collapsed, workspace, user, mobileOpen, onClose, onNavigate, onSignOut, onToggleCollapse }: {
+function Sidebar({ active, collapsed, openSubmissionCount, workspace, user, mobileOpen, onClose, onNavigate, onSignOut, onToggleCollapse }: {
   active: AdminView
   collapsed: boolean
+  openSubmissionCount: number
   workspace: WorkspaceId
   user: AdminUser
   mobileOpen: boolean
@@ -814,7 +816,7 @@ function Sidebar({ active, collapsed, workspace, user, mobileOpen, onClose, onNa
         {workspace === 'global' && <>
           <nav>
             <NavButton active={active === 'global-overview'} icon={<LayoutDashboard size={18} />} label="Overview" onClick={() => onNavigate('global-overview')} />
-            <NavButton active={active === 'global-inbox'} icon={<Inbox size={18} />} label="Unified Inbox" badge="4" onClick={() => onNavigate('global-inbox')} />
+            <NavButton active={active === 'global-inbox'} icon={<Inbox size={18} />} label="Unified Inbox" badge={String(openSubmissionCount)} onClick={() => onNavigate('global-inbox')} />
             <NavButton active={active === 'global-staff'} icon={<KeyRound size={18} />} label="Staff & Access" onClick={() => onNavigate('global-staff')} />
             <NavButton active={active === 'global-integrations'} icon={<Network size={18} />} label="Integrations" onClick={() => onNavigate('global-integrations')} />
             <NavButton active={active === 'global-audit'} icon={<Activity size={18} />} label="Global Audit" onClick={() => onNavigate('global-audit')} />
@@ -823,7 +825,7 @@ function Sidebar({ active, collapsed, workspace, user, mobileOpen, onClose, onNa
         {workspace === 'lifesteal' && <>
           <nav>
             <NavButton active={active === 'lifesteal-overview'} icon={<LayoutDashboard size={18} />} label="Overview" onClick={() => onNavigate('lifesteal-overview')} />
-            <NavButton active={active === 'lifesteal-queue'} icon={<Inbox size={18} />} label="Review Queue" badge="4" onClick={() => onNavigate('lifesteal-queue')} />
+            <NavButton active={active === 'lifesteal-queue'} icon={<Inbox size={18} />} label="Review Queue" badge={String(openSubmissionCount)} onClick={() => onNavigate('lifesteal-queue')} />
             <NavButton active={active === 'lifesteal-players'} icon={<Users size={18} />} label="Players" onClick={() => onNavigate('lifesteal-players')} />
             <NavButton active={active === 'lifesteal-staff-chat'} icon={<MessageSquareText size={18} />} label="Staff Chat" onClick={() => onNavigate('lifesteal-staff-chat')} />
           </nav>
