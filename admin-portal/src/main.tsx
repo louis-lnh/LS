@@ -838,7 +838,7 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
         {activityVisible && <aside className="activity-pane">
           <header>
             <div><span className="eyebrow">Discord Context</span><h2>Ticket Activity</h2></div>
-            <button aria-label="Refresh ticket activity" disabled={!selected.ticketThreadId || ticketActivityState === 'loading'} onClick={loadTicketActivity} title="Refresh ticket activity" type="button"><RefreshCw size={17} /></button>
+            <button aria-label="Refresh ticket activity" disabled={!selected.ticketThreadId || ticketActivityState === 'loading'} onClick={() => loadTicketActivity()} title="Refresh ticket activity" type="button"><RefreshCw size={17} /></button>
           </header>
           <div className={`sync-state ${ticketActivityState === 'error' ? 'error' : ''}`}><Activity size={15} /><span>{ticketSyncLabel}</span></div>
           {ticketActivityError && <div className="ticket-error"><FileWarning size={15} /><span>{ticketActivityError}</span></div>}
@@ -1313,7 +1313,7 @@ function LifestealStaffChatPage({ user }: { user: AdminUser }) {
         eyebrow="Lifesteal Staff"
         title="Staff Chat"
         detail="A protected bridge into the configured Lifesteal Discord staff channel."
-        action={<button className="page-action secondary" disabled={state === 'loading'} onClick={loadChat} type="button"><RefreshCw size={16} />Refresh</button>}
+        action={<button className="page-action secondary" disabled={state === 'loading'} onClick={() => loadChat()} type="button"><RefreshCw size={16} />Refresh</button>}
       />
       <section className="staff-chat-shell">
         <header>
@@ -1437,7 +1437,7 @@ function PlayersPage() {
         <div className="table-head"><span>Player</span><span>Badge</span><span>Status</span><span>Hearts</span><span>Risk</span><span>Updated</span><span /></div>
         {visible.map((player) => (
           <article className="table-row" key={player.minecraft}>
-            <div className="player-cell"><div className="player-avatar small">{player.minecraft.slice(0, 2).toUpperCase()}</div><div><strong>{player.minecraft}</strong><span>@{player.discord}</span></div></div>
+            <div className="player-cell"><img className="player-avatar small" alt="" src={minecraftHeadUrl(player.minecraft)} /><div><strong>{player.minecraft}</strong><span>@{player.discord}</span></div></div>
             <span className="badge-label">{player.badge}</span>
             <span className={`access-status ${player.status.toLowerCase()}`}>{player.status}</span>
             <strong>{player.hearts}</strong>
