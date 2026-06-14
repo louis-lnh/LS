@@ -181,14 +181,74 @@ function publicSession(session) {
   };
 }
 
-function bootstrapPayload(session) {
+function parseAuditData(value) {
+  try {
+    return JSON.parse(value || '{}');
+  } catch {
+    return {};
+  }
+}
+
+function auditActivityLabel(event, data) {
+  const labels = {
+    'admin.submission_claimed': 'claimed a review',
+    'support.application_submitted': 'received a Lifesteal application',
+    'support.rules_ack_created': 'generated a rules acknowledgement',
+    'verification.completed': 'completed account verification',
+    'minecraft.linked': 'linked a Minecraft account',
+    'gameplay.roles_sync': 'synchronized gameplay roles'
+  };
+  return {
+    action: labels[event.type] || event.type.replaceAll('.', ' '),
+    target: data.submissionCode || data.applicationCode || data.minecraftName || data.project || 'SHD platform'
+  };
+}
+
+export async function buildBootstrapPayload(client, session) {
   const snapshot = statements.snapshot.get();
+  const ticketsByThread = new Map(snapshot.ticket_threads.map((ticket) => [ticket.thread_id, ticket]));
+  const openApplicationStatuses = new Set(['submitted', 'ticket_verified', 'in_review', 'approved_whitelist_pending']);
+  const openSupportStatuses = new Set(['submitted', 'ticket_verified', 'in_review', 'waiting_on_player']);
   const openApplications = snapshot.support_applications.filter((item) =>
-    ['submitted', 'ticket_verified', 'in_review'].includes(item.status)
+    openApplicationStatuses.has(item.status)
   ).length;
   const openSupport = snapshot.support_submissions.filter((item) =>
-    ['submitted', 'ticket_verified', 'in_review'].includes(item.status)
+    openSupportStatuses.has(item.status)
   ).length;
+  const unclaimedApplications = snapshot.support_applications.filter((item) =>
+    openApplicationStatuses.has(item.status) && !ticketsByThread.get(item.ticket_thread_id)?.claimed_by && !item.reviewed_by
+  ).length;
+  const unclaimedSupport = snapshot.support_submissions.filter((item) =>
+    openSupportStatuses.has(item.status) && !item.claimed_by && !item.reviewed_by
+  ).length;
+  const highPriority = snapshot.support_submissions.filter((item) =>
+    item.form_type === 'player_report' && openSupportStatuses.has(item.status)
+  ).length;
+  const linkedPlayers = snapshot.linked_accounts.filter((item) => item.status === 'active').length;
+  const publicSnapshot = snapshot.public_lifesteal_snapshot;
+
+  const guild = await client.guilds.fetch(config.guildId);
+  const members = guild.members.cache.size > 0
+    ? guild.members.cache
+    : await guild.members.fetch().catch(() => guild.members.cache);
+  const authorizedStaff = members.filter((member) => Boolean(workspaceAccess(member, guild))).size;
+
+  const auditWindow = statements.recentAudit.all(50);
+  const meaningfulAudit = auditWindow.filter((event) => event.type !== 'gameplay.roles_sync');
+  const recentAudit = (meaningfulAudit.length > 0 ? meaningfulAudit : auditWindow.slice(0, 1)).slice(0, 6);
+  const actorNames = await resolveStaffNames(client, recentAudit.map((event) => event.discord_id));
+  const recentActivity = recentAudit.map((event) => {
+    const data = parseAuditData(event.data_json);
+    const label = auditActivityLabel(event, data);
+    return {
+      id: event.id,
+      actor: event.discord_id ? actorNames.get(event.discord_id) : 'System',
+      action: label.action,
+      target: label.target,
+      type: event.type,
+      createdAt: event.created_at
+    };
+  });
 
   return {
     ok: true,
@@ -196,14 +256,38 @@ function bootstrapPayload(session) {
     metrics: {
       openWork: openApplications + openSupport,
       openApplications,
-      openSupport
+      openSupport,
+      unclaimed: unclaimedApplications + unclaimedSupport,
+      highPriority,
+      linkedPlayers,
+      activeWorkspaces: 1,
+      totalWorkspaces: 3,
+      botConnections: 1,
+      totalBotConnections: 2,
+      authorizedStaff
     },
+    projects: [
+      {
+        id: 'lifesteal',
+        status: 'operational',
+        openWork: openApplications + openSupport,
+        detail: `${linkedPlayers} active linked players`
+      },
+      { id: 'general', status: 'frontend_ready', openWork: 0, detail: 'Backend intake pending' },
+      { id: 'valorant', status: 'staged', openWork: 0, detail: 'Workflows not active' }
+    ],
     services: {
-      adminApi: 'online',
-      lifestealBot: 'online',
-      supportPortal: 'online',
-      shdBot: 'pending'
-    }
+      adminApi: { status: 'online', detail: 'Protected routes responding' },
+      lifestealBot: { status: 'online', detail: `Connected as ${client.user?.tag || 'Discord bot'}` },
+      supportPortal: { status: 'online', detail: `${openApplications + openSupport} open intake records` },
+      minecraftBridge: {
+        status: publicSnapshot.updated_at ? 'online' : 'waiting',
+        detail: publicSnapshot.updated_at ? `Last gameplay sync ${publicSnapshot.updated_at}` : 'No gameplay snapshot received'
+      },
+      shdBot: { status: 'pending', detail: 'General Support and Valorant bot not connected' }
+    },
+    recentActivity,
+    generatedAt: Date.now()
   };
 }
 
@@ -444,8 +528,13 @@ export function createAdminRouter(client) {
     return res.json({ ok: true });
   });
 
-  router.get('/bootstrap', requireAdminSession(client), (req, res) => {
-    return res.json(bootstrapPayload(req.adminSession));
+  router.get('/bootstrap', requireAdminSession(client), async (req, res) => {
+    try {
+      return res.json(await buildBootstrapPayload(client, req.adminSession));
+    } catch (error) {
+      console.error('Admin bootstrap failed', error);
+      return res.status(500).json({ ok: false, code: 'ADMIN_BOOTSTRAP_FAILED', error: 'Could not load global operations.' });
+    }
   });
 
   router.get('/submissions', requireAdminSession(client), async (req, res) => {

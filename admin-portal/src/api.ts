@@ -31,6 +31,38 @@ export type AdminApiSubmission = {
   activity: Array<{ type: 'player' | 'staff' | 'system'; author: string; body: string; time: number }>
 }
 
+export type AdminOverview = {
+  metrics: {
+    openWork: number
+    openApplications: number
+    openSupport: number
+    unclaimed: number
+    highPriority: number
+    linkedPlayers: number
+    activeWorkspaces: number
+    totalWorkspaces: number
+    botConnections: number
+    totalBotConnections: number
+    authorizedStaff: number
+  }
+  projects: Array<{
+    id: 'lifesteal' | 'general' | 'valorant'
+    status: 'operational' | 'frontend_ready' | 'staged'
+    openWork: number
+    detail: string
+  }>
+  services: Record<string, { status: 'online' | 'waiting' | 'pending'; detail: string }>
+  recentActivity: Array<{
+    id: number
+    actor: string
+    action: string
+    target: string
+    type: string
+    createdAt: number
+  }>
+  generatedAt: number
+}
+
 type SessionResponse = {
   ok: boolean
   user: AdminUser | null
@@ -116,4 +148,9 @@ export async function claimAdminSubmission(code: string): Promise<AdminApiSubmis
     { method: 'POST' },
   )
   return response.submission
+}
+
+export async function getAdminOverview(): Promise<AdminOverview> {
+  const response = await adminRequest<AdminOverview & { ok: boolean }>('/bootstrap')
+  return response
 }

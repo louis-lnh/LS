@@ -45,8 +45,10 @@ import {
   demoAdminUser,
   endAdminSession,
   getAdminSubmissions,
+  getAdminOverview,
   getAdminSession,
   type AdminApiSubmission,
+  type AdminOverview,
   type AdminUser,
 } from './api'
 
@@ -369,6 +371,8 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
   const [submissionState, setSubmissionState] = useState<'loading' | 'ready' | 'error'>(adminDemoMode ? 'ready' : 'loading')
   const [claimState, setClaimState] = useState<'idle' | 'loading'>('idle')
   const [claimError, setClaimError] = useState('')
+  const [overview, setOverview] = useState<AdminOverview | null>(null)
+  const [overviewState, setOverviewState] = useState<'loading' | 'ready' | 'error'>(adminDemoMode ? 'ready' : 'loading')
   const [view, setView] = useState<AdminView>(() => viewFromPath())
   const [selectedId, setSelectedId] = useState(adminDemoMode ? seedSubmissions[0].id : '')
   const [filter, setFilter] = useState<'All' | SubmissionType>('All')
@@ -396,6 +400,16 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
         setSubmissionState('ready')
       })
       .catch(() => setSubmissionState('error'))
+  }, [user.workspaces])
+
+  useEffect(() => {
+    if (adminDemoMode || !user.workspaces.includes('global')) return
+    getAdminOverview()
+      .then((data) => {
+        setOverview(data)
+        setOverviewState('ready')
+      })
+      .catch(() => setOverviewState('error'))
   }, [user.workspaces])
 
   useEffect(() => {
@@ -500,7 +514,7 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
         <span>{workspace === 'global' ? 'SHD Admin' : workspace}</span>
         <div className="avatar">PL</div>
       </header>
-      {view === 'global-overview' && <GlobalOverviewPage submissions={submissions} onNavigate={navigate} />}
+      {view === 'global-overview' && <GlobalOverviewPage overview={overview} state={overviewState} submissions={submissions} onNavigate={navigate} />}
       {view === 'global-inbox' && <UnifiedInboxPage submissions={submissions} onNavigate={navigate} />}
       {view === 'global-staff' && <StaffAccessPage />}
       {view === 'global-integrations' && <IntegrationsPage />}
@@ -735,37 +749,66 @@ function NavButton({ active, badge, icon, label, onClick }: {
   return <button className={active ? 'active' : ''} onClick={onClick} type="button">{icon}{label}{badge && <span>{badge}</span>}</button>
 }
 
-function GlobalOverviewPage({ submissions, onNavigate }: { submissions: Submission[]; onNavigate: (view: AdminView) => void }) {
-  const open = submissions.filter((item) => !['Approved', 'Denied'].includes(item.status)).length
+function GlobalOverviewPage({ overview, state, submissions, onNavigate }: {
+  overview: AdminOverview | null
+  state: 'loading' | 'ready' | 'error'
+  submissions: Submission[]
+  onNavigate: (view: AdminView) => void
+}) {
+  const demoOpen = submissions.filter((item) => !['Approved', 'Denied'].includes(item.status)).length
+  const metrics = overview?.metrics ?? {
+    openWork: demoOpen,
+    openApplications: submissions.filter((item) => item.type === 'Application' && !['Approved', 'Denied'].includes(item.status)).length,
+    openSupport: submissions.filter((item) => item.type !== 'Application' && !['Approved', 'Denied'].includes(item.status)).length,
+    unclaimed: submissions.filter((item) => !item.claimedBy && !['Approved', 'Denied'].includes(item.status)).length,
+    highPriority: submissions.filter((item) => item.priority === 'High' && !['Approved', 'Denied'].includes(item.status)).length,
+    linkedPlayers: 5,
+    activeWorkspaces: 1,
+    totalWorkspaces: 3,
+    botConnections: 1,
+    totalBotConnections: 2,
+    authorizedStaff: 2,
+  }
+  const projectData = new Map(overview?.projects.map((project) => [project.id, project]))
   const projects = [
     {
+      id: 'lifesteal' as const,
       name: 'Lifesteal',
       description: 'Applications, appeals, reports, linked players, and the Minecraft bridge.',
-      status: 'Operational',
-      work: `${open} open reviews`,
+      status: !projectData.has('lifesteal') || projectData.get('lifesteal')?.status === 'operational' ? 'Operational' : 'Needs attention',
+      work: `${projectData.get('lifesteal')?.openWork ?? metrics.openWork} open reviews`,
       icon: Gamepad2,
       target: 'lifesteal-overview' as AdminView,
       tone: 'green',
     },
     {
+      id: 'general' as const,
       name: 'General Support',
       description: 'Community support for SHD accounts, services, and general questions.',
       status: 'Frontend ready',
-      work: 'Inbox awaiting backend',
+      work: projectData.get('general')?.detail ?? 'Inbox awaiting backend',
       icon: Headphones,
       target: 'general-overview' as AdminView,
       tone: 'blue',
     },
     {
+      id: 'valorant' as const,
       name: 'Valorant',
       description: 'Competitive operations, player reports, appeals, and team support.',
       status: 'Workspace staged',
-      work: 'Workflows not active',
+      work: projectData.get('valorant')?.detail ?? 'Workflows not active',
       icon: Crosshair,
       target: 'valorant-overview' as AdminView,
       tone: 'red',
     },
   ]
+  const services = overview?.services ?? {
+    adminApi: { status: 'online' as const, detail: 'Protected routes responding' },
+    lifestealBot: { status: 'online' as const, detail: 'Minecraft guild and API bridge' },
+    supportPortal: { status: 'online' as const, detail: `${metrics.openWork} open intake records` },
+    minecraftBridge: { status: 'waiting' as const, detail: 'Gameplay sync state unavailable in demo mode' },
+    shdBot: { status: 'pending' as const, detail: 'General Support and Valorant bot not connected' },
+  }
 
   return (
     <main className="page-workspace">
@@ -775,14 +818,16 @@ function GlobalOverviewPage({ submissions, onNavigate }: { submissions: Submissi
         detail="One staff surface across every SHD project, with each Discord guild and workflow kept in its own workspace."
         action={<button className="page-action" onClick={() => onNavigate('global-inbox')} type="button"><Inbox size={16} />Open unified inbox</button>}
       />
+      {state === 'loading' && <div className="operations-state"><Activity size={16} /><span>Loading live operations...</span></div>}
+      {state === 'error' && <div className="operations-state error"><FileWarning size={16} /><span>Live global metrics could not be loaded. Review the admin API connection.</span></div>}
       <section className="metric-grid">
-        <MetricCard label="Open work" value={String(open)} detail="Across all connected workspaces" icon={<Inbox size={18} />} />
-        <MetricCard label="Active workspaces" value="3" detail="Lifesteal, General Support, Valorant" icon={<Building2 size={18} />} />
-        <MetricCard label="Bot connections" value="1 / 2" detail="Lifesteal online, SHD bot pending" icon={<Bot size={18} />} />
-        <MetricCard label="Staff online" value="2" detail="Authorized through Discord roles" icon={<ShieldCheck size={18} />} />
+        <MetricCard label="Open work" value={String(metrics.openWork)} detail={`${metrics.unclaimed} currently unclaimed`} icon={<Inbox size={18} />} />
+        <MetricCard label="Active workspaces" value={`${metrics.activeWorkspaces} / ${metrics.totalWorkspaces}`} detail="Lifesteal live; General and Valorant staged" icon={<Building2 size={18} />} />
+        <MetricCard label="Bot connections" value={`${metrics.botConnections} / ${metrics.totalBotConnections}`} detail="Lifesteal online, SHD bot pending" icon={<Bot size={18} />} />
+        <MetricCard label="Authorized staff" value={String(metrics.authorizedStaff)} detail="Current Discord role access" icon={<ShieldCheck size={18} />} />
       </section>
       <section className="project-grid">
-        {projects.map(({ name, description, status, work, icon: Icon, target, tone }) => (
+        {projects.map(({ id, name, description, status, work, icon: Icon, target, tone }) => (
           <button className="project-card" key={name} onClick={() => onNavigate(target)} type="button">
             <span className={`project-icon ${tone}`}><Icon size={20} /></span>
             <span className="project-copy">
@@ -790,7 +835,7 @@ function GlobalOverviewPage({ submissions, onNavigate }: { submissions: Submissi
               <strong>{name}</strong>
               <p>{description}</p>
             </span>
-            <span className="project-footer"><span>{work}</span><ArrowLeft className="project-arrow" size={17} /></span>
+            <span className="project-footer"><span>{id === 'lifesteal' ? `${work} / ${metrics.linkedPlayers} linked players` : work}</span><ArrowLeft className="project-arrow" size={17} /></span>
           </button>
         ))}
       </section>
@@ -798,23 +843,38 @@ function GlobalOverviewPage({ submissions, onNavigate }: { submissions: Submissi
         <article className="dashboard-panel">
           <header><div><span className="eyebrow">Service map</span><h2>Connected Systems</h2></div><button onClick={() => onNavigate('global-integrations')} type="button">Manage</button></header>
           <div className="health-list">
-            <HealthRow label="Admin frontend" detail="Global workspace routing active" status="Online" />
-            <HealthRow label="Lifesteal bot" detail="Minecraft guild and API bridge" status="Online" />
-            <HealthRow label="SHD bot" detail="General Support and Valorant guild" status="Planned" muted />
-            <HealthRow label="Shared admin API" detail="Backend implementation is next" status="Mock" muted />
+            <HealthRow label="Admin API" detail={services.adminApi.detail} status={serviceStatus(services.adminApi.status)} muted={services.adminApi.status !== 'online'} />
+            <HealthRow label="Lifesteal bot" detail={services.lifestealBot.detail} status={serviceStatus(services.lifestealBot.status)} muted={services.lifestealBot.status !== 'online'} />
+            <HealthRow label="Support portal" detail={services.supportPortal.detail} status={serviceStatus(services.supportPortal.status)} muted={services.supportPortal.status !== 'online'} />
+            <HealthRow label="Minecraft bridge" detail={formatServiceDetail(services.minecraftBridge.detail)} status={serviceStatus(services.minecraftBridge.status)} muted={services.minecraftBridge.status !== 'online'} />
+            <HealthRow label="SHD bot" detail={services.shdBot.detail} status={serviceStatus(services.shdBot.status)} muted />
           </div>
         </article>
         <article className="dashboard-panel">
-          <header><div><span className="eyebrow">Access model</span><h2>One Login, Scoped Roles</h2></div><button onClick={() => onNavigate('global-staff')} type="button">Review access</button></header>
-          <div className="access-model">
-            <div><ShieldCheck size={17} /><span><strong>Global</strong><small>Owners and platform administrators</small></span></div>
-            <div><Gamepad2 size={17} /><span><strong>Lifesteal</strong><small>Minecraft reviewers and moderators</small></span></div>
-            <div><Headphones size={17} /><span><strong>Support</strong><small>General and Valorant support teams</small></span></div>
+          <header><div><span className="eyebrow">Recent</span><h2>Operations Activity</h2></div><button onClick={() => onNavigate('global-audit')} type="button">Full audit</button></header>
+          <div className="compact-activity">
+            {(overview?.recentActivity ?? []).map((item) => (
+              <ActivityRow actor={item.actor} action={item.action} target={item.target} time={relativeTime(item.createdAt)} key={item.id} />
+            ))}
+            {overview?.recentActivity.length === 0 && <div className="panel-empty"><Activity size={17} /><span>No audit activity recorded yet.</span></div>}
+            {!overview && adminDemoMode && <>
+              <ActivityRow actor="PrimeLuigi" action="claimed a review" target="SHD-APP-K8F2QZ" time="Just now" />
+              <ActivityRow actor="Support Portal" action="received a player report" target="SHD-RPT-M4Q7VN" time="41m ago" />
+            </>}
           </div>
         </article>
       </section>
     </main>
   )
+}
+
+function serviceStatus(status: 'online' | 'waiting' | 'pending') {
+  return status === 'online' ? 'Online' : status === 'waiting' ? 'Waiting' : 'Pending'
+}
+
+function formatServiceDetail(detail: string) {
+  const match = detail.match(/^Last gameplay sync (\d+)$/)
+  return match ? `Last gameplay sync ${relativeTime(Number(match[1]))}` : detail
 }
 
 function UnifiedInboxPage({ submissions, onNavigate }: { submissions: Submission[]; onNavigate: (view: AdminView) => void }) {
