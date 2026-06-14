@@ -1481,6 +1481,7 @@ function preSeasonBadgeClass(player: Player) {
 }
 
 function preSeasonStatus(player: Player) {
+  if (player.status && ['Whitelisted', 'Registered', 'Applied'].includes(player.status)) return player.status
   if (preSeasonBadge(player) !== 'Player') return 'Whitelisted'
   return player.status === 'Applied' ? 'Applied' : 'Registered'
 }

@@ -474,6 +474,16 @@ function linkedPrestigeBadges(linked) {
   return [...new Set([...configuredPrestigeBadges(linked?.minecraft_uuid), ...linkedRolePrestigeBadges(linked)])];
 }
 
+function publicRosterStatusFromLinked(linked) {
+  if (!linked) return null;
+  if (linked.status === 'active' && linked.public_stats_opt_in) return 'Whitelisted';
+  if (linked.status === 'active') return 'Registered';
+  if (linked.status === 'review') return 'Review';
+  if (linked.status === 'banned') return 'Banned';
+  if (linked.status === 'denied') return 'Denied';
+  return null;
+}
+
 function findLinkedMinecraftAccount(minecraftUuid) {
   for (const uuid of minecraftUuidVariants(minecraftUuid)) {
     const linked = statements.findLinkedByMinecraft.get(uuid);
@@ -596,19 +606,24 @@ function publicPlayersFromSnapshots(snapshots, updatedAt) {
 }
 
 function publicPlayersWithApplications(snapshot) {
-  const rosterPlayers = snapshot.players.map((player) => {
+  const rosterPlayers = snapshot.players.flatMap((player) => {
     const linked = findLinkedMinecraftAccount(player.minecraft_uuid);
+    if (linked && linked.status !== 'active') return [];
     const rosterUpdatedAt = linked?.roster_status_updated_at ?? linked?.verified_at ?? player.source_updated_at ?? player.updated_at;
-    return {
+    const prestige = linked ? [...new Set([...(player.prestige ?? []), ...linkedPrestigeBadges(linked)])] : player.prestige;
+    const status = publicRosterStatusFromLinked(linked) ?? player.status;
+    return [{
       ...player,
+      prestige,
+      status,
       source_updated_at: rosterUpdatedAt,
       updated_at: rosterUpdatedAt
-    };
+    }];
   });
   const existingNames = new Set(rosterPlayers.map((player) => String(player.name ?? '').toLowerCase()));
   const existingUuids = new Set(rosterPlayers.flatMap((player) => minecraftUuidVariants(player.minecraft_uuid)));
   const linkedPlayers = statements.findLinkedAccounts.all()
-    .filter((linked) => linked.status === 'active' && linked.public_stats_opt_in)
+    .filter((linked) => linked.status === 'active')
     .filter((linked) => !existingNames.has(String(linked.minecraft_name ?? '').toLowerCase()))
     .filter((linked) => !minecraftUuidVariants(linked.minecraft_uuid).some((uuid) => existingUuids.has(uuid)))
     .map((linked) => {
@@ -632,7 +647,7 @@ function publicPlayersWithApplications(snapshot) {
         dragon_egg_holder: false,
         mace_wielder: false,
         prestige,
-        status: 'Registered',
+        status: publicRosterStatusFromLinked(linked) ?? 'Registered',
         data_status: {
           hearts_current: 'unavailable',
           heart_gains: 'unavailable',
