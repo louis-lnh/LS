@@ -320,11 +320,76 @@ function serializeStaffChatMessage(message) {
   };
 }
 
+function serializeTicketMessage(message, applicantId) {
+  return {
+    id: message.id,
+    type: message.author?.bot ? 'system' : message.author?.id === applicantId ? 'player' : 'staff',
+    authorId: message.author?.id ?? null,
+    authorName: message.author?.bot
+      ? message.author.username
+      : message.author?.globalName || message.member?.displayName || message.author?.username || 'Unknown',
+    authorAvatarUrl: message.author?.displayAvatarURL?.({ size: 64 }) ?? null,
+    content: message.content || '[Message content unavailable]',
+    createdAt: message.createdTimestamp
+  };
+}
+
 async function lifestealStaffChannel(client) {
   if (!config.admin.lifestealStaffChannelId) return { ok: false, reason: 'not_configured', channel: null };
   const channel = await client.channels.fetch(config.admin.lifestealStaffChannelId).catch(() => null);
   if (!channel || !channel.isTextBased?.()) return { ok: false, reason: 'not_found', channel: null };
   return { ok: true, channel };
+}
+
+function findTicketContext(code) {
+  if (code.startsWith('SHD-APP-')) {
+    const application = statements.findSupportApplicationByCode.get(code);
+    if (!application) return { ok: false, reason: 'not_found' };
+    return {
+      ok: true,
+      kind: 'application',
+      status: application.status,
+      ticketThreadId: application.ticket_thread_id,
+      applicantId: application.discord_id_verified,
+      ownerId: null
+    };
+  }
+
+  const submission = statements.findSupportSubmissionByCode.get(code);
+  if (!submission) return { ok: false, reason: 'not_found' };
+  return {
+    ok: true,
+    kind: 'support',
+    status: submission.status,
+    ticketThreadId: submission.ticket_thread_id,
+    applicantId: null,
+    ownerId: submission.claimed_by
+  };
+}
+
+async function ticketThread(client, threadId) {
+  if (!threadId) return { ok: false, reason: 'no_ticket', channel: null };
+  const channel = await client.channels.fetch(threadId).catch(() => null);
+  if (!channel || !channel.isTextBased?.()) return { ok: false, reason: 'not_found', channel: null };
+  return { ok: true, channel };
+}
+
+function ticketSendOwnershipError(context, sessionId) {
+  if (!context.ok) return context.reason;
+  if (finalSupportSubmissionStatuses.has(context.status)) return 'final';
+  if (!context.ticketThreadId) return 'no_ticket';
+
+  if (context.kind === 'application') {
+    const ticket = statements.findTicketByThread.get(context.ticketThreadId);
+    if (!ticket) return 'no_ticket';
+    if (!ticket.claimed_by) return 'unclaimed';
+    if (ticket.claimed_by !== sessionId) return 'claimed';
+    return null;
+  }
+
+  if (!context.ownerId) return 'unclaimed';
+  if (context.ownerId !== sessionId) return 'claimed';
+  return null;
 }
 
 function supportDecisionStatus(value) {
@@ -671,6 +736,88 @@ export function createAdminRouter(client) {
     } catch (error) {
       console.error('Admin staff chat send failed', error);
       return res.status(500).json({ ok: false, code: 'ADMIN_STAFF_CHAT_SEND_FAILED', error: 'Could not send staff chat message.' });
+    }
+  });
+
+  router.get('/submissions/:code/ticket-activity', requireAdminSession(client), async (req, res) => {
+    if (!req.adminSession.workspaces.includes('lifesteal')) {
+      return res.status(403).json({ ok: false, code: 'ADMIN_WORKSPACE_DENIED', error: 'Lifesteal access required.' });
+    }
+
+    const code = String(req.params.code ?? '').trim().toUpperCase();
+    const context = findTicketContext(code);
+    if (!context.ok) return res.status(404).json({ ok: false, code: 'ADMIN_SUBMISSION_NOT_FOUND', error: 'Submission not found.' });
+    const lookup = await ticketThread(client, context.ticketThreadId);
+    if (!lookup.ok) {
+      return res.status(404).json({ ok: false, code: 'ADMIN_TICKET_NOT_FOUND', error: 'No linked Discord ticket thread is available for this submission.' });
+    }
+
+    try {
+      const fetched = await lookup.channel.messages.fetch({ limit: 50 });
+      const messages = [...fetched.values()]
+        .sort((left, right) => left.createdTimestamp - right.createdTimestamp)
+        .map((message) => serializeTicketMessage(message, context.applicantId));
+      return res.json({
+        ok: true,
+        submissionCode: code,
+        threadId: lookup.channel.id,
+        threadName: lookup.channel.name ?? 'ticket',
+        messages,
+        updatedAt: Date.now()
+      });
+    } catch (error) {
+      console.error('Admin ticket activity fetch failed', error);
+      return res.status(500).json({ ok: false, code: 'ADMIN_TICKET_ACTIVITY_FAILED', error: 'Could not load Discord ticket activity.' });
+    }
+  });
+
+  router.post('/submissions/:code/ticket-activity', requireAdminSession(client), async (req, res) => {
+    if (!req.adminSession.workspaces.includes('lifesteal')) {
+      return res.status(403).json({ ok: false, code: 'ADMIN_WORKSPACE_DENIED', error: 'Lifesteal access required.' });
+    }
+
+    const code = String(req.params.code ?? '').trim().toUpperCase();
+    const content = staffChatContent(req.body?.content);
+    if (content.length < 1) {
+      return res.status(400).json({ ok: false, code: 'ADMIN_TICKET_MESSAGE_EMPTY', error: 'Message cannot be empty.' });
+    }
+
+    const context = findTicketContext(code);
+    const ownershipError = ticketSendOwnershipError(context, req.adminSession.id);
+    if (ownershipError === 'not_found') return res.status(404).json({ ok: false, code: 'ADMIN_SUBMISSION_NOT_FOUND', error: 'Submission not found.' });
+    if (ownershipError === 'no_ticket') return res.status(404).json({ ok: false, code: 'ADMIN_TICKET_NOT_FOUND', error: 'No linked Discord ticket thread is available for this submission.' });
+    if (ownershipError === 'final') return res.status(409).json({ ok: false, code: 'ADMIN_SUBMISSION_FINAL', error: 'This submission has already been decided.' });
+    if (ownershipError === 'unclaimed') return res.status(409).json({ ok: false, code: 'ADMIN_SUBMISSION_UNCLAIMED', error: 'Claim this review before messaging the ticket.' });
+    if (ownershipError === 'claimed') return res.status(409).json({ ok: false, code: 'ADMIN_SUBMISSION_ALREADY_CLAIMED', error: 'This review is claimed by another staff member.' });
+
+    const lookup = await ticketThread(client, context.ticketThreadId);
+    if (!lookup.ok) return res.status(404).json({ ok: false, code: 'ADMIN_TICKET_NOT_FOUND', error: 'No linked Discord ticket thread is available for this submission.' });
+
+    try {
+      const sent = await lookup.channel.send({
+        content: `**${req.adminSession.displayName} via Admin Portal**\n${content}`,
+        allowedMentions: { parse: [] }
+      });
+      audit('admin.ticket_message_sent', {
+        discordId: req.adminSession.id,
+        data: {
+          submissionCode: code,
+          threadId: lookup.channel.id,
+          messageId: sent.id
+        }
+      });
+      await staffAuditLog(client, 'Admin Ticket Message Sent', [
+        { name: 'Submission', value: code, inline: true },
+        { name: 'Thread', value: `<#${lookup.channel.id}>`, inline: true },
+        { name: 'Staff', value: `${req.adminSession.displayName} (${req.adminSession.id})`, inline: true }
+      ]);
+      return res.status(201).json({
+        ok: true,
+        message: serializeTicketMessage(sent, context.applicantId)
+      });
+    } catch (error) {
+      console.error('Admin ticket message send failed', error);
+      return res.status(500).json({ ok: false, code: 'ADMIN_TICKET_MESSAGE_FAILED', error: 'Could not send Discord ticket message.' });
     }
   });
 

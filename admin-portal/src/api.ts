@@ -81,6 +81,24 @@ export type StaffChatPayload = {
   updatedAt: number
 }
 
+export type TicketActivityMessage = {
+  id: string
+  type: 'player' | 'staff' | 'system'
+  authorId: string | null
+  authorName: string
+  authorAvatarUrl: string | null
+  content: string
+  createdAt: number
+}
+
+export type TicketActivityPayload = {
+  submissionCode: string
+  threadId: string
+  threadName: string
+  messages: TicketActivityMessage[]
+  updatedAt: number
+}
+
 type SessionResponse = {
   ok: boolean
   user: AdminUser | null
@@ -205,6 +223,25 @@ export async function getLifestealStaffChat(): Promise<StaffChatPayload> {
 export async function sendLifestealStaffChatMessage(content: string): Promise<StaffChatMessage> {
   const response = await adminRequest<{ ok: boolean; message: StaffChatMessage }>(
     '/staff-chat/lifesteal',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content }),
+    },
+  )
+  return response.message
+}
+
+export async function getSubmissionTicketActivity(code: string): Promise<TicketActivityPayload> {
+  const response = await adminRequest<TicketActivityPayload & { ok: boolean }>(
+    `/submissions/${encodeURIComponent(code)}/ticket-activity`,
+  )
+  return response
+}
+
+export async function sendSubmissionTicketMessage(code: string, content: string): Promise<TicketActivityMessage> {
+  const response = await adminRequest<{ ok: boolean; message: TicketActivityMessage }>(
+    `/submissions/${encodeURIComponent(code)}/ticket-activity`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

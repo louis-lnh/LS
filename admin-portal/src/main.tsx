@@ -56,11 +56,14 @@ import {
   getAdminOverview,
   getAdminSession,
   getLifestealStaffChat,
+  getSubmissionTicketActivity,
+  sendSubmissionTicketMessage,
   sendLifestealStaffChatMessage,
   type AdminApiSubmission,
   type AdminOverview,
   type AdminUser,
   type StaffChatMessage,
+  type TicketActivityMessage,
 } from './api'
 
 type SubmissionType = 'Application' | 'Appeal' | 'Player Report' | 'Support'
@@ -99,10 +102,14 @@ type Submission = {
   fields: Array<{ label: string; value: string }>
   notes: Array<{ author: string; body: string; time: string }>
   activity: Array<{ type: 'player' | 'staff' | 'system'; author: string; body: string; time: string }>
+  ticketThreadId?: string | null
+  requiresTicket?: boolean
 }
 
-function relativeTime(timestamp: number) {
-  const elapsed = Math.max(0, Date.now() - timestamp)
+type UiActivityItem = { type: 'player' | 'staff' | 'system'; author: string; body: string; time: string; id?: string; avatarUrl?: string | null }
+
+function relativeTime(timestamp: number, now = Date.now()) {
+  const elapsed = Math.max(0, now - timestamp)
   const minutes = Math.floor(elapsed / 60_000)
   if (minutes < 1) return 'Just now'
   if (minutes < 60) return `${minutes}m ago`
@@ -110,6 +117,23 @@ function relativeTime(timestamp: number) {
   if (hours < 24) return `${hours}h ago`
   const days = Math.floor(hours / 24)
   return days === 1 ? 'Yesterday' : `${days}d ago`
+}
+
+function initials(value: string) {
+  return value.trim().slice(0, 2).toUpperCase() || 'SH'
+}
+
+function minecraftHeadUrl(name: string) {
+  return `https://mc-heads.net/avatar/${encodeURIComponent(name)}/96`
+}
+
+function portalMessageParts(content: string) {
+  const match = content.match(/^\*\*(.+? via Admin Portal)\*\*\n([\s\S]*)$/)
+  return match ? { label: match[1], body: match[2] } : { label: '', body: content }
+}
+
+function ChatAvatar({ name, src }: { name: string; src?: string | null }) {
+  return <div className="chat-avatar">{src ? <img alt="" src={src} /> : initials(name)}</div>
 }
 
 function submissionFromApi(submission: AdminApiSubmission): Submission {
@@ -128,6 +152,8 @@ function submissionFromApi(submission: AdminApiSubmission): Submission {
     fields: submission.fields,
     notes: submission.notes.map((item) => ({ ...item, time: relativeTime(item.time) })),
     activity: submission.activity.map((item) => ({ ...item, time: relativeTime(item.time) })),
+    ticketThreadId: submission.ticketThreadId,
+    requiresTicket: submission.requiresTicket,
   }
 }
 
@@ -385,6 +411,12 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
   const [claimState, setClaimState] = useState<'idle' | 'loading'>('idle')
   const [actionState, setActionState] = useState<'idle' | 'note' | 'decision'>('idle')
   const [claimError, setClaimError] = useState('')
+  const [ticketActivity, setTicketActivity] = useState<TicketActivityMessage[]>([])
+  const [ticketActivityState, setTicketActivityState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
+  const [ticketActivityError, setTicketActivityError] = useState('')
+  const [ticketMessage, setTicketMessage] = useState('')
+  const [ticketSendState, setTicketSendState] = useState<'idle' | 'sending'>('idle')
+  const [timeNow, setTimeNow] = useState(Date.now())
   const [overview, setOverview] = useState<AdminOverview | null>(null)
   const [overviewState, setOverviewState] = useState<'loading' | 'ready' | 'error'>(adminDemoMode ? 'ready' : 'loading')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('shd-admin-sidebar') === 'collapsed')
@@ -500,7 +532,26 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
   const selectedOwned = selected ? (selected.claimedById ? selected.claimedById === user.id : selected.claimedBy === reviewerName) : false
   const selectedSupportsAdminActions = Boolean(selected && (adminDemoMode || selected.type !== 'Application'))
   const canWriteSelected = Boolean(selected && selectedSupportsAdminActions && (adminDemoMode || (selectedOwned && !selectedDecided)))
+  const canMessageTicket = Boolean(selected?.ticketThreadId && (adminDemoMode || (selectedOwned && !selectedDecided)))
   const openSubmissionCount = submissions.filter((submission) => !['Approved', 'Denied'].includes(submission.status)).length
+  const liveTicketActivity: UiActivityItem[] = ticketActivity.map((item) => ({
+    id: item.id,
+    type: item.type,
+    author: item.authorName,
+    body: item.content,
+    time: relativeTime(item.createdAt, timeNow),
+    avatarUrl: item.authorAvatarUrl,
+  }))
+  const combinedActivity: UiActivityItem[] = selected ? [...selected.activity, ...liveTicketActivity] : []
+  const ticketSyncLabel = adminDemoMode
+    ? 'Live update mock'
+    : !selected?.ticketThreadId
+      ? 'No linked ticket'
+      : ticketActivityState === 'loading'
+        ? 'Loading Discord thread'
+        : ticketActivityState === 'error'
+          ? 'Ticket sync issue'
+          : 'Discord thread connected'
   const viewType: Partial<Record<AdminView, SubmissionType>> = {
     'lifesteal-applications': 'Application',
     'lifesteal-appeals': 'Appeal',
@@ -521,6 +572,39 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
       .some((value) => value.toLowerCase().includes(query))
     return matchesFilter && matchesSearch
   }), [submissions, activeType, filter, search])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setTimeNow(Date.now()), 30_000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  const loadTicketActivity = async (silent = false) => {
+    if (!selected) return
+    if (!silent) {
+      setTicketActivity([])
+      setTicketActivityError('')
+    }
+    if (adminDemoMode || !selected.ticketThreadId) {
+      setTicketActivityState('idle')
+      return
+    }
+    if (!silent) setTicketActivityState('loading')
+    try {
+      const payload = await getSubmissionTicketActivity(selected.id)
+      setTicketActivity(payload.messages)
+      setTicketActivityState('ready')
+    } catch (error) {
+      setTicketActivityError(error instanceof AdminApiError ? error.message : 'Could not load Discord ticket activity.')
+      setTicketActivityState('error')
+    }
+  }
+
+  useEffect(() => {
+    loadTicketActivity()
+    if (adminDemoMode || !selected?.ticketThreadId) return
+    const timer = window.setInterval(() => loadTicketActivity(true), 8_000)
+    return () => window.clearInterval(timer)
+  }, [selected?.id, selected?.ticketThreadId])
 
   const updateSelected = (updater: (submission: Submission) => Submission) => {
     if (!selected) return
@@ -614,6 +698,32 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
     }
   }
 
+  const sendTicketMessage = async () => {
+    const content = ticketMessage.trim()
+    if (!selected || !content || ticketSendState === 'sending') return
+    setTicketActivityError('')
+    if (adminDemoMode) {
+      updateSelected((submission) => ({
+        ...submission,
+        activity: [...submission.activity, { type: 'staff', author: reviewerName, body: content, time: 'Just now' }],
+      }))
+      setTicketMessage('')
+      return
+    }
+    setTicketSendState('sending')
+    try {
+      const sent = await sendSubmissionTicketMessage(selected.id, content)
+      setTicketActivity((current) => [...current, sent])
+      setTicketActivityState('ready')
+      setTicketMessage('')
+    } catch (error) {
+      setTicketActivityError(error instanceof AdminApiError ? error.message : 'Could not send a Discord ticket message.')
+      setTicketActivityState('error')
+    } finally {
+      setTicketSendState('idle')
+    }
+  }
+
   return (
     <div className={`admin-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
       <Sidebar active={view} collapsed={sidebarCollapsed} openSubmissionCount={openSubmissionCount} workspace={workspace} user={user} mobileOpen={mobileNav} onClose={() => setMobileNav(false)} onNavigate={navigate} onSignOut={onSignOut} onToggleCollapse={toggleSidebar} />
@@ -679,7 +789,7 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
           <div className="review-scroll">
             <section className="review-overview">
               <div className="identity-block">
-                <div className="player-avatar">{selected.minecraft.slice(0, 2).toUpperCase()}</div>
+                <img className="player-avatar" alt="" src={minecraftHeadUrl(selected.minecraft)} />
                 <div>
                   <span className="eyebrow">Applicant</span>
                   <h2>{selected.minecraft}</h2>
@@ -728,22 +838,24 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
         {activityVisible && <aside className="activity-pane">
           <header>
             <div><span className="eyebrow">Discord Context</span><h2>Ticket Activity</h2></div>
-            <button aria-label="Open in Discord" title="Open in Discord" type="button"><ExternalLink size={17} /></button>
+            <button aria-label="Refresh ticket activity" disabled={!selected.ticketThreadId || ticketActivityState === 'loading'} onClick={loadTicketActivity} title="Refresh ticket activity" type="button"><RefreshCw size={17} /></button>
           </header>
-          <div className="sync-state"><Activity size={15} /><span>{adminDemoMode ? 'Live update mock' : 'Ticket context'}</span></div>
+          <div className={`sync-state ${ticketActivityState === 'error' ? 'error' : ''}`}><Activity size={15} /><span>{ticketSyncLabel}</span></div>
+          {ticketActivityError && <div className="ticket-error"><FileWarning size={15} /><span>{ticketActivityError}</span></div>}
           <div className="activity-list">
-            {selected.activity.map((item, index) => (
-              <article className={`activity-item ${item.type}`} key={`${item.time}-${index}`}>
+            {combinedActivity.map((item, index) => (
+              <article className={`activity-item ${item.type}`} key={item.id ?? `${item.time}-${index}`}>
                 <div className="activity-icon">
-                  {item.type === 'system' ? <Activity size={15} /> : item.type === 'staff' ? <ShieldCheck size={15} /> : <CircleUserRound size={15} />}
+                  {item.avatarUrl ? <img alt="" src={item.avatarUrl} /> : item.type === 'system' ? <Activity size={15} /> : item.type === 'staff' ? <ShieldCheck size={15} /> : <CircleUserRound size={15} />}
                 </div>
                 <div><strong>{item.author}</strong><span>{item.time}</span><p>{item.body}</p></div>
               </article>
             ))}
+            {combinedActivity.length === 0 && <div className="panel-empty"><MessageSquareText size={17} /><span>No ticket activity yet.</span></div>}
           </div>
           <div className="ticket-composer">
-            <textarea disabled={!adminDemoMode} placeholder="Request information from the player..." />
-            <button disabled={!adminDemoMode} type="button"><Send size={16} /> Send to Discord</button>
+            <textarea disabled={!canMessageTicket || ticketSendState === 'sending'} value={ticketMessage} onChange={(event) => setTicketMessage(event.target.value)} placeholder={selected.ticketThreadId ? 'Message the linked Discord ticket...' : 'No linked Discord ticket for this submission.'} />
+            <button disabled={!canMessageTicket || ticketSendState === 'sending' || !ticketMessage.trim()} onClick={sendTicketMessage} type="button"><Send size={16} />{ticketSendState === 'sending' ? 'Sending' : 'Send to Discord'}</button>
           </div>
         </aside>}</> : <section className="review-pane empty-review"><Inbox /><strong>Select a submission</strong><p>Review details will appear here.</p></section>}
       </main>}
@@ -1136,11 +1248,14 @@ function LifestealStaffChatPage({ user }: { user: AdminUser }) {
   const [state, setState] = useState<'loading' | 'ready' | 'error'>(adminDemoMode ? 'ready' : 'loading')
   const [sendState, setSendState] = useState<'idle' | 'sending'>('idle')
   const [error, setError] = useState('')
+  const [timeNow, setTimeNow] = useState(Date.now())
 
-  const loadChat = async () => {
+  const loadChat = async (silent = false) => {
     if (adminDemoMode) return
-    setState('loading')
-    setError('')
+    if (!silent) {
+      setState('loading')
+      setError('')
+    }
     try {
       const payload = await getLifestealStaffChat()
       setMessages(payload.messages)
@@ -1154,6 +1269,14 @@ function LifestealStaffChatPage({ user }: { user: AdminUser }) {
 
   useEffect(() => {
     loadChat()
+    if (adminDemoMode) return
+    const timer = window.setInterval(() => loadChat(true), 8_000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setTimeNow(Date.now()), 30_000)
+    return () => window.clearInterval(timer)
   }, [])
 
   const sendMessage = async () => {
@@ -1200,15 +1323,16 @@ function LifestealStaffChatPage({ user }: { user: AdminUser }) {
         {error && <div className="operations-state error"><FileWarning size={16} /><span>{error}</span></div>}
         <div className="staff-chat-list" aria-live="polite">
           {state === 'loading' && messages.length === 0 && <div className="panel-empty"><Activity size={17} /><span>Loading staff messages...</span></div>}
-          {messages.map((item) => (
-            <article className={item.authorId === user.id ? 'own' : ''} key={item.id}>
-              <div className="chat-avatar">{item.authorName.slice(0, 2).toUpperCase()}</div>
+          {messages.map((item) => {
+            const rendered = portalMessageParts(item.content)
+            return <article className={item.authorId === user.id ? 'own' : ''} key={item.id}>
+              <ChatAvatar name={item.authorName} src={item.authorAvatarUrl} />
               <div>
-                <header><strong>{item.authorName}</strong><time>{relativeTime(item.createdAt)}</time></header>
-                <p>{item.content}</p>
+                <header><strong>{rendered.label || item.authorName}</strong><time>{relativeTime(item.createdAt, timeNow)}</time></header>
+                <p>{rendered.body}</p>
               </div>
             </article>
-          ))}
+          })}
           {state !== 'loading' && messages.length === 0 && <div className="panel-empty"><MessageSquareText size={17} /><span>No staff messages found.</span></div>}
         </div>
         <div className="staff-chat-composer">
