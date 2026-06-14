@@ -44,6 +44,24 @@ type SubmittedApplication = {
   status: string
 }
 
+type MockFormId = 'ban-appeal' | 'player-report' | 'minecraft-support'
+type MockField = {
+  id: string
+  label: string
+  placeholder: string
+  required?: boolean
+  kind?: 'input' | 'textarea' | 'select'
+  options?: string[]
+}
+type MockFormConfig = {
+  label: string
+  title: string
+  description: string
+  sections: Array<{ label: string; title: string; fields: MockField[] }>
+  acknowledgement: string
+  resultTitle: string
+}
+
 const primarySections: Array<{ id: SectionId; label: string; title: string }> = [
   { id: 'minecraft', label: 'Minecraft', title: 'Minecraft Support' },
   { id: 'support', label: 'Support', title: 'General Support' },
@@ -143,6 +161,23 @@ function cleanApiError(message: string) {
   return message || 'Application submission failed.'
 }
 
+type SupportSubmissionResponse = {
+  ok?: boolean
+  code?: string
+  error?: string
+  applicationId?: number
+  applicationCode?: string
+  applicationStatus?: string
+  status?: string
+}
+
+function supportSubmissionError(body: SupportSubmissionResponse) {
+  if (body.code === 'APPLICATION_ALREADY_OPEN' && body.applicationCode) {
+    return `You already have an open Lifesteal application. Continue in your Discord ticket with application key ${body.applicationCode}.`
+  }
+  return cleanApiError(body.error ?? 'Application submission failed.')
+}
+
 function pageFromPath(): PageId {
   const value = window.location.pathname.replace(/^\/+/, '').split('/')[0]
   return routeItems.some((item) => item.id === value) ? value as PageId : 'home'
@@ -192,10 +227,10 @@ function App() {
         {page === 'valorant' && <SectionPage section="valorant" onNavigate={navigate} />}
         {page === 'info' && <SectionPage section="info" onNavigate={navigate} />}
         {page === 'signup' && <SignupPage onNavigate={navigate} />}
-        {page === 'minecraft-support' && <ConstructionPage title="Minecraft Support" label="Minecraft Support" detail="General Minecraft support tickets can wait until the application, report, and appeal flows are finished." backTo="minecraft" onNavigate={navigate} />}
+        {page === 'minecraft-support' && <MockMinecraftForm formId="minecraft-support" onNavigate={navigate} />}
         {page === 'general-support' && <ConstructionPage title="Support" label="General Support" detail="General SHD support tickets will open after the Lifesteal launch pass." backTo="support" onNavigate={navigate} />}
-        {page === 'ban-appeal' && <ConstructionPage title="Ban Appeal" label="Minecraft Appeals" detail="Ban appeal intake will be connected to the staff queue in the next support pass." backTo="minecraft" onNavigate={navigate} />}
-        {page === 'player-report' && <ConstructionPage title="Player Report" label="Minecraft Reports" detail="Player reports and evidence intake are reserved for the moderation workflow." backTo="minecraft" onNavigate={navigate} />}
+        {page === 'ban-appeal' && <MockMinecraftForm formId="ban-appeal" onNavigate={navigate} />}
+        {page === 'player-report' && <MockMinecraftForm formId="player-report" onNavigate={navigate} />}
         {page === 'status' && <ConstructionPage title="Status" label="System Status" detail="Live API health, Minecraft sync health, and known incidents will be shown here." />}
         {page === 'legal' && <LegalPage title="Legal" label="Legal Notice" sections={legalSections.legal} />}
         {page === 'privacy' && <LegalPage title="Privacy" label="Data Protection" sections={legalSections.privacy} />}
@@ -300,7 +335,7 @@ const sectionCopy: Record<SectionId, { label: string; title: string; intro: stri
   minecraft: {
     label: 'Minecraft',
     title: 'Minecraft Support',
-    intro: 'Choose the Minecraft workflow you need. Lifesteal applications are open first; reports and appeals are next in line.',
+    intro: 'Choose the Minecraft workflow you need. Lifesteal applications are live; appeals, reports, and general support are available as form previews.',
     empty: 'No Minecraft workflows are active yet.',
   },
   support: {
@@ -371,16 +406,16 @@ const infoWorkflowCategories: Array<{ title: string; label: string; workflows: I
       {
         label: 'Moderation',
         title: 'Ban Appeal',
-        body: 'Reserved for punishment reviews once the appeal intake is connected to staff workflows.',
+        body: 'Preview the punishment review form before its staff queue integration goes live.',
         target: 'ban-appeal',
-        state: 'Next',
+        state: 'Preview',
       },
       {
         label: 'Moderation',
         title: 'Player Report',
-        body: 'Reserved for reports with player context, evidence, and staff-readable review details.',
+        body: 'Preview the player report form with incident context, evidence, and witnesses.',
         target: 'player-report',
-        state: 'Next',
+        state: 'Preview',
       },
     ],
   },
@@ -464,10 +499,10 @@ function sectionLabel(section: SectionId) {
 function formDescription(page: PageId) {
   const descriptions: Partial<Record<PageId, string>> = {
     signup: 'Apply for the SHD Lifesteal Minecraft season.',
-    'minecraft-support': 'Request help for Minecraft-related access, account, or server issues.',
+    'minecraft-support': 'Preview help intake for Minecraft access, account, or server issues.',
     'general-support': 'Request help for access, account, or server issues.',
-    'ban-appeal': 'Appeal a Minecraft punishment once the review flow is live.',
-    'player-report': 'Report a Minecraft player with staff-readable context and evidence.',
+    'ban-appeal': 'Preview a Minecraft punishment appeal with staff-readable context.',
+    'player-report': 'Preview a Minecraft player report with incident details and evidence.',
     status: 'View portal and service status information.',
     privacy: 'Read how support data is handled.',
   }
@@ -510,9 +545,10 @@ function SignupPage({ onNavigate }: { onNavigate: (page: PageId) => void }) {
           content: form.content || null,
         }),
       })
-      const body = await response.json() as { ok?: boolean; error?: string; applicationId?: number; applicationCode?: string; status?: string }
+      const body = await response.json() as SupportSubmissionResponse
       if (!response.ok || !body.ok || !body.applicationId || !body.applicationCode || !body.status) {
-        throw new Error(body.error ?? 'Application submission failed.')
+        setSubmitError(supportSubmissionError(body))
+        return
       }
       setSubmitted({
         applicationId: body.applicationId,
@@ -548,7 +584,7 @@ function SignupPage({ onNavigate }: { onNavigate: (page: PageId) => void }) {
   return (
     <section className="content-page page-frame">
       <PageIntro label="Minecraft Application" title="Lifesteal Signup" backTo="minecraft" onNavigate={onNavigate}>
-        Submit the first version of your Lifesteal application. This MVP keeps the form ready while the permanent backend and staff queue are being connected.
+        Apply for the SHD Lifesteal season. Your answers are saved for Discord verification and staff review.
       </PageIntro>
       <form className="signup-form" onSubmit={submit}>
         <div className="form-section">
@@ -609,6 +645,203 @@ function SignupPage({ onNavigate }: { onNavigate: (page: PageId) => void }) {
   )
 }
 
+const mockMinecraftForms: Record<MockFormId, MockFormConfig> = {
+  'ban-appeal': {
+    label: 'Minecraft Appeals',
+    title: 'Ban Appeal',
+    description: 'Prepare a clear punishment appeal for staff review. This preview does not send or save data yet.',
+    sections: [
+      {
+        label: 'Identity',
+        title: 'Your Accounts',
+        fields: [
+          { id: 'discordUsername', label: 'Discord username', placeholder: 'Your current Discord username', required: true },
+          { id: 'minecraftName', label: 'Minecraft Java name', placeholder: 'Your exact Java username', required: true },
+          { id: 'banId', label: 'Ban or case ID', placeholder: 'The ID shown in your punishment message', required: true },
+        ],
+      },
+      {
+        label: 'Punishment',
+        title: 'What Happened',
+        fields: [
+          { id: 'punishmentType', label: 'Punishment type', placeholder: 'Select a punishment', required: true, kind: 'select', options: ['Minecraft ban', 'Discord ban', 'Temporary ban', 'Mute or restriction', 'Other'] },
+          { id: 'punishmentDate', label: 'Approximate date', placeholder: 'Example: June 14, 2026' },
+          { id: 'punishmentReason', label: 'Reason shown to you', placeholder: 'Paste or describe the punishment reason.', required: true, kind: 'textarea' },
+        ],
+      },
+      {
+        label: 'Appeal',
+        title: 'Your Explanation',
+        fields: [
+          { id: 'context', label: 'What happened?', placeholder: 'Explain the situation honestly and in order.', required: true, kind: 'textarea' },
+          { id: 'change', label: 'Why should staff reconsider?', placeholder: 'Explain what staff should consider and what would be different going forward.', required: true, kind: 'textarea' },
+          { id: 'evidence', label: 'Evidence links', placeholder: 'Optional screenshots, clips, logs, or message links.', kind: 'textarea' },
+        ],
+      },
+    ],
+    acknowledgement: 'I confirm this appeal is honest, complete, and submitted without harassment or repeated spam.',
+    resultTitle: 'Appeal Preview Complete',
+  },
+  'player-report': {
+    label: 'Minecraft Reports',
+    title: 'Player Report',
+    description: 'Organize an incident report with enough context for staff to investigate. This preview does not send or save data yet.',
+    sections: [
+      {
+        label: 'Reporter',
+        title: 'Your Details',
+        fields: [
+          { id: 'discordUsername', label: 'Discord username', placeholder: 'Your current Discord username', required: true },
+          { id: 'minecraftName', label: 'Your Minecraft name', placeholder: 'Your exact Java username', required: true },
+          { id: 'reportedPlayer', label: 'Reported player', placeholder: 'Their exact Minecraft or Discord name', required: true },
+        ],
+      },
+      {
+        label: 'Incident',
+        title: 'Report Context',
+        fields: [
+          { id: 'category', label: 'Report category', placeholder: 'Select a category', required: true, kind: 'select', options: ['Cheating or prohibited mods', 'Combat or event rule violation', 'Harassment or threats', 'Scam or team abuse', 'Exploit abuse', 'Other'] },
+          { id: 'incidentTime', label: 'Date and time', placeholder: 'Include your timezone if possible', required: true },
+          { id: 'location', label: 'Where did it happen?', placeholder: 'Server area, event, Discord channel, or ticket' },
+          { id: 'description', label: 'What happened?', placeholder: 'Describe the incident in order and separate facts from assumptions.', required: true, kind: 'textarea' },
+        ],
+      },
+      {
+        label: 'Evidence',
+        title: 'Supporting Material',
+        fields: [
+          { id: 'evidence', label: 'Evidence links', placeholder: 'Screenshots, unedited clips, logs, or message links.', required: true, kind: 'textarea' },
+          { id: 'witnesses', label: 'Witnesses', placeholder: 'Optional usernames of players who directly saw the incident.' },
+          { id: 'extra', label: 'Anything else?', placeholder: 'Optional context staff should know.', kind: 'textarea' },
+        ],
+      },
+    ],
+    acknowledgement: 'I confirm this report is made in good faith and the evidence has not been misleadingly edited.',
+    resultTitle: 'Report Preview Complete',
+  },
+  'minecraft-support': {
+    label: 'Minecraft Support',
+    title: 'Minecraft Support',
+    description: 'Prepare a technical or account support request for the Minecraft team. This preview does not send or save data yet.',
+    sections: [
+      {
+        label: 'Identity',
+        title: 'Your Accounts',
+        fields: [
+          { id: 'discordUsername', label: 'Discord username', placeholder: 'Your current Discord username', required: true },
+          { id: 'minecraftName', label: 'Minecraft Java name', placeholder: 'Optional if the issue is not account-specific' },
+          { id: 'category', label: 'Support category', placeholder: 'Select a category', required: true, kind: 'select', options: ['Cannot join the server', 'Discord and Minecraft linking', 'Whitelist or application access', 'Missing item or gameplay data', 'Bug or technical issue', 'Other'] },
+        ],
+      },
+      {
+        label: 'Request',
+        title: 'Issue Details',
+        fields: [
+          { id: 'summary', label: 'Short summary', placeholder: 'One sentence describing the issue', required: true },
+          { id: 'details', label: 'What is happening?', placeholder: 'Describe what you expected, what happened, and when it started.', required: true, kind: 'textarea' },
+          { id: 'error', label: 'Error message', placeholder: 'Paste the exact error text if one exists.', kind: 'textarea' },
+          { id: 'evidence', label: 'Screenshots or links', placeholder: 'Optional screenshots, clips, or relevant links.', kind: 'textarea' },
+        ],
+      },
+    ],
+    acknowledgement: 'I confirm the information is accurate and staff may use it to investigate this support request.',
+    resultTitle: 'Support Preview Complete',
+  },
+}
+
+function MockMinecraftForm({ formId, onNavigate }: { formId: MockFormId; onNavigate: (page: PageId) => void }) {
+  const config = mockMinecraftForms[formId]
+  const [values, setValues] = useState<Record<string, string>>({})
+  const [accepted, setAccepted] = useState(false)
+  const [complete, setComplete] = useState(false)
+  const requiredFields = config.sections.flatMap((section) => section.fields).filter((field) => field.required)
+  const canSubmit = accepted && requiredFields.every((field) => values[field.id]?.trim())
+
+  const submit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!canSubmit) return
+    setComplete(true)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  if (complete) {
+    return (
+      <section className="content-page page-frame">
+        <PageIntro label="Local Form Preview" title={config.resultTitle} backTo="minecraft" onNavigate={onNavigate}>
+          The form layout and required-field flow are working. No information was transmitted or saved.
+        </PageIntro>
+        <div className="result-panel">
+          <span className="section-kicker">Preview Only</span>
+          <strong>Ready for backend integration</strong>
+          <p>This mock submission remains only in this browser tab. The next integration pass can connect it to a protected staff queue and Discord notification flow.</p>
+          <div className="result-actions">
+            <button className="secondary-action" onClick={() => setComplete(false)} type="button">Edit Preview</button>
+            <button className="secondary-action" onClick={() => onNavigate('minecraft')} type="button">Minecraft Support</button>
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  return (
+    <section className="content-page page-frame">
+      <PageIntro label={config.label} title={config.title} backTo="minecraft" onNavigate={onNavigate}>
+        {config.description}
+      </PageIntro>
+      <div className="preview-notice" role="note">
+        <span>Form Preview</span>
+        <p>Complete the mock workflow freely. Pressing the final button does not contact staff or store your answers.</p>
+      </div>
+      <form className="signup-form" onSubmit={submit}>
+        {config.sections.map((section) => (
+          <div className="form-section" key={section.title}>
+            <div>
+              <span className="section-kicker">{section.label}</span>
+              <h2>{section.title}</h2>
+            </div>
+            {section.fields.map((field) => (
+              <MockFieldControl
+                field={field}
+                key={field.id}
+                value={values[field.id] ?? ''}
+                onChange={(value) => setValues((current) => ({ ...current, [field.id]: value }))}
+              />
+            ))}
+          </div>
+        ))}
+        <div className="rules-confirm">
+          <label>
+            <input checked={accepted} onChange={(event) => setAccepted(event.target.checked)} type="checkbox" />
+            <span>{config.acknowledgement}</span>
+          </label>
+        </div>
+        <div className="form-actions">
+          <button className="primary-action" disabled={!canSubmit} type="submit">Complete Form Preview</button>
+          <p className="form-message">{canSubmit ? 'Preview ready.' : 'Complete the required fields and acknowledgement.'}</p>
+        </div>
+      </form>
+    </section>
+  )
+}
+
+function MockFieldControl({ field, value, onChange }: { field: MockField; value: string; onChange: (value: string) => void }) {
+  if (field.kind === 'textarea') {
+    return <TextArea label={field.label} required={field.required} value={value} onChange={onChange} placeholder={field.placeholder} />
+  }
+  if (field.kind === 'select') {
+    return (
+      <label className="field">
+        <span>{field.label}{field.required && <em>required</em>}</span>
+        <select value={value} onChange={(event) => onChange(event.target.value)}>
+          <option value="">{field.placeholder}</option>
+          {field.options?.map((option) => <option key={option} value={option}>{option}</option>)}
+        </select>
+      </label>
+    )
+  }
+  return <FormField label={field.label} required={field.required} value={value} onChange={onChange} placeholder={field.placeholder} />
+}
+
 function FormField({ label, value, onChange, placeholder, required = false }: { label: string; value: string; onChange: (value: string) => void; placeholder: string; required?: boolean }) {
   return (
     <label className="field">
@@ -632,7 +865,7 @@ function ConstructionPage({ title, label, detail, backTo, onNavigate }: { title:
     <section className="content-page page-frame">
       <PageIntro label={label} title={title} backTo={backTo} onNavigate={onNavigate}>{detail}</PageIntro>
       <LockedPanel
-        eyebrow="Locked MVP"
+        eyebrow="Planned Workflow"
         title="Under Construction"
         detail="This workflow is reserved so the portal can launch with clean navigation while staff tools are connected behind it."
       />
@@ -660,7 +893,7 @@ const legalSections = {
     { title: 'Data We Process', body: 'Support forms may process Discord usernames or IDs, Minecraft usernames or UUIDs, application answers, appeal text, report evidence, staff review notes, and technical logs.' },
     { title: 'Use of Data', body: 'Submitted data is used to review applications, handle support requests, enforce rules, protect community safety, and operate SHD Esports services.' },
     { title: 'Application Approval', body: 'If a Lifesteal application is approved, the bot may link the approved Minecraft username to the applicant Discord account, prepare server access, and enable public gameplay stats for the Lifesteal leaderboard.' },
-    { title: 'Requests', body: 'Players may request correction or deletion through the support contact while the permanent portal workflow is under construction.' },
+    { title: 'Requests', body: 'Players may request correction or deletion through the listed support contact until a self-service request workflow is available.' },
   ],
   terms: [
     { title: 'Use of the Portal', body: 'The portal is intended for legitimate SHD Esports support requests. Spam, impersonation, false reports, or abuse may lead to denied requests or server restrictions.' },
@@ -682,8 +915,8 @@ function LegalPage({ title, label, sections }: { title: string; label: string; s
       <div className="legal-layout">
         <aside className="legal-note">
           <span className="section-kicker">SHD Portal</span>
-          <strong>MVP Notice</strong>
-          <p>These pages are active for the portal MVP and will be expanded before the full public support launch.</p>
+          <strong>Portal Notice</strong>
+          <p>These pages describe the current portal release and will expand as additional support workflows launch.</p>
           <span className="legal-status">Current draft</span>
         </aside>
         <article className="legal-document">

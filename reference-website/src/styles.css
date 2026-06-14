@@ -1759,10 +1759,35 @@ tbody tr:hover {
 
   .featured-event-meta,
   .event-stat-row,
-  .timeline-event,
   .apply-flow,
   .apply-outcomes {
     grid-template-columns: 1fr;
+  }
+
+  .event-timeline {
+    height: auto;
+    overflow: visible;
+  }
+
+  .event-scroll-list {
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .timeline-event {
+    grid-template-columns: 0.8rem minmax(0, 1fr);
+    min-height: 0;
+    padding: 1rem;
+  }
+
+  .timeline-marker {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+
+  .timeline-date,
+  .timeline-event > div:last-child {
+    grid-column: 2;
   }
 
   .content-page {

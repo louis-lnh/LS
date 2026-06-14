@@ -183,13 +183,20 @@ export const commands = [
     .setDescription('Approve a linked member or portal application')
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
     .addUserOption((option) => option.setName('user').setDescription('Linked Discord user to approve'))
-    .addStringOption((option) => option.setName('application_code').setDescription('Portal application code, for example SHD-APP-ABC123'))
+    .addStringOption((option) => option
+      .setName('application_code')
+      .setDescription('Portal application awaiting review')
+      .setAutocomplete(true))
     .addStringOption((option) => option.setName('reason').setDescription('Approval reason')),
   new SlashCommandBuilder()
     .setName('deny')
-    .setDescription('Deny a linked member and keep them out of Minecraft')
+    .setDescription('Deny a linked member or portal application')
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
-    .addUserOption((option) => option.setName('user').setDescription('Discord user').setRequired(true))
+    .addUserOption((option) => option.setName('user').setDescription('Linked Discord user to deny'))
+    .addStringOption((option) => option
+      .setName('application_code')
+      .setDescription('Portal application awaiting review')
+      .setAutocomplete(true))
     .addStringOption((option) => option.setName('reason').setDescription('Denial reason')),
   new SlashCommandBuilder()
     .setName('sharedip')

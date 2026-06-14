@@ -161,6 +161,15 @@ function supportFieldLabel(field) {
   return labels[field] ?? String(field ?? 'Field');
 }
 
+function supportError(res, status, code, error, extra = {}) {
+  return res.status(status).json({
+    ok: false,
+    code,
+    error,
+    ...extra
+  });
+}
+
 function page(title, body) {
   return `<!doctype html>
 <html lang="en">
@@ -451,8 +460,17 @@ function publicPlayersFromSnapshots(snapshots, updatedAt) {
 }
 
 function publicPlayersWithApplications(snapshot) {
-  const existingNames = new Set(snapshot.players.map((player) => String(player.name ?? '').toLowerCase()));
-  const existingUuids = new Set(snapshot.players.flatMap((player) => minecraftUuidVariants(player.minecraft_uuid)));
+  const rosterPlayers = snapshot.players.map((player) => {
+    const linked = findLinkedMinecraftAccount(player.minecraft_uuid);
+    const rosterUpdatedAt = linked?.roster_status_updated_at ?? linked?.verified_at ?? player.source_updated_at ?? player.updated_at;
+    return {
+      ...player,
+      source_updated_at: rosterUpdatedAt,
+      updated_at: rosterUpdatedAt
+    };
+  });
+  const existingNames = new Set(rosterPlayers.map((player) => String(player.name ?? '').toLowerCase()));
+  const existingUuids = new Set(rosterPlayers.flatMap((player) => minecraftUuidVariants(player.minecraft_uuid)));
   const linkedPlayers = statements.findLinkedAccounts.all()
     .filter((linked) => linked.status === 'active' && linked.public_stats_opt_in)
     .filter((linked) => !existingNames.has(String(linked.minecraft_name ?? '').toLowerCase()))
@@ -490,14 +508,14 @@ function publicPlayersWithApplications(snapshot) {
           playtime: 'unavailable',
           objectives: 'unavailable'
         },
-        source_updated_at: linked.verified_at,
+        source_updated_at: linked.roster_status_updated_at ?? linked.verified_at,
         hearts: null,
         hearts_gained: null,
         hearts_lost: null,
         kills: 0,
         deaths: 0,
         revivals: 0,
-        updated_at: linked.verified_at
+        updated_at: linked.roster_status_updated_at ?? linked.verified_at
       };
     });
   const appliedPlayers = statements.findPublicSupportApplications.all()
@@ -531,14 +549,14 @@ function publicPlayersWithApplications(snapshot) {
         playtime: 'unavailable',
         objectives: 'unavailable'
       },
-      source_updated_at: application.verified_at ?? application.created_at,
+      source_updated_at: application.created_at,
       hearts: null,
       hearts_gained: null,
       hearts_lost: null,
       kills: 0,
       deaths: 0,
       revivals: 0,
-      updated_at: application.verified_at ?? application.created_at
+      updated_at: application.created_at
     }));
 
   function publicRosterStatusRank(player) {
@@ -547,7 +565,7 @@ function publicPlayersWithApplications(snapshot) {
     return 0;
   }
 
-  return [...snapshot.players, ...linkedPlayers, ...appliedPlayers]
+  return [...rosterPlayers, ...linkedPlayers, ...appliedPlayers]
     .sort((first, second) =>
       publicRosterStatusRank(first) - publicRosterStatusRank(second) ||
       Number(second.hearts_current ?? 0) - Number(first.hearts_current ?? 0) ||
@@ -1264,11 +1282,38 @@ export function startWebServer(client) {
       const body = supportLifestealSignupSchema.parse(req.body);
       const rulesCode = normalizeSupportCode(body.rulesCode);
       const ack = statements.findSupportRuleAcknowledgementByCode.get(rulesCode);
-      if (!ack) return res.status(404).json({ ok: false, error: 'Rules acknowledgement code was not found.' });
-      if (ack.project !== 'lifesteal') return res.status(400).json({ ok: false, error: 'Rules acknowledgement code is for a different project.' });
-      if (ack.rules_version !== currentRulesVersion()) return res.status(409).json({ ok: false, error: `Rules code is for ${ack.rules_version}; current rules version is ${currentRulesVersion()}.` });
-      if (ack.used_at) return res.status(409).json({ ok: false, error: 'Rules acknowledgement code was already used for an application.' });
-      if (Date.now() > ack.expires_at) return res.status(410).json({ ok: false, error: 'Rules acknowledgement code expired. Please acknowledge the rules again.' });
+      if (!ack) return supportError(res, 404, 'RULES_CODE_NOT_FOUND', 'Rules acknowledgement key was not found. Generate a new key on the Lifesteal rules page.');
+      if (ack.project !== 'lifesteal') return supportError(res, 400, 'RULES_CODE_WRONG_PROJECT', 'This rules key belongs to a different SHD project.');
+      if (ack.rules_version !== currentRulesVersion()) {
+        return supportError(res, 409, 'RULES_CODE_OUTDATED', 'The rules changed after this key was generated. Read the current rules and generate a new key.', {
+          submittedRulesVersion: ack.rules_version,
+          currentRulesVersion: currentRulesVersion()
+        });
+      }
+      const minecraftName = body.minecraftName.trim();
+      const discordUsername = body.discordUsername.trim();
+      const discordIdClaimed = body.discordId?.trim() || null;
+      const linkedAccount = statements.findLinkedAccounts.all().find((linked) =>
+        String(linked.minecraft_name ?? '').trim().toLowerCase() === minecraftName.toLowerCase()
+      );
+      if (linkedAccount) {
+        return supportError(res, 409, 'MINECRAFT_ALREADY_LINKED', `${minecraftName} is already linked to a Discord account. Contact staff in Discord if this link is incorrect.`);
+      }
+
+      const existingApplication = statements.findOpenSupportApplication.get({
+        minecraftName,
+        discordId: discordIdClaimed,
+        discordUsername
+      });
+      if (existingApplication) {
+        return supportError(res, 409, 'APPLICATION_ALREADY_OPEN', 'An open Lifesteal application already exists for this Minecraft or Discord identity. Continue with its Discord ticket instead of submitting another application.', {
+          applicationCode: existingApplication.code,
+          applicationStatus: existingApplication.status
+        });
+      }
+
+      if (ack.used_at) return supportError(res, 409, 'RULES_CODE_USED', 'This rules key has already been used for an application. Generate a new rules key before submitting a different application.');
+      if (Date.now() > ack.expires_at) return supportError(res, 410, 'RULES_CODE_EXPIRED', 'This rules key expired. Return to the Lifesteal rules page and generate a new one.');
 
       const applicationCode = createUniqueCode('SHD-APP', statements.findSupportApplicationByCode);
       const application = statements.createSupportApplication.run({
@@ -1279,9 +1324,9 @@ export function startWebServer(client) {
         rulesAckId: ack.id,
         rulesCode: ack.code,
         rulesVersion: ack.rules_version,
-        discordUsername: body.discordUsername.trim(),
-        discordIdClaimed: body.discordId?.trim() || null,
-        minecraftName: body.minecraftName.trim(),
+        discordUsername,
+        discordIdClaimed,
+        minecraftName,
         answers: {
           age: body.age?.trim() || null,
           region: body.region.trim(),

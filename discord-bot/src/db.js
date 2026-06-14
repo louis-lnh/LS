@@ -173,6 +173,7 @@ export const statements = {
         risk_reasons: row.riskReasons ?? existingLinked?.risk_reasons ?? [],
         role: row.role ?? 'player',
         public_stats_opt_in: row.publicStatsOptIn ?? existingLinked?.public_stats_opt_in ?? false,
+        roster_status_updated_at: row.rosterStatusUpdatedAt ?? existingLinked?.roster_status_updated_at ?? row.verifiedAt,
         region: row.region ?? existingLinked?.region ?? null,
         team_name: row.teamName ?? existingLinked?.team_name ?? null,
         event_interest: row.eventInterest ?? existingLinked?.event_interest ?? null
@@ -203,9 +204,13 @@ export const statements = {
     run(row) {
       const linked = state.linked_accounts.find((item) => item.discord_id === row.discordId);
       if (!linked) return;
+      const statusChanged = linked.status !== row.status;
       linked.status = row.status;
       linked.suspicious = row.suspicious;
       linked.suspicious_reason = row.reason;
+      if (statusChanged && row.rosterStatusUpdatedAt) {
+        linked.roster_status_updated_at = row.rosterStatusUpdatedAt;
+      }
       persist();
     }
   },
@@ -449,6 +454,36 @@ export const statements = {
       return state.support_applications.find((row) => row.code === code) ?? null;
     }
   },
+  findSupportApplicationByThread: {
+    get(threadId) {
+      return state.support_applications.find((row) => row.ticket_thread_id === threadId) ?? null;
+    }
+  },
+  findReviewableSupportApplications: {
+    all() {
+      return state.support_applications.filter((row) =>
+        row.discord_id_verified &&
+        row.ticket_thread_id &&
+        ['ticket_verified', 'approved_whitelist_pending'].includes(row.status)
+      );
+    }
+  },
+  findOpenSupportApplication: {
+    get({ minecraftName, discordId, discordUsername }) {
+      const openStatuses = new Set(['submitted', 'ticket_verified', 'approved_whitelist_pending']);
+      const normalizedMinecraftName = String(minecraftName ?? '').trim().toLowerCase();
+      const normalizedDiscordId = String(discordId ?? '').trim();
+      const normalizedDiscordUsername = String(discordUsername ?? '').trim().replace(/^@/, '').toLowerCase();
+
+      return state.support_applications.find((row) => {
+        if (!openStatuses.has(row.status)) return false;
+        if (normalizedMinecraftName && String(row.minecraft_name ?? '').trim().toLowerCase() === normalizedMinecraftName) return true;
+        if (normalizedDiscordId && String(row.discord_id_claimed ?? '').trim() === normalizedDiscordId) return true;
+        return normalizedDiscordUsername &&
+          String(row.discord_username ?? '').trim().replace(/^@/, '').toLowerCase() === normalizedDiscordUsername;
+      }) ?? null;
+    }
+  },
   findPublicSupportApplications: {
     all() {
       return state.support_applications.filter((row) =>
@@ -596,6 +631,8 @@ export const statements = {
         step: row.step ?? 0,
         answers: row.answers ?? {},
         created_at: row.createdAt,
+        claimed_by: null,
+        claimed_at: null,
         closed_at: null
       };
       state.ticket_threads.push(ticket);
@@ -611,6 +648,22 @@ export const statements = {
   findOpenTicketForUser: {
     get(discordId, type) {
       return state.ticket_threads.find((row) => row.discord_id === discordId && row.type === type && row.status === 'open') ?? null;
+    }
+  },
+  claimTicketReview: {
+    run(row) {
+      const ticket = state.ticket_threads.find((item) => item.thread_id === row.threadId && item.status === 'open');
+      if (!ticket) return { ok: false, reason: 'not_found', ticket: null };
+      if (ticket.claimed_by && ticket.claimed_by !== row.staffId) {
+        return { ok: false, reason: 'claimed', ticket };
+      }
+      if (ticket.claimed_by === row.staffId) {
+        return { ok: true, changed: false, ticket };
+      }
+      ticket.claimed_by = row.staffId;
+      ticket.claimed_at = row.claimedAt;
+      persist();
+      return { ok: true, changed: true, ticket };
     }
   },
   updateTicketThread: {

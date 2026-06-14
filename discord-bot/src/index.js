@@ -81,6 +81,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return;
   }
 
+  if (interaction.isAutocomplete()) {
+    try {
+      await handleApplicationAutocomplete(interaction);
+    } catch (error) {
+      console.error(error);
+      await interaction.respond([]).catch(() => null);
+    }
+    return;
+  }
+
   if (!interaction.isChatInputCommand()) return;
 
   try {
@@ -533,7 +543,8 @@ async function handleApprove(interaction) {
     discordId: user.id,
     status: 'active',
     suspicious: 0,
-    reason
+    reason,
+    rosterStatusUpdatedAt: Date.now()
   });
   const whitelistResult = await optionalSideEffect(client, {
     type: 'minecraft.whitelist_add',
@@ -586,6 +597,53 @@ async function handleApprove(interaction) {
   await interaction.editReply(`Approved ${user.tag} and set the link active.${warnings.length ? ` Staff warning: ${warnings.join('; ')}.` : ''}`);
 }
 
+async function handleApplicationAutocomplete(interaction) {
+  if (!['approve', 'deny'].includes(interaction.commandName) || !hasCommandAccess(interaction)) {
+    return interaction.respond([]);
+  }
+  const focused = interaction.options.getFocused(true);
+  if (focused.name !== 'application_code') {
+    return interaction.respond([]);
+  }
+
+  const search = String(focused.value ?? '').trim().toLowerCase();
+  const choices = statements.findReviewableSupportApplications.all()
+    .map((application) => ({
+      application,
+      ticket: statements.findTicketByThread.get(application.ticket_thread_id)
+    }))
+    .filter(({ ticket }) => ticket && (!ticket.claimed_by || ticket.claimed_by === interaction.user.id))
+    .filter(({ application }) => {
+      if (!search) return true;
+      return [
+        application.code,
+        application.minecraft_name,
+        application.discord_username
+      ].some((value) => String(value ?? '').toLowerCase().includes(search));
+    })
+    .slice(0, 25)
+    .map(({ application, ticket }) => ({
+      name: `${application.code} | ${application.minecraft_name} | ${ticket.claimed_by ? 'claimed by you' : 'unclaimed'}`.slice(0, 100),
+      value: application.code
+    }));
+
+  return interaction.respond(choices);
+}
+
+function supportApplicationClaimError(application, staffId) {
+  const ticket = statements.findTicketByThread.get(application.ticket_thread_id);
+  if (!ticket) {
+    return 'The application ticket is no longer open, so it cannot be reviewed.';
+  }
+  if (!ticket.claimed_by) {
+    return `Claim <#${application.ticket_thread_id}> before approving or denying this application.`;
+  }
+  if (ticket.claimed_by !== staffId) {
+    return `This application review is already owned by <@${ticket.claimed_by}>.`;
+  }
+  return null;
+}
+
 async function approveSupportApplication(interaction, codeInput) {
   const code = codeInput.trim().toUpperCase();
   const reason = interaction.options.getString('reason') || 'Application approved by staff';
@@ -597,6 +655,8 @@ async function approveSupportApplication(interaction, codeInput) {
   if (!['ticket_verified', 'approved_whitelist_pending'].includes(application.status)) {
     return interaction.editReply(`That application is currently ${application.status} and cannot be approved from this command.`);
   }
+  const claimError = supportApplicationClaimError(application, interaction.user.id);
+  if (claimError) return interaction.editReply(claimError);
 
   const profile = await resolveMinecraftProfile(application.minecraft_name);
   const member = await interaction.guild.members.fetch(application.discord_id_verified).catch(() => null);
@@ -614,7 +674,8 @@ async function approveSupportApplication(interaction, codeInput) {
     status: 'active',
     suspicious: 0,
     suspiciousReason: reason,
-    publicStatsOptIn: true
+    publicStatsOptIn: true,
+    rosterStatusUpdatedAt: now
   });
   statements.upsertRulesAcceptance.run({
     discordId: application.discord_id_verified,
@@ -700,7 +761,13 @@ async function approveSupportApplication(interaction, codeInput) {
 
 async function handleDeny(interaction) {
   await interaction.deferReply({ ephemeral: true });
-  const user = interaction.options.getUser('user', true);
+  const applicationCode = interaction.options.getString('application_code');
+  if (applicationCode) {
+    return denySupportApplication(interaction, applicationCode);
+  }
+
+  const user = interaction.options.getUser('user');
+  if (!user) return interaction.editReply('Choose a linked Discord user or select an application code.');
   const reason = interaction.options.getString('reason') || 'Denied by staff';
   const linked = statements.findLinkedByDiscord.get(user.id);
   if (!linked) return interaction.editReply('That Discord user is not linked.');
@@ -750,6 +817,107 @@ async function handleDeny(interaction) {
     { name: 'Reason', value: reason }
   ].filter(Boolean));
   await interaction.editReply(`Denied ${user.tag}; their link is now banned.${whitelistResult.ok ? ' Whitelist removal was applied or RCON is disabled.' : ` Staff warning: whitelist removal failed: ${whitelistResult.error}.`}`);
+}
+
+async function denySupportApplication(interaction, codeInput) {
+  const code = codeInput.trim().toUpperCase();
+  const reason = interaction.options.getString('reason') || 'Application denied by staff';
+  const application = statements.findSupportApplicationByCode.get(code);
+  if (!application) return interaction.editReply('No support application was found with that code.');
+  if (!application.discord_id_verified || !application.ticket_thread_id) {
+    return interaction.editReply('That application is not attached to a Discord ticket yet.');
+  }
+  if (!['ticket_verified', 'approved_whitelist_pending'].includes(application.status)) {
+    return interaction.editReply(`That application is currently ${application.status} and cannot be denied from this command.`);
+  }
+  const claimError = supportApplicationClaimError(application, interaction.user.id);
+  if (claimError) return interaction.editReply(claimError);
+  if (!await confirmAction(interaction, {
+    title: 'Confirm Application Denial',
+    body: `Deny ${application.code} for ${application.minecraft_name}?`,
+    confirmLabel: 'Deny'
+  })) return;
+
+  const now = Date.now();
+  const updatedApplication = statements.updateSupportApplicationStatus.run({
+    code,
+    status: 'denied',
+    reviewedAt: now,
+    reviewedBy: interaction.user.id,
+    reason
+  });
+
+  const linked = statements.findLinkedByDiscord.get(application.discord_id_verified);
+  const matchingLinked = linked &&
+    String(linked.minecraft_name ?? '').trim().toLowerCase() === String(application.minecraft_name).trim().toLowerCase()
+    ? linked
+    : null;
+  let whitelistResult = { ok: true, error: null };
+  if (matchingLinked) {
+    statements.setLinkedStatus.run({
+      discordId: application.discord_id_verified,
+      status: 'denied',
+      suspicious: 0,
+      reason,
+      rosterStatusUpdatedAt: now
+    });
+    statements.updateProfile.run({
+      discordId: application.discord_id_verified,
+      publicStatsOptIn: false
+    });
+    whitelistResult = await optionalSideEffect(client, {
+      type: 'minecraft.whitelist_remove',
+      action: 'Remove denied applicant from Minecraft whitelist',
+      discordId: application.discord_id_verified,
+      minecraftUuid: matchingLinked.minecraft_uuid,
+      fields: [
+        { name: 'Application', value: updatedApplication.code, inline: true },
+        { name: 'Minecraft', value: matchingLinked.minecraft_name, inline: true },
+        { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true }
+      ],
+      run: () => whitelistRemove(matchingLinked.minecraft_name)
+    });
+  }
+
+  const ticket = await interaction.client.channels.fetch(application.ticket_thread_id).catch(() => null);
+  if (ticket?.isTextBased?.()) {
+    await ticket.send([
+      `<@${application.discord_id_verified}> your Lifesteal application was not approved.`,
+      `Reason: ${reason}`,
+      'You can ask staff in this ticket if you need clarification.'
+    ].join('\n')).catch(() => null);
+  }
+
+  addCase('support_application_deny', application.discord_id_verified, matchingLinked?.minecraft_uuid ?? null, interaction.user.id, reason);
+  audit('support.application_denied', {
+    discordId: application.discord_id_verified,
+    minecraftUuid: matchingLinked?.minecraft_uuid ?? null,
+    data: {
+      applicationId: updatedApplication.id,
+      applicationCode: updatedApplication.code,
+      moderatorId: interaction.user.id,
+      rosterCleared: true,
+      whitelistOk: whitelistResult.ok
+    }
+  });
+  await staffAuditLog(client, 'Support Application Denied', [
+    { name: 'Application', value: `${updatedApplication.id} / ${updatedApplication.code}`, inline: true },
+    { name: 'Applicant', value: `<@${application.discord_id_verified}>`, inline: true },
+    { name: 'Minecraft', value: application.minecraft_name, inline: true },
+    { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true },
+    whitelistResult.ok ? null : { name: 'Whitelist Warning', value: whitelistResult.error },
+    { name: 'Reason', value: reason }
+  ].filter(Boolean));
+  await modLog(client, 'Support Application Denied', [
+    { name: 'Application', value: `${updatedApplication.id} / ${updatedApplication.code}`, inline: true },
+    { name: 'Applicant', value: `<@${application.discord_id_verified}>`, inline: true },
+    { name: 'Minecraft', value: application.minecraft_name, inline: true },
+    { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true },
+    { name: 'Roster', value: 'Removed', inline: true },
+    { name: 'Reason', value: reason }
+  ]);
+
+  return interaction.editReply(`Denied ${updatedApplication.code}, removed the applicant from the public roster, and notified the ticket.${whitelistResult.ok ? '' : ` Staff warning: whitelist removal failed: ${whitelistResult.error}.`}`);
 }
 
 async function handleSharedIp(interaction) {

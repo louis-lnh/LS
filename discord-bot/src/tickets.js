@@ -10,10 +10,9 @@ import {
 } from 'discord.js';
 import { config } from './config.js';
 import { statements } from './db.js';
-import { audit, appealLog, logToChannel, modLog, staffAuditLog, verifyLog } from './logger.js';
+import { audit, appealLog, logToChannel, modLog, staffAuditLog } from './logger.js';
 import { resolveMinecraftProfile } from './minecraft.js';
 import { hasStaffAccess } from './permissions.js';
-import { createVerification } from './verification.js';
 
 const APPEAL_BUTTON_ID = 'ticket:appeal:open';
 const JOIN_BUTTON_ID = 'ticket:join:open';
@@ -22,37 +21,6 @@ const CLAIM_BUTTON_ID = 'ticket:claim';
 const APPEAL_MODAL_ID = 'ticket:appeal:modal';
 const CLOSE_MODAL_ID = 'ticket:close:modal';
 const APPLICATION_CODE_PATTERN = /\bSHD-APP-[A-Z0-9]{4,12}\b/i;
-
-const joinQuestions = [
-  {
-    key: 'minecraft_name',
-    prompt: 'Question 1/7: What is your exact Minecraft Java username?'
-  },
-  {
-    key: 'lifesteal_experience',
-    prompt: 'Question 2/7: Tell us about your Lifesteal, SMP, survival, or PvP experience.'
-  },
-  {
-    key: 'found_server',
-    prompt: 'Question 3/7: How did you find SHD Lifesteal?'
-  },
-  {
-    key: 'timezone',
-    prompt: 'Question 4/7: What region and timezone are you in?'
-  },
-  {
-    key: 'understands_pvp',
-    prompt: 'Question 5/7: Do you understand this is a competitive PvP Lifesteal server? Answer yes or no.'
-  },
-  {
-    key: 'rules_agreement',
-    prompt: 'Question 6/7: Have you read and accepted the current Lifesteal rules? Answer yes or no.'
-  },
-  {
-    key: 'extra',
-    prompt: 'Question 7/7: Anything else staff should know, such as team plans, content links, or availability? You can answer none.'
-  }
-];
 
 export async function handlePanelCommand(interaction) {
   await interaction.deferReply({ ephemeral: true });
@@ -144,118 +112,17 @@ export async function handleTicketMessage(message) {
   if (!ticket || ticket.type !== 'join' || ticket.discord_id !== message.author.id) {
     return false;
   }
-
-  const question = joinQuestions[ticket.step];
-  if (!question) {
+  if (statements.findSupportApplicationByThread.get(message.channel.id)) {
     return false;
   }
 
-  const answer = message.content.trim();
-  if (!answer) {
-    await message.reply('Please answer with text.');
-    return true;
-  }
-
-  const answers = { ...ticket.answers };
-  let minecraftUuid = ticket.minecraft_uuid;
-  let minecraftName = ticket.minecraft_name;
-
-  if (question.key === 'minecraft_name') {
-    try {
-      const profile = await resolveMinecraftProfile(answer);
-      minecraftUuid = profile.uuid;
-      minecraftName = profile.name;
-      answers[question.key] = profile.name;
-    } catch (error) {
-      await message.reply(`I could not find that Minecraft account: ${error.message}\nPlease send the username again.`);
-      return true;
-    }
-  } else if (question.key === 'understands_pvp' || question.key === 'rules_agreement') {
-    const parsed = parseYesNo(answer);
-    if (parsed == null) {
-      await message.reply('Please answer yes or no.');
-      return true;
-    }
-    answers[question.key] = parsed;
-  } else {
-    answers[question.key] = answer;
-  }
-
-  const nextStep = ticket.step + 1;
-  statements.updateTicketThread.run({
-    threadId: message.channel.id,
-    step: nextStep,
-    answers,
-    minecraftUuid,
-    minecraftName
-  });
-
-  if (nextStep < joinQuestions.length) {
-    await message.channel.send(joinQuestions[nextStep].prompt);
-    return true;
-  }
-
-  statements.upsertSignupAnswers.run({
-    discordId: ticket.discord_id,
-    minecraftUuid,
-    minecraftName,
-    lifestealExperience: answers.lifesteal_experience ?? '',
-    foundServer: answers.found_server ?? '',
-    timezone: answers.timezone ?? '',
-    understandsPvp: Boolean(answers.understands_pvp),
-    rulesAgreement: Boolean(answers.rules_agreement),
-    extra: answers.extra ?? '',
-    submittedAt: Date.now()
-  });
-
-  audit('signup.ticket_completed', {
-    discordId: ticket.discord_id,
-    minecraftUuid,
-    data: { threadId: message.channel.id, minecraftName }
-  });
-  await modLog(message.client, 'Join Ticket Completed', [
-    { name: 'User', value: `<@${ticket.discord_id}>`, inline: true },
-    { name: 'Minecraft', value: minecraftName ?? 'Unknown', inline: true },
-    { name: 'Thread', value: `<#${message.channel.id}>`, inline: true }
-  ]);
-
-  await message.channel.send({
-    embeds: [new EmbedBuilder()
-      .setTitle('Signup Answers Submitted')
-      .setColor(0x35b87f)
-      .setDescription([
-        `Discord: <@${ticket.discord_id}>`,
-        `Minecraft: ${minecraftName ?? 'Unknown'}`,
-        `Experience: ${answers.lifesteal_experience ?? 'Not answered'}`,
-        `Found server: ${answers.found_server ?? 'Not answered'}`,
-        `Timezone: ${answers.timezone ?? 'Not answered'}`,
-        `Understands PvP: ${answers.understands_pvp ? 'Yes' : 'No'}`,
-        `Rules agreement: ${answers.rules_agreement ? 'Yes' : 'No'}`,
-        `Extra: ${answers.extra ?? 'None'}`
-      ].join('\n'))]
-  });
-
-  if (answers.rules_agreement) {
-    const verification = createVerification(ticket.discord_id, { uuid: minecraftUuid, name: minecraftName });
-    await message.channel.send([
-      `<@${ticket.discord_id}> signup is saved. Finish verification here:`,
-      verification.url,
-      '',
-      `When the Minecraft bridge is installed, you can also run: /link ${verification.linkCode}`
-    ].join('\n'));
-    await verifyLog(message.client, 'Join Ticket Verification Link Created', [
-      { name: 'User', value: `<@${ticket.discord_id}>`, inline: true },
-      { name: 'Minecraft', value: minecraftName ?? 'Unknown', inline: true },
-      { name: 'Thread', value: `<#${message.channel.id}>`, inline: true }
-    ]);
-  } else {
-    await message.channel.send('Signup answers are saved, but rules were not accepted. Staff should review before verification.');
-  }
-
-  await message.channel.send({
-    content: 'Staff can review this thread now.',
-    components: [ticketStaffActionRow()]
-  });
+  await message.reply([
+    'This ticket needs an application key from the SHD Support Portal.',
+    `Apply here: ${config.supportPortalUrl.replace(/\/$/, '')}/signup`,
+    'Read the rules and generate your rules key first: https://lifesteal.shd-esports.com/rules',
+    '',
+    'Then send the `SHD-APP-...` key in this ticket.'
+  ].join('\n'));
   return true;
 }
 
@@ -263,6 +130,15 @@ async function handleApplicationCodeMessage(message) {
   const match = message.content.match(APPLICATION_CODE_PATTERN);
   if (!match) {
     return false;
+  }
+
+  const ticket = statements.findTicketByThread.get(message.channel.id);
+  if (!ticket || ticket.type !== 'join') {
+    return false;
+  }
+  if (ticket.discord_id !== message.author.id) {
+    await message.reply('Only the applicant who opened this join ticket can attach an application key.');
+    return true;
   }
 
   const code = match[0].toUpperCase();
@@ -274,7 +150,13 @@ async function handleApplicationCodeMessage(message) {
 
   if (application.status !== 'submitted') {
     if (application.discord_id_verified === message.author.id) {
-      await message.reply('This application is already verified for this Discord account. Staff can review it.');
+      const statusMessages = {
+        ticket_verified: 'This application is already verified and waiting for staff review.',
+        approved_whitelist_pending: 'This application is approved, but staff still needs to finish Minecraft access.',
+        approved: 'This application has already been approved.',
+        denied: 'This application has already been denied.'
+      };
+      await message.reply(statusMessages[application.status] ?? `This application is already ${application.status}.`);
     } else {
       await message.reply('This application code has already been claimed by another Discord account or is no longer open.');
     }
@@ -339,11 +221,7 @@ async function handleApplicationCodeMessage(message) {
   });
 
   await message.channel.send({
-    embeds: [ticketEmbed('Staff Review Ready', 0xf2c94c, supportApplicationFields(updated, [
-      { name: 'Applicant', value: `<@${message.author.id}>`, inline: true },
-      { name: 'Approve', value: `/approve application_code:${updated.code}`, inline: false },
-      { name: 'Review Note', value: 'Claim the ticket before reviewing so staff do not duplicate work.' }
-    ]))],
+    content: 'Staff review controls:',
     components: [ticketStaffActionRow()]
   });
 
@@ -470,6 +348,21 @@ async function claimTicket(interaction) {
   const ticket = statements.findTicketByThread.get(interaction.channel.id);
   if (!ticket) {
     return interaction.editReply('No open ticket record found for this thread.');
+  }
+
+  const claim = statements.claimTicketReview.run({
+    threadId: interaction.channel.id,
+    staffId: interaction.user.id,
+    claimedAt: Date.now()
+  });
+  if (!claim.ok && claim.reason === 'claimed') {
+    return interaction.editReply(`This review is already claimed by <@${claim.ticket.claimed_by}>.`);
+  }
+  if (!claim.ok) {
+    return interaction.editReply('This ticket could not be claimed because it is no longer open.');
+  }
+  if (!claim.changed) {
+    return interaction.editReply('You already own this review.');
   }
 
   audit('ticket.claimed', {
@@ -620,8 +513,6 @@ async function openJoinTicket(interaction) {
     threadId: thread.id,
     channelId: interaction.channel.id,
     discordId: interaction.user.id,
-    step: 0,
-    answers: {},
     createdAt: Date.now()
   });
   audit('signup.ticket_created', {
@@ -642,15 +533,14 @@ async function openJoinTicket(interaction) {
       '',
       `Portal: ${config.supportPortalUrl.replace(/\/$/, '')}/signup`,
       '',
-      `If you cannot use the portal, answer here instead: ${joinQuestions[0].prompt}`
-    ].join('\n'),
-    components: [ticketStaffActionRow()]
+      'After submitting, send the `SHD-APP-...` key in this ticket. Staff review begins only after the key is verified.'
+    ].join('\n')
   });
   await sendTicketCreatedNotices(interaction, {
     type: 'join',
     thread,
     details: [
-      { name: 'Step', value: 'Waiting for portal application key or fallback question 1/7', inline: true }
+      { name: 'Step', value: 'Waiting for portal application key', inline: true }
     ]
   });
   await interaction.editReply(`Join thread created: <#${thread.id}>`);
@@ -812,13 +702,6 @@ function ticketStaffActionRow() {
 
 function hasTicketStaffAccess(interaction) {
   return hasStaffAccess(interaction);
-}
-
-function parseYesNo(value) {
-  const normalized = value.trim().toLowerCase();
-  if (['yes', 'y', 'true', 'yeah', 'yep'].includes(normalized)) return true;
-  if (['no', 'n', 'false', 'nah', 'nope'].includes(normalized)) return false;
-  return null;
 }
 
 function safeThreadPart(value) {
