@@ -462,6 +462,7 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
     event.preventDefault()
     const startX = event.clientX
     const startWidth = pane === 'queue' ? queueWidth : activityWidth
+    let lastWidth = startWidth
     document.body.classList.add('resizing-layout')
 
     const move = (moveEvent: PointerEvent) => {
@@ -469,21 +470,20 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
       const next = pane === 'queue'
         ? Math.min(520, Math.max(280, startWidth + delta))
         : Math.min(460, Math.max(260, startWidth - delta))
+      lastWidth = next
       if (pane === 'queue') setQueueWidth(next)
       else setActivityWidth(next)
     }
-    const stop = (upEvent: PointerEvent) => {
-      const delta = upEvent.clientX - startX
-      const next = pane === 'queue'
-        ? Math.min(520, Math.max(280, startWidth + delta))
-        : Math.min(460, Math.max(260, startWidth - delta))
-      localStorage.setItem(pane === 'queue' ? 'shd-admin-queue-width' : 'shd-admin-activity-width', String(next))
+    const stop = () => {
+      localStorage.setItem(pane === 'queue' ? 'shd-admin-queue-width' : 'shd-admin-activity-width', String(lastWidth))
       document.body.classList.remove('resizing-layout')
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', stop)
+      window.removeEventListener('pointercancel', stop)
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', stop)
+    window.addEventListener('pointercancel', stop)
   }
 
   const selected = submissions.find((submission) => submission.id === selectedId) ?? submissions[0]
