@@ -372,7 +372,10 @@ export const statements = {
     run(row) {
       const linked = state.linked_accounts.find((item) => item.discord_id === row.discordId);
       if (!linked) return null;
-      if (row.role !== undefined) linked.role = row.role;
+      if (row.role !== undefined) {
+        linked.role = row.role;
+        linked.role_managed_at = row.updatedAt;
+      }
       if (row.publicStatsOptIn !== undefined) linked.public_stats_opt_in = row.publicStatsOptIn;
       if (row.status !== undefined) {
         const statusChanged = linked.status !== row.status;

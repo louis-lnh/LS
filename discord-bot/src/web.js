@@ -465,13 +465,24 @@ function configuredPrestigeBadges(minecraftUuid) {
   return [];
 }
 
+const staffPrestigeBadges = new Set(['owner', 'admin', 'mod', 'shd-team']);
+
 function linkedRolePrestigeBadges(linked) {
   const role = String(linked?.role ?? 'player').trim().toLowerCase().replaceAll('_', '-');
-  return ['owner', 'admin', 'mod', 'shd-team'].includes(role) ? [role] : [];
+  return staffPrestigeBadges.has(role) ? [role] : [];
 }
 
 function linkedPrestigeBadges(linked) {
+  if (linked?.role_managed_at) return linkedRolePrestigeBadges(linked);
   return [...new Set([...configuredPrestigeBadges(linked?.minecraft_uuid), ...linkedRolePrestigeBadges(linked)])];
+}
+
+function rosterPrestigeBadges(playerPrestige, linked) {
+  if (!linked) return playerPrestige ?? [];
+  const basePrestige = linked.role_managed_at
+    ? (playerPrestige ?? []).filter((badge) => !staffPrestigeBadges.has(badge))
+    : (playerPrestige ?? []);
+  return [...new Set([...basePrestige, ...linkedPrestigeBadges(linked)])];
 }
 
 function publicRosterStatusFromLinked(linked) {
@@ -610,7 +621,7 @@ function publicPlayersWithApplications(snapshot) {
     const linked = findLinkedMinecraftAccount(player.minecraft_uuid);
     if (linked && linked.status !== 'active') return [];
     const rosterUpdatedAt = linked?.roster_status_updated_at ?? linked?.verified_at ?? player.source_updated_at ?? player.updated_at;
-    const prestige = linked ? [...new Set([...(player.prestige ?? []), ...linkedPrestigeBadges(linked)])] : player.prestige;
+    const prestige = rosterPrestigeBadges(player.prestige, linked);
     const status = publicRosterStatusFromLinked(linked) ?? player.status;
     return [{
       ...player,
