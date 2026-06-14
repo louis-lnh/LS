@@ -188,6 +188,8 @@ const priorityLinks: NavItem[] = [
 const publicApiBase = (import.meta.env.VITE_LIFESTEAL_API_BASE_URL ?? 'http://localhost:3000/api/v1/public').replace(/\/$/, '')
 const rankHistoryKey = 'shd-lifesteal-rank-history-v1'
 const rankMoveLifetimeMs = 24 * 60 * 60 * 1000
+const liveDataRefreshMs = 5000
+const backgroundLiveDataRefreshMs = 30000
 const seasonStarted = false
 const seasonStartTimestamp = Date.UTC(2026, 6, 1, 10, 0, 0)
 
@@ -382,11 +384,12 @@ function useLiveData(): LiveData {
 
     async function loadLiveData() {
       try {
+        const requestInit: RequestInit = { cache: 'no-store' }
         const [statusResponse, playersResponse, objectivesResponse, healthResponse] = await Promise.all([
-          fetch(`${publicApiBase}/status`),
-          fetch(`${publicApiBase}/players`),
-          fetch(`${publicApiBase}/objectives`).catch(() => null),
-          fetch(`${publicApiBase}/sync-health`).catch(() => null),
+          fetch(`${publicApiBase}/status`, requestInit),
+          fetch(`${publicApiBase}/players`, requestInit),
+          fetch(`${publicApiBase}/objectives`, requestInit).catch(() => null),
+          fetch(`${publicApiBase}/sync-health`, requestInit).catch(() => null),
         ])
         if (!statusResponse.ok || !playersResponse.ok) {
           if (!cancelled) setLiveData((current) => ({ ...current, loaded: true }))
@@ -422,10 +425,17 @@ function useLiveData(): LiveData {
     }
 
     loadLiveData()
-    const interval = window.setInterval(loadLiveData, 30000)
+    let timer: number
+    const scheduleLiveData = () => {
+      timer = window.setTimeout(async () => {
+        await loadLiveData()
+        if (!cancelled) scheduleLiveData()
+      }, document.hidden ? backgroundLiveDataRefreshMs : liveDataRefreshMs)
+    }
+    scheduleLiveData()
     return () => {
       cancelled = true
-      window.clearInterval(interval)
+      window.clearTimeout(timer)
     }
   }, [])
 

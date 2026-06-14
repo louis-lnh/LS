@@ -276,6 +276,9 @@ function setPublicCors(res) {
 
 function publicCors(req, res, next) {
   setPublicCors(res);
+  if (req.method === 'GET') {
+    res.set('Cache-Control', 'no-store, max-age=0');
+  }
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   return next();
 }
