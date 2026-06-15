@@ -762,8 +762,9 @@ function buildAdminLifestealEvents() {
     .sort((left, right) => left.startsAt - right.startsAt || left.priority - right.priority || left.id - right.id);
 }
 
-async function announceLifestealEvent(client, event) {
-  if (!config.admin.lifestealEventChannelId || !event.announce) return { ok: false, skipped: true, messageId: null };
+async function announceLifestealEvent(client, event, options = {}) {
+  const force = Boolean(options.force);
+  if (!config.admin.lifestealEventChannelId || (!event.announce && !force)) return { ok: false, skipped: true, messageId: null };
   const channel = await client.channels.fetch(config.admin.lifestealEventChannelId).catch(() => null);
   if (!channel?.isTextBased?.()) return { ok: false, skipped: true, messageId: null };
   const unix = Math.floor(event.starts_at / 1000);
@@ -1343,6 +1344,48 @@ export function createAdminRouter(client) {
       data: { eventId: event.id, title: event.title, startsAt: event.starts_at }
     });
     return res.json({ ok: true, event: serializeLifestealEvent(event), events: buildAdminLifestealEvents() });
+  });
+
+  router.post('/lifesteal/events/:eventId/announcement', requireAdminSession(client), async (req, res) => {
+    if (!req.adminSession.workspaces.includes('lifesteal')) {
+      return res.status(403).json({ ok: false, code: 'ADMIN_WORKSPACE_DENIED', error: 'Lifesteal access required.' });
+    }
+    if (requirePermission(req, res, 'lifesteal:events', 'Event management permission required.')) return;
+
+    const id = Number(req.params.eventId);
+    const existing = statements.snapshot.get().lifesteal_events.find((event) => event.id === id);
+    if (!existing) return res.status(404).json({ ok: false, code: 'ADMIN_EVENT_NOT_FOUND', error: 'Event not found.' });
+
+    let announcement = { ok: false, skipped: true, messageId: null };
+    let event = existing;
+    try {
+      announcement = await announceLifestealEvent(client, existing, { force: true });
+      if (announcement.messageId) {
+        event = statements.updateLifestealEvent.run({
+          id: existing.id,
+          announcement_message_id: announcement.messageId,
+          updatedBy: req.adminSession.id,
+          updatedAt: Date.now()
+        });
+      }
+    } catch (error) {
+      announcement = { ok: false, skipped: false, messageId: null, error: error.message };
+    }
+
+    audit('admin.lifesteal_event_announcement_sent', {
+      discordId: req.adminSession.id,
+      data: { eventId: existing.id, title: existing.title, announcementOk: announcement.ok }
+    });
+    await staffAuditLog(client, 'Lifesteal Event Announcement', [
+      { name: 'Event', value: existing.title, inline: true },
+      { name: 'Staff', value: `${req.adminSession.displayName} (${req.adminSession.id})`, inline: true },
+      announcement.skipped ? { name: 'Announcement', value: 'Skipped or channel not configured.', inline: true } : { name: 'Announcement', value: announcement.ok ? 'Sent' : 'Failed', inline: true }
+    ]);
+
+    if (!announcement.ok) {
+      return res.status(502).json({ ok: false, code: 'ADMIN_EVENT_ANNOUNCEMENT_FAILED', error: announcement.skipped ? 'Announcement channel is not configured or reachable.' : 'Could not send event announcement.', announcement });
+    }
+    return res.json({ ok: true, event: serializeLifestealEvent(event), events: buildAdminLifestealEvents(), announcement });
   });
 
   router.delete('/lifesteal/events/:eventId', requireAdminSession(client), async (req, res) => {

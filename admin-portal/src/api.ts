@@ -426,6 +426,14 @@ export async function updateAdminLifestealEvent(id: number, payload: UpsertAdmin
   return { event: response.event, events: response.events }
 }
 
+export async function resendAdminLifestealEventAnnouncement(id: number): Promise<{ events: AdminLifestealEvent[]; event: AdminLifestealEvent }> {
+  const response = await adminRequest<{ ok: boolean; event: AdminLifestealEvent; events: AdminLifestealEvent[] }>(
+    `/lifesteal/events/${encodeURIComponent(String(id))}/announcement`,
+    { method: 'POST' },
+  )
+  return { event: response.event, events: response.events }
+}
+
 export async function deleteAdminLifestealEvent(id: number): Promise<{ events: AdminLifestealEvent[] }> {
   const response = await adminRequest<{ ok: boolean; events: AdminLifestealEvent[] }>(`/lifesteal/events/${encodeURIComponent(String(id))}`, { method: 'DELETE' })
   return { events: response.events }

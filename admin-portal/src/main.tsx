@@ -68,6 +68,7 @@ import {
   getAdminSession,
   getLifestealStaffChat,
   getSubmissionTicketActivity,
+  resendAdminLifestealEventAnnouncement,
   sendSubmissionTicketMessage,
   sendLifestealStaffChatMessage,
   updateAdminLifestealEvent,
@@ -1584,7 +1585,9 @@ function eventPayloadFromForm(form: typeof defaultEventForm): UpsertAdminLifeste
 function LifestealEventsPage({ user }: { user: AdminUser }) {
   const demoEvents: AdminLifestealEvent[] = [
     { id: 1, title: 'Event Start', startsAt: Date.UTC(2026, 6, 1, 10, 0, 0), endsAt: null, type: 'Server Start', reward: 'Season 1 begins', objective: 'The server opens for the first public Season 1 session.', summary: 'The countdown to Season 1. We are looking forward to starting the server together at this time.', priority: 0, status: 'scheduled', public: true, announce: false, announcementMessageId: null, createdBy: 'demo', createdAt: Date.now(), updatedBy: 'demo', updatedAt: Date.now() },
-    { id: 2, title: 'End Opening', startsAt: Date.UTC(2026, 6, 8, 10, 0, 0), endsAt: null, type: 'End Event', reward: 'Dragon Egg race begins', objective: 'The End opens exactly seven days after server start.', summary: 'The first major objective fight opens the End and begins the race for the Dragon Egg.', priority: 0, status: 'scheduled', public: true, announce: false, announcementMessageId: null, createdBy: 'demo', createdAt: Date.now(), updatedBy: 'demo', updatedAt: Date.now() },
+    { id: 2, title: 'Grace Period', startsAt: Date.UTC(2026, 6, 1, 10, 0, 0), endsAt: Date.UTC(2026, 6, 1, 11, 0, 0), type: 'Protection Window', reward: 'Safe first hour', objective: 'PvP, combat tags, lifesteal, heart loss, eliminations, and revivals stay disabled for the first hour.', summary: 'The first hour gives players time to spread out, prepare, and settle into the season before combat turns on.', priority: 1, status: 'scheduled', public: true, announce: false, announcementMessageId: null, createdBy: 'demo', createdAt: Date.now(), updatedBy: 'demo', updatedAt: Date.now() },
+    { id: 3, title: 'End Opening', startsAt: Date.UTC(2026, 6, 8, 10, 0, 0), endsAt: null, type: 'End Event', reward: 'Dragon Egg race begins', objective: 'The End opens exactly seven days after server start.', summary: 'The first major objective fight opens the End and begins the race for the Dragon Egg.', priority: 0, status: 'scheduled', public: true, announce: false, announcementMessageId: null, createdBy: 'demo', createdAt: Date.now(), updatedBy: 'demo', updatedAt: Date.now() },
+    { id: 4, title: 'Dragon Egg = Mace', startsAt: Date.UTC(2026, 6, 8, 10, 0, 0), endsAt: Date.UTC(2026, 6, 10, 10, 0, 0), type: 'Objective Challenge', reward: 'Mace conversion', objective: 'Survive the End fight, carry the egg out of the End, and stay alive for 48 hours.', summary: 'Survive the End fight, carry the egg out of the End, and stay alive for 48 hours!', priority: 1, status: 'scheduled', public: true, announce: false, announcementMessageId: null, createdBy: 'demo', createdAt: Date.now(), updatedBy: 'demo', updatedAt: Date.now() },
   ]
   const canManage = adminDemoMode || user.permissions.includes('lifesteal:events')
   const [events, setEvents] = useState<AdminLifestealEvent[]>(adminDemoMode ? demoEvents : [])
@@ -1592,7 +1595,7 @@ function LifestealEventsPage({ user }: { user: AdminUser }) {
   const selected = events.find((event) => event.id === selectedId) ?? null
   const [form, setForm] = useState(defaultEventForm)
   const [state, setState] = useState<'loading' | 'ready' | 'error'>(adminDemoMode ? 'ready' : 'loading')
-  const [actionState, setActionState] = useState<'idle' | 'saving' | 'deleting'>('idle')
+  const [actionState, setActionState] = useState<'idle' | 'saving' | 'deleting' | 'announcing'>('idle')
   const [message, setMessage] = useState('')
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<'All' | AdminLifestealEvent['status']>('All')
@@ -1693,6 +1696,29 @@ function LifestealEventsPage({ user }: { user: AdminUser }) {
     }
   }
 
+  const resendAnnouncement = async () => {
+    if (!selected || !canManage || actionState !== 'idle') return
+    setActionState('announcing')
+    setMessage('')
+    if (adminDemoMode) {
+      const messageId = `demo-${Date.now()}`
+      setEvents((current) => current.map((event) => event.id === selected.id ? { ...event, announcementMessageId: messageId, updatedAt: Date.now(), updatedBy: user.id } : event))
+      setMessage('Announcement sent in demo mode.')
+      setActionState('idle')
+      return
+    }
+    try {
+      const response = await resendAdminLifestealEventAnnouncement(selected.id)
+      setEvents(response.events)
+      setSelectedId(response.event.id)
+      setMessage('Discord announcement sent.')
+    } catch (error) {
+      setMessage(error instanceof AdminApiError ? error.message : 'Could not send announcement.')
+    } finally {
+      setActionState('idle')
+    }
+  }
+
   return (
     <main className="page-workspace">
       <PageHeader eyebrow="Season Operations" title="Events" detail="Create public Lifesteal schedule entries that publish to the website and can optionally announce in Discord." action={<div className="page-actions"><button className="page-action" disabled={!canManage} onClick={() => { setSelectedId(null); setForm(defaultEventForm); setMessage('') }} type="button"><CalendarDays size={16} />New event</button><button className="page-action secondary" disabled={state === 'loading'} onClick={() => loadEvents()} type="button"><RefreshCw size={16} />Refresh</button></div>} />
@@ -1765,7 +1791,7 @@ function LifestealEventsPage({ user }: { user: AdminUser }) {
             <label className="event-editor-wide"><span>Objective</span><textarea value={form.objective} onChange={(event) => update('objective', event.target.value)} /></label>
           </div>
           {message && <p className={message.includes('Could not') || message.includes('permission') ? 'form-message error' : 'form-message'}>{message}</p>}
-          <footer><button className="page-action" disabled={!canManage || actionState === 'saving'} onClick={save} type="button"><Check size={16} />{actionState === 'saving' ? 'Saving...' : selected ? 'Update event' : 'Create event'}</button><button className="page-action secondary" disabled={!selected || !canManage || actionState === 'deleting'} onClick={remove} type="button"><Trash2 size={16} />{actionState === 'deleting' ? 'Deleting...' : 'Delete'}</button></footer>
+          <footer><button className="page-action" disabled={!canManage || actionState !== 'idle'} onClick={save} type="button"><Check size={16} />{actionState === 'saving' ? 'Saving...' : selected ? 'Update event' : 'Create event'}</button><button className="page-action secondary" disabled={!selected || !canManage || actionState !== 'idle'} onClick={resendAnnouncement} type="button"><Megaphone size={16} />{actionState === 'announcing' ? 'Sending...' : selected?.announcementMessageId ? 'Resend announcement' : 'Send announcement'}</button><button className="page-action secondary" disabled={!selected || !canManage || actionState !== 'idle'} onClick={remove} type="button"><Trash2 size={16} />{actionState === 'deleting' ? 'Deleting...' : 'Delete'}</button></footer>
         </section>
       </section>
     </main>

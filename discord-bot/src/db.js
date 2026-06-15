@@ -58,6 +58,51 @@ const initialState = {
   nextTicketId: 1
 };
 
+const defaultLifestealEventsSeedVersion = 'season-1-events-2026-06-15';
+const seasonOneStartAt = Date.UTC(2026, 6, 1, 10, 0, 0);
+const defaultLifestealEvents = [
+  {
+    title: 'Event Start',
+    starts_at: seasonOneStartAt,
+    ends_at: null,
+    type: 'Server Start',
+    reward: 'Season 1 begins',
+    objective: 'The server opens for the first public Season 1 session.',
+    summary: 'The countdown to Season 1. We are looking forward to starting the server together at this time.',
+    priority: 0
+  },
+  {
+    title: 'Grace Period',
+    starts_at: seasonOneStartAt,
+    ends_at: seasonOneStartAt + 60 * 60 * 1000,
+    type: 'Protection Window',
+    reward: 'Safe first hour',
+    objective: 'PvP, combat tags, lifesteal, heart loss, eliminations, and revivals stay disabled for the first hour.',
+    summary: 'The first hour gives players time to spread out, prepare, and settle into the season before combat turns on.',
+    priority: 1
+  },
+  {
+    title: 'End Opening',
+    starts_at: seasonOneStartAt + 7 * 24 * 60 * 60 * 1000,
+    ends_at: null,
+    type: 'End Event',
+    reward: 'Dragon Egg race begins',
+    objective: 'The End opens exactly seven days after server start.',
+    summary: 'The first major objective fight opens the End and begins the race for the Dragon Egg.',
+    priority: 0
+  },
+  {
+    title: 'Dragon Egg = Mace',
+    starts_at: seasonOneStartAt + 7 * 24 * 60 * 60 * 1000,
+    ends_at: seasonOneStartAt + 9 * 24 * 60 * 60 * 1000,
+    type: 'Objective Challenge',
+    reward: 'Mace conversion',
+    objective: 'Survive the End fight, carry the egg out of the End, and stay alive for 48 hours.',
+    summary: 'Survive the End fight, carry the egg out of the End, and stay alive for 48 hours!',
+    priority: 1
+  }
+];
+
 function load() {
   if (!existsSync(dbPath)) return structuredClone(initialState);
   return { ...structuredClone(initialState), ...JSON.parse(readFileSync(dbPath, 'utf8')) };
@@ -65,9 +110,35 @@ function load() {
 
 const state = load();
 
+function seedDefaultLifestealEvents() {
+  state.app_settings ??= {};
+  if (state.app_settings.default_lifesteal_events_seeded === defaultLifestealEventsSeedVersion) return;
+  const existingTitles = new Set(state.lifesteal_events.map((event) => String(event.title ?? '').trim().toLowerCase()));
+  const now = Date.now();
+  for (const event of defaultLifestealEvents) {
+    if (existingTitles.has(event.title.toLowerCase())) continue;
+    state.lifesteal_events.push({
+      id: state.nextLifestealEventId++,
+      ...event,
+      status: 'scheduled',
+      public: true,
+      announce: false,
+      announcement_message_id: null,
+      created_by: 'system:default-schedule',
+      created_at: now,
+      updated_by: 'system:default-schedule',
+      updated_at: now
+    });
+  }
+  state.app_settings.default_lifesteal_events_seeded = defaultLifestealEventsSeedVersion;
+  persist();
+}
+
 function persist() {
   writeFileSync(dbPath, JSON.stringify(state, null, 2));
 }
+
+seedDefaultLifestealEvents();
 
 function upsertBy(table, key, row) {
   const index = state[table].findIndex((item) => item[key] === row[key]);
