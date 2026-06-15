@@ -363,8 +363,9 @@ body.resizing-layout { cursor: col-resize; user-select: none; }
 .event-status-filters button { min-height: 1.8rem; padding: 0 0.55rem; border: 1px solid var(--line); border-radius: 999px; background: #0c0c0e; color: var(--muted); font-size: 0.62rem; font-weight: 800; text-transform: capitalize; }
 .event-status-filters button.active { border-color: rgba(234, 212, 159, 0.42); background: rgba(234, 212, 159, 0.07); color: var(--gold); }
 .event-admin-list { display: grid; align-content: start; flex: 1; min-height: 0; overflow-y: auto; }
-.event-admin-list > button { display: grid; grid-template-columns: 3.4rem minmax(0, 1fr); gap: 0.75rem; align-items: start; min-height: 6.2rem; padding: 0.9rem; border-bottom: 1px solid var(--line); color: #f4f2ed; text-align: left; }
-.event-admin-list > button:hover, .event-admin-list > button.active { background: rgba(234, 212, 159, 0.055); }
+.event-admin-list > button { display: grid; grid-template-columns: 3.4rem minmax(0, 1fr); gap: 0.75rem; align-items: start; min-height: 6.2rem; padding: 0.9rem; border-bottom: 1px solid var(--line); background: #121214; color: #f4f2ed; text-align: left; }
+.event-admin-list > button:hover, .event-admin-list > button:focus-visible { background: #171719; outline: 0; }
+.event-admin-list > button.active { background: rgba(234, 212, 159, 0.055); color: #f4f2ed; }
 .event-admin-list > button.active { box-shadow: inset 2px 0 var(--gold); }
 .event-date-block { display: grid; place-items: center; gap: 0.1rem; width: 3.1rem; aspect-ratio: 1; border: 1px solid rgba(234, 212, 159, 0.2); border-radius: 6px; background: rgba(234, 212, 159, 0.055); }
 .event-date-block strong { font: 700 1.05rem "Space Grotesk"; }
