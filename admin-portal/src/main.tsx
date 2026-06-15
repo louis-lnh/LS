@@ -1535,6 +1535,20 @@ function adminEventTime(timestamp: number) {
   return new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }).format(timestamp)
 }
 
+function adminEventDistance(timestamp: number, now = Date.now()) {
+  const delta = timestamp - now
+  const abs = Math.abs(delta)
+  const minutes = Math.floor(abs / 60_000)
+  const prefix = delta >= 0 ? 'In ' : ''
+  const suffix = delta >= 0 ? '' : ' ago'
+  if (minutes < 1) return delta >= 0 ? 'Starting now' : 'Just started'
+  if (minutes < 60) return `${prefix}${minutes}m${suffix}`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${prefix}${hours}h${suffix}`
+  const days = Math.floor(hours / 24)
+  return `${prefix}${days}d${suffix}`
+}
+
 function eventFormFromEvent(event: AdminLifestealEvent) {
   return {
     title: event.title,
@@ -1580,6 +1594,9 @@ function LifestealEventsPage({ user }: { user: AdminUser }) {
   const [state, setState] = useState<'loading' | 'ready' | 'error'>(adminDemoMode ? 'ready' : 'loading')
   const [actionState, setActionState] = useState<'idle' | 'saving' | 'deleting'>('idle')
   const [message, setMessage] = useState('')
+  const [query, setQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'All' | AdminLifestealEvent['status']>('All')
+  const [timeNow, setTimeNow] = useState(Date.now())
 
   const loadEvents = async (silent = false) => {
     if (adminDemoMode) return
@@ -1605,6 +1622,24 @@ function LifestealEventsPage({ user }: { user: AdminUser }) {
   useEffect(() => {
     setForm(selected ? eventFormFromEvent(selected) : defaultEventForm)
   }, [selectedId])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setTimeNow(Date.now()), 30_000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  const sortedEvents = [...events].sort((left, right) => left.startsAt - right.startsAt || left.priority - right.priority)
+  const visibleEvents = sortedEvents.filter((event) => {
+    const matchesStatus = statusFilter === 'All' || event.status === statusFilter
+    const needle = query.trim().toLowerCase()
+    const matchesQuery = !needle || [event.title, event.type, event.reward, event.summary, event.objective]
+      .some((value) => value.toLowerCase().includes(needle))
+    return matchesStatus && matchesQuery
+  })
+  const nextEvent = sortedEvents.find((event) => event.public && !['cancelled', 'completed', 'draft'].includes(event.status) && event.startsAt >= timeNow) ?? sortedEvents[0] ?? null
+  const publishedCount = events.filter((event) => event.public && !['draft', 'cancelled'].includes(event.status)).length
+  const announcementCount = events.filter((event) => event.announce).length
+  const formStart = dateTimeValue(form.startsAt)
 
   const update = <K extends keyof typeof defaultEventForm>(key: K, value: (typeof defaultEventForm)[K]) => {
     setForm((current) => ({ ...current, [key]: value }))
@@ -1661,34 +1696,74 @@ function LifestealEventsPage({ user }: { user: AdminUser }) {
   return (
     <main className="page-workspace">
       <PageHeader eyebrow="Season Operations" title="Events" detail="Create public Lifesteal schedule entries that publish to the website and can optionally announce in Discord." action={<div className="page-actions"><button className="page-action" disabled={!canManage} onClick={() => { setSelectedId(null); setForm(defaultEventForm); setMessage('') }} type="button"><CalendarDays size={16} />New event</button><button className="page-action secondary" disabled={state === 'loading'} onClick={() => loadEvents()} type="button"><RefreshCw size={16} />Refresh</button></div>} />
+      <section className="event-admin-summary">
+        <article><CalendarDays size={18} /><span>Total Events</span><strong>{events.length}</strong><p>{visibleEvents.length} visible in current filter</p></article>
+        <article><CheckCircle2 size={18} /><span>Published</span><strong>{publishedCount}</strong><p>Visible on the Lifesteal website</p></article>
+        <article><Megaphone size={18} /><span>Announcements</span><strong>{announcementCount}</strong><p>Queued to post in Discord on create</p></article>
+        <article><Clock3 size={18} /><span>Next Event</span><strong>{nextEvent ? adminEventDistance(nextEvent.startsAt, timeNow) : '-'}</strong><p>{nextEvent?.title ?? 'No active schedule'}</p></article>
+      </section>
       <section className="event-admin-layout">
-        <div className="event-admin-list">
-          {state === 'loading' && <div className="empty-state"><Activity /><strong>Loading events...</strong></div>}
-          {state === 'error' && <div className="empty-state error"><FileWarning /><strong>Could not load events</strong></div>}
-          {events.map((event) => (
-            <button className={selectedId === event.id ? 'active' : ''} key={event.id} onClick={() => setSelectedId(event.id)} type="button">
-              <span className={`event-admin-status ${event.status}`}>{event.status}</span>
-              <strong>{event.title}</strong>
-              <small>{adminEventDate(event.startsAt)} · {adminEventTime(event.startsAt)} · {event.type}</small>
-            </button>
-          ))}
-          {state !== 'loading' && events.length === 0 && <div className="empty-state"><CalendarDays /><strong>No events yet</strong><span>Create the first schedule entry.</span></div>}
-        </div>
+        <aside className="event-admin-panel">
+          <header><div><span className="eyebrow">Schedule</span><h2>Event Queue</h2></div><span>{visibleEvents.length}</span></header>
+          <label className="event-search-field"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search events..." /></label>
+          <div className="event-status-filters">
+            {(['All', 'draft', 'scheduled', 'live', 'completed', 'cancelled'] as const).map((status) => (
+              <button className={statusFilter === status ? 'active' : ''} key={status} onClick={() => setStatusFilter(status)} type="button">{status}</button>
+            ))}
+          </div>
+          <div className="event-admin-list">
+            {state === 'loading' && <div className="empty-state"><Activity /><strong>Loading events...</strong></div>}
+            {state === 'error' && <div className="empty-state error"><FileWarning /><strong>Could not load events</strong></div>}
+            {visibleEvents.map((event) => (
+              <button className={selectedId === event.id ? 'active' : ''} key={event.id} onClick={() => setSelectedId(event.id)} type="button">
+                <span className="event-date-block"><strong>{new Intl.DateTimeFormat('en-GB', { day: '2-digit' }).format(event.startsAt)}</strong><small>{new Intl.DateTimeFormat('en-GB', { month: 'short' }).format(event.startsAt)}</small></span>
+                <span className="event-list-copy">
+                  <span><i className={`event-admin-status ${event.status}`}>{event.status}</i>{event.public && <i className="event-admin-status public">public</i>}</span>
+                  <strong>{event.title}</strong>
+                  <small>{adminEventTime(event.startsAt)} / {event.type} / Priority {event.priority}</small>
+                </span>
+              </button>
+            ))}
+            {state !== 'loading' && visibleEvents.length === 0 && <div className="empty-state"><CalendarDays /><strong>No matching events</strong><span>Adjust filters or create a new event.</span></div>}
+          </div>
+        </aside>
         <section className="event-editor">
           <header><div><span className="eyebrow">{selected ? `Editing #${selected.id}` : 'New Event'}</span><h2>{selected ? selected.title : 'Create Event'}</h2></div><span className="health-label"><Megaphone size={14} />{form.announce ? 'Announce' : 'Website only'}</span></header>
-          <div className="event-editor-grid">
-            <label><span>Title</span><input value={form.title} onChange={(event) => update('title', event.target.value)} /></label>
-            <label><span>Type</span><input value={form.type} onChange={(event) => update('type', event.target.value)} /></label>
-            <label><span>Start</span><input type="datetime-local" value={form.startsAt} onChange={(event) => update('startsAt', event.target.value)} /></label>
-            <label><span>End optional</span><input type="datetime-local" value={form.endsAt} onChange={(event) => update('endsAt', event.target.value)} /></label>
-            <label><span>Reward</span><input value={form.reward} onChange={(event) => update('reward', event.target.value)} /></label>
-            <label><span>Priority</span><input min="0" max="99" type="number" value={form.priority} onChange={(event) => update('priority', event.target.value)} /></label>
-            <label><span>Status</span><select value={form.status} onChange={(event) => update('status', event.target.value as AdminLifestealEvent['status'])}><option value="draft">Draft</option><option value="scheduled">Scheduled</option><option value="live">Live</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option></select></label>
-            <label className="event-toggle"><input checked={form.public} onChange={(event) => update('public', event.target.checked)} type="checkbox" /><span>Publish on website</span></label>
-            <label className="event-toggle"><input checked={form.announce} onChange={(event) => update('announce', event.target.checked)} type="checkbox" /><span>Send Discord announcement on create</span></label>
+          <section className="event-preview-card">
+            <div><span className={`event-admin-status ${form.status}`}>{form.status}</span>{form.public && <span className="event-admin-status public">public</span>}</div>
+            <h3>{form.title || 'Untitled event'}</h3>
+            <p>{form.summary || 'Short summary will appear here.'}</p>
+            <dl>
+              <div><dt>Date</dt><dd>{adminEventDate(formStart)}</dd></div>
+              <div><dt>Time</dt><dd>{adminEventTime(formStart)}</dd></div>
+              <div><dt>Starts</dt><dd>{adminEventDistance(formStart, timeNow)}</dd></div>
+              <div><dt>Reward</dt><dd>{form.reward || '-'}</dd></div>
+            </dl>
+          </section>
+          <div className="event-editor-section">
+            <div><span className="eyebrow">Basics</span><h3>Public Card</h3></div>
+            <div className="event-editor-grid">
+              <label><span>Title</span><input value={form.title} onChange={(event) => update('title', event.target.value)} /></label>
+              <label><span>Type</span><input value={form.type} onChange={(event) => update('type', event.target.value)} /></label>
+              <label><span>Start</span><input type="datetime-local" value={form.startsAt} onChange={(event) => update('startsAt', event.target.value)} /></label>
+              <label><span>End optional</span><input type="datetime-local" value={form.endsAt} onChange={(event) => update('endsAt', event.target.value)} /></label>
+              <label><span>Reward</span><input value={form.reward} onChange={(event) => update('reward', event.target.value)} /></label>
+              <label><span>Priority</span><input min="0" max="99" type="number" value={form.priority} onChange={(event) => update('priority', event.target.value)} /></label>
+            </div>
           </div>
-          <label className="event-editor-wide"><span>Summary</span><textarea value={form.summary} onChange={(event) => update('summary', event.target.value)} /></label>
-          <label className="event-editor-wide"><span>Objective</span><textarea value={form.objective} onChange={(event) => update('objective', event.target.value)} /></label>
+          <div className="event-editor-section compact">
+            <div><span className="eyebrow">Publishing</span><h3>Visibility</h3></div>
+            <div className="event-editor-grid">
+              <label><span>Status</span><select value={form.status} onChange={(event) => update('status', event.target.value as AdminLifestealEvent['status'])}><option value="draft">Draft</option><option value="scheduled">Scheduled</option><option value="live">Live</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option></select></label>
+              <label className="event-toggle"><input checked={form.public} onChange={(event) => update('public', event.target.checked)} type="checkbox" /><span>Publish on website</span></label>
+              <label className="event-toggle"><input checked={form.announce} onChange={(event) => update('announce', event.target.checked)} type="checkbox" /><span>Send Discord announcement on create</span></label>
+            </div>
+          </div>
+          <div className="event-editor-section">
+            <div><span className="eyebrow">Details</span><h3>Website Copy</h3></div>
+            <label className="event-editor-wide"><span>Summary</span><textarea value={form.summary} onChange={(event) => update('summary', event.target.value)} /></label>
+            <label className="event-editor-wide"><span>Objective</span><textarea value={form.objective} onChange={(event) => update('objective', event.target.value)} /></label>
+          </div>
           {message && <p className={message.includes('Could not') || message.includes('permission') ? 'form-message error' : 'form-message'}>{message}</p>}
           <footer><button className="page-action" disabled={!canManage || actionState === 'saving'} onClick={save} type="button"><Check size={16} />{actionState === 'saving' ? 'Saving...' : selected ? 'Update event' : 'Create event'}</button><button className="page-action secondary" disabled={!selected || !canManage || actionState === 'deleting'} onClick={remove} type="button"><Trash2 size={16} />{actionState === 'deleting' ? 'Deleting...' : 'Delete'}</button></footer>
         </section>
