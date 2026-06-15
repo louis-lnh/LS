@@ -7,6 +7,7 @@ export type AdminUser = {
   avatarUrl: string | null
   role: string
   workspaces: AdminWorkspaceId[]
+  permissions: string[]
   expiresAt: number
 }
 
@@ -62,6 +63,30 @@ export type AdminOverview = {
     createdAt: number
   }>
   generatedAt: number
+}
+
+export type AdminAuditEvent = {
+  id: number
+  actor: string
+  actorId: string | null
+  type: 'Review' | 'Submission' | 'Player' | 'Integration' | 'Security' | 'System'
+  eventType: string
+  action: string
+  target: string
+  result: 'Success' | 'Warning' | 'Blocked'
+  createdAt: number
+  data: Record<string, unknown>
+}
+
+export type AdminAuditPayload = {
+  events: AdminAuditEvent[]
+  summary: {
+    eventsToday: number
+    staffActions: number
+    integrationEvents: number
+    warnings: number
+  }
+  updatedAt: number
 }
 
 export type StaffChatMessage = {
@@ -177,6 +202,7 @@ export const demoAdminUser: AdminUser = {
   avatarUrl: null,
   role: 'Owner',
   workspaces: ['global', 'lifesteal', 'general', 'valorant'],
+  permissions: ['global:audit', 'integrations:read', 'staff:read', 'staff:manage', 'lifesteal:read', 'lifesteal:review', 'lifesteal:ticket', 'lifesteal:players', 'lifesteal:staff-chat'],
   expiresAt: Date.now() + 8 * 60 * 60 * 1000,
 }
 
@@ -259,6 +285,12 @@ export async function decideAdminSubmission(code: string, status: 'waiting_on_pl
 
 export async function getAdminOverview(): Promise<AdminOverview> {
   const response = await adminRequest<AdminOverview & { ok: boolean }>('/bootstrap')
+  return response
+}
+
+export async function getAdminAudit(limit = 100): Promise<AdminAuditPayload> {
+  if (adminDemoMode) return { events: [], summary: { eventsToday: 0, staffActions: 0, integrationEvents: 0, warnings: 0 }, updatedAt: Date.now() }
+  const response = await adminRequest<AdminAuditPayload & { ok: boolean }>(`/audit?limit=${encodeURIComponent(String(limit))}`)
   return response
 }
 

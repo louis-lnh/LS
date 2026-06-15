@@ -56,6 +56,7 @@ import {
   demoAdminUser,
   endAdminSession,
   deleteAdminPlayer,
+  getAdminAudit,
   getAdminPlayers,
   getAdminSubmissions,
   getAdminOverview,
@@ -66,6 +67,7 @@ import {
   sendLifestealStaffChatMessage,
   updateAdminPlayer,
   type AdminApiSubmission,
+  type AdminAuditPayload,
   type AdminOverview,
   type AdminPlayer,
   type AdminPlayerBadge,
@@ -429,6 +431,8 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
   const [timeNow, setTimeNow] = useState(Date.now())
   const [overview, setOverview] = useState<AdminOverview | null>(null)
   const [overviewState, setOverviewState] = useState<'loading' | 'ready' | 'error'>(adminDemoMode ? 'ready' : 'loading')
+  const [auditPayload, setAuditPayload] = useState<AdminAuditPayload | null>(null)
+  const [auditState, setAuditState] = useState<'loading' | 'ready' | 'error'>(adminDemoMode ? 'ready' : 'loading')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('shd-admin-sidebar') === 'collapsed')
   const [queueWidth, setQueueWidth] = useState(() => Number(localStorage.getItem('shd-admin-queue-width')) || 352)
   const [activityWidth, setActivityWidth] = useState(() => Number(localStorage.getItem('shd-admin-activity-width')) || 320)
@@ -454,27 +458,64 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
     setView(fallback)
   }, [user.workspaces, workspace])
 
-  useEffect(() => {
+  const refreshSubmissions = async (silent = false) => {
     if (adminDemoMode || !user.workspaces.includes('lifesteal')) return
-    getAdminSubmissions()
-      .then((items) => {
-        const normalized = items.map(submissionFromApi)
-        setSubmissions(normalized)
-        setSelectedId((current) => normalized.some((item) => item.id === current) ? current : normalized[0]?.id ?? '')
-        setSubmissionState('ready')
-      })
-      .catch(() => setSubmissionState('error'))
+    if (!silent) setSubmissionState('loading')
+    try {
+      const items = await getAdminSubmissions()
+      const normalized = items.map(submissionFromApi)
+      setSubmissions(normalized)
+      setSelectedId((current) => normalized.some((item) => item.id === current) ? current : normalized[0]?.id ?? '')
+      setSubmissionState('ready')
+    } catch {
+      setSubmissionState('error')
+    }
+  }
+
+  const refreshOverview = async (silent = false) => {
+    if (adminDemoMode || !user.workspaces.includes('global')) return
+    if (!silent) setOverviewState('loading')
+    try {
+      const data = await getAdminOverview()
+      setOverview(data)
+      setOverviewState('ready')
+    } catch {
+      setOverviewState('error')
+    }
+  }
+
+  const refreshAudit = async (silent = false) => {
+    if (adminDemoMode || !user.workspaces.includes('global') || !user.permissions.includes('global:audit')) return
+    if (!silent) setAuditState('loading')
+    try {
+      const data = await getAdminAudit()
+      setAuditPayload(data)
+      setAuditState('ready')
+    } catch {
+      setAuditState('error')
+    }
+  }
+
+  useEffect(() => {
+    refreshSubmissions()
+    if (adminDemoMode || !user.workspaces.includes('lifesteal')) return
+    const timer = window.setInterval(() => refreshSubmissions(true), 10_000)
+    return () => window.clearInterval(timer)
   }, [user.workspaces])
 
   useEffect(() => {
+    refreshOverview()
     if (adminDemoMode || !user.workspaces.includes('global')) return
-    getAdminOverview()
-      .then((data) => {
-        setOverview(data)
-        setOverviewState('ready')
-      })
-      .catch(() => setOverviewState('error'))
+    const timer = window.setInterval(() => refreshOverview(true), 15_000)
+    return () => window.clearInterval(timer)
   }, [user.workspaces])
+
+  useEffect(() => {
+    refreshAudit()
+    if (adminDemoMode || !user.workspaces.includes('global') || !user.permissions.includes('global:audit')) return
+    const timer = window.setInterval(() => refreshAudit(true), 20_000)
+    return () => window.clearInterval(timer)
+  }, [user.workspaces, user.permissions])
 
   useEffect(() => {
     const onPopState = () => {
@@ -538,11 +579,13 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
   }
 
   const selected = submissions.find((submission) => submission.id === selectedId) ?? submissions[0]
+  const canReview = adminDemoMode || user.permissions.includes('lifesteal:review')
+  const canTicket = adminDemoMode || user.permissions.includes('lifesteal:ticket')
   const selectedDecided = selected ? ['Approved', 'Denied'].includes(selected.status) : false
   const selectedOwned = selected ? (selected.claimedById ? selected.claimedById === user.id : selected.claimedBy === reviewerName) : false
   const selectedSupportsAdminActions = Boolean(selected)
-  const canWriteSelected = Boolean(selected && selectedSupportsAdminActions && (adminDemoMode || (selectedOwned && !selectedDecided)))
-  const canMessageTicket = Boolean(selected?.ticketThreadId && (adminDemoMode || (selectedOwned && !selectedDecided)))
+  const canWriteSelected = Boolean(selected && selectedSupportsAdminActions && canReview && (adminDemoMode || (selectedOwned && !selectedDecided)))
+  const canMessageTicket = Boolean(selected?.ticketThreadId && canTicket && (adminDemoMode || (selectedOwned && !selectedDecided)))
   const openSubmissionCount = submissions.filter((submission) => !['Approved', 'Denied'].includes(submission.status)).length
   const liveTicketActivity: UiActivityItem[] = ticketActivity.map((item) => ({
     id: item.id,
@@ -623,6 +666,10 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
 
   const claim = async () => {
     if (!selected || claimState === 'loading') return
+    if (!canReview) {
+      setClaimError('Review permission required.')
+      return
+    }
     setClaimError('')
     if (adminDemoMode) {
       updateSelected((submission) => ({
@@ -740,9 +787,9 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
       </header>
       {view === 'global-overview' && <GlobalOverviewPage overview={overview} state={overviewState} submissions={submissions} onNavigate={navigate} />}
       {view === 'global-inbox' && <UnifiedInboxPage submissions={submissions} onNavigate={navigate} />}
-      {view === 'global-staff' && <StaffAccessPage />}
+      {view === 'global-staff' && <StaffAccessPage user={user} />}
       {view === 'global-integrations' && <IntegrationsPage />}
-      {view === 'global-audit' && <AuditPage submissions={submissions} />}
+      {view === 'global-audit' && <AuditPage audit={auditPayload} state={auditState} submissions={submissions} />}
       {view === 'lifesteal-overview' && <LifestealOverviewPage submissions={submissions} onNavigate={navigate} />}
       {view === 'lifesteal-players' && <PlayersPage />}
       {view === 'lifesteal-staff-chat' && <LifestealStaffChatPage user={user} />}
@@ -790,7 +837,7 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
         </section>
         <button className="pane-resizer queue-resizer" aria-label="Resize submission queue" onPointerDown={(event) => startResize('queue', event)} type="button"><span /></button>
         {selected ? <><section className="review-pane">
-          <ReviewHeader actionsLive={selectedSupportsAdminActions} actionLoading={actionState === 'decision'} activityVisible={activityVisible} claimLoading={claimState === 'loading'} staffId={user.id} staffName={reviewerName} submission={selected} onBack={() => setMobileDetail(false)} onClaim={claim} onDecide={decide} onToggleActivity={toggleActivity} />
+          <ReviewHeader actionsLive={selectedSupportsAdminActions && canReview} actionLoading={actionState === 'decision'} activityVisible={activityVisible} claimLoading={claimState === 'loading'} staffId={user.id} staffName={reviewerName} submission={selected} onBack={() => setMobileDetail(false)} onClaim={claim} onDecide={decide} onToggleActivity={toggleActivity} />
           {claimError && <div className="review-alert"><FileWarning size={15} /><span>{claimError}</span><button aria-label="Dismiss claim error" onClick={() => setClaimError('')} type="button"><X size={14} /></button></div>}
           <div className="review-scroll">
             <section className="review-overview">
@@ -1139,7 +1186,22 @@ function UnifiedInboxPage({ submissions, onNavigate }: { submissions: Submission
   )
 }
 
-function StaffAccessPage() {
+function permissionLabel(permission: string) {
+  const labels: Record<string, string> = {
+    'global:audit': 'Global Audit',
+    'integrations:read': 'Integrations',
+    'staff:read': 'Staff Read',
+    'staff:manage': 'Staff Manage',
+    'lifesteal:read': 'Lifesteal Read',
+    'lifesteal:review': 'Review Queue',
+    'lifesteal:ticket': 'Ticket Messages',
+    'lifesteal:players': 'Player Manager',
+    'lifesteal:staff-chat': 'Staff Chat',
+  }
+  return labels[permission] ?? permission
+}
+
+function StaffAccessPage({ user }: { user: AdminUser }) {
   const staff = [
     { name: 'PrimeLuigi', discord: '@primeluigi', role: 'Owner', scopes: ['Global', 'Lifesteal', 'General', 'Valorant'], state: 'Active' },
     { name: 'TlzMax5454', discord: '@tlzmax5454', role: 'SHD Team', scopes: ['Lifesteal'], state: 'Active' },
@@ -1152,6 +1214,16 @@ function StaffAccessPage() {
         <article><KeyRound size={19} /><strong>Discord OAuth</strong><p>One login for the complete SHD admin surface.</p></article>
         <article><ShieldCheck size={19} /><strong>Scoped permissions</strong><p>Staff only see workspaces granted by their roles.</p></article>
         <article><Activity size={19} /><strong>Audited actions</strong><p>Claims, decisions, messages, and access changes are recorded.</p></article>
+      </section>
+      <section className="current-access-card">
+        <div>
+          <span className="eyebrow">Current Session</span>
+          <h2>{user.displayName}</h2>
+          <p>{user.role} access from Discord OAuth.</p>
+        </div>
+        <div className="scope-list">
+          {user.permissions.map((permission) => <small key={permission}>{permissionLabel(permission)}</small>)}
+        </div>
       </section>
       <section className="staff-table">
         <header><span>Staff member</span><span>Portal role</span><span>Workspace access</span><span>Status</span></header>
@@ -1666,9 +1738,9 @@ function PlayersPage() {
   )
 }
 
-function AuditPage({ submissions }: { submissions: Submission[] }) {
+function AuditPage({ audit, state, submissions }: { audit: AdminAuditPayload | null; state: 'loading' | 'ready' | 'error'; submissions: Submission[] }) {
   const [scope, setScope] = useState('All')
-  const events = [
+  const demoEvents = [
     { actor: 'PrimeLuigi', type: 'Review', action: 'Approved application and enabled public status', target: 'SHD-APP-7UZ5CY', time: 'Yesterday, 21:14', result: 'Success' },
     { actor: 'TlzMax5454', type: 'Review', action: 'Claimed appeal review', target: 'SHD-APL-3JD91P', time: '15:03', result: 'Success' },
     { actor: 'Discord Bot', type: 'Integration', action: 'Posted staff request to linked ticket', target: 'SHD-SUP-T2PX6A', time: '14:19', result: 'Success' },
@@ -1676,22 +1748,38 @@ function AuditPage({ submissions }: { submissions: Submission[] }) {
     { actor: 'Support Portal', type: 'Submission', action: 'Received private player report', target: 'SHD-RPT-M4Q7VN', time: '14:35', result: 'Success' },
     { actor: 'System', type: 'Security', action: 'Rejected expired rules acknowledgement key', target: 'Public API', time: '13:48', result: 'Blocked' },
   ]
+  const events = audit?.events.map((event) => ({
+    actor: event.actor,
+    type: event.type,
+    action: event.action,
+    target: event.target,
+    time: relativeTime(event.createdAt),
+    result: event.result,
+  })) ?? demoEvents
   const visible = events.filter((event) => scope === 'All' || event.type === scope)
+  const summary = audit?.summary ?? {
+    eventsToday: demoEvents.length,
+    staffActions: demoEvents.filter((event) => event.actor !== 'System').length,
+    integrationEvents: demoEvents.filter((event) => event.type === 'Integration').length,
+    warnings: demoEvents.filter((event) => event.result !== 'Success').length,
+  }
   return (
     <main className="page-workspace">
-      <PageHeader eyebrow="Accountability" title="Audit Log" detail={`${submissions.length} seeded submissions and the recent actions surrounding them.`} action={<button className="page-action secondary" type="button"><ExternalLink size={16} />Export</button>} />
+      <PageHeader eyebrow="Accountability" title="Audit Log" detail={`${submissions.length} submissions and the recent actions surrounding them.`} action={<button className="page-action secondary" type="button"><ExternalLink size={16} />Export</button>} />
       <section className="audit-summary">
-        <Fact label="Events today" value="28" />
-        <Fact label="Staff actions" value="11" />
-        <Fact label="Integration events" value="14" />
-        <Fact label="Warnings" value="3" />
+        <Fact label="Events today" value={String(summary.eventsToday)} />
+        <Fact label="Staff actions" value={String(summary.staffActions)} />
+        <Fact label="Integration events" value={String(summary.integrationEvents)} />
+        <Fact label="Warnings" value={String(summary.warnings)} />
       </section>
       <section className="table-toolbar">
         <div className="segmented-control">
-          {['All', 'Review', 'Submission', 'Integration', 'Security'].map((item) => <button className={scope === item ? 'active' : ''} onClick={() => setScope(item)} type="button" key={item}>{item}</button>)}
+          {['All', 'Review', 'Submission', 'Player', 'Integration', 'Security', 'System'].map((item) => <button className={scope === item ? 'active' : ''} onClick={() => setScope(item)} type="button" key={item}>{item}</button>)}
         </div>
       </section>
       <section className="audit-list">
+        {state === 'loading' && <div className="panel-empty"><Activity size={17} /><span>Loading audit events...</span></div>}
+        {state === 'error' && <div className="panel-empty"><FileWarning size={17} /><span>Could not load audit events.</span></div>}
         {visible.map((event, index) => (
           <article key={`${event.time}-${index}`}>
             <span className={`audit-result ${event.result.toLowerCase()}`}><Activity size={15} /></span>
@@ -1700,6 +1788,7 @@ function AuditPage({ submissions }: { submissions: Submission[] }) {
             <time>{event.time}</time>
           </article>
         ))}
+        {state === 'ready' && visible.length === 0 && <div className="panel-empty"><Activity size={17} /><span>No matching audit events.</span></div>}
       </section>
     </main>
   )

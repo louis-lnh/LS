@@ -114,7 +114,7 @@ async function validatedSession(client, req) {
   if (!member) return null;
   const access = workspaceAccess(member, guild);
   if (!access) return null;
-  return { ...session, role: access.role, workspaces: access.workspaces };
+  return { ...session, role: access.role, workspaces: access.workspaces, permissions: access.permissions };
 }
 
 function requireAdminSession(client) {
@@ -139,9 +139,28 @@ function workspaceAccess(member, guild) {
   if (!owner && !administrator && !moderator && !configuredRole) return null;
 
   const global = owner || administrator;
+  const permissions = global
+    ? [
+      'global:audit',
+      'integrations:read',
+      'staff:read',
+      'staff:manage',
+      'lifesteal:read',
+      'lifesteal:review',
+      'lifesteal:ticket',
+      'lifesteal:players',
+      'lifesteal:staff-chat'
+    ]
+    : [
+      'lifesteal:read',
+      'lifesteal:review',
+      'lifesteal:ticket',
+      'lifesteal:staff-chat'
+    ];
   return {
     role: owner ? 'Owner' : administrator ? 'Administrator' : moderator ? 'Moderator' : 'Staff',
-    workspaces: global ? ['global', 'lifesteal', 'general', 'valorant'] : ['lifesteal']
+    workspaces: global ? ['global', 'lifesteal', 'general', 'valorant'] : ['lifesteal'],
+    permissions
   };
 }
 
@@ -178,8 +197,19 @@ function publicSession(session) {
     avatarUrl: session.avatarUrl,
     role: session.role,
     workspaces: session.workspaces,
+    permissions: session.permissions ?? [],
     expiresAt: session.exp
   };
+}
+
+function hasPermission(session, permission) {
+  return session?.permissions?.includes(permission);
+}
+
+function requirePermission(req, res, permission, message = 'You do not have permission to perform this action.') {
+  if (hasPermission(req.adminSession, permission)) return false;
+  res.status(403).json({ ok: false, code: 'ADMIN_PERMISSION_DENIED', error: message, permission });
+  return true;
 }
 
 function parseAuditData(value) {
@@ -193,7 +223,19 @@ function parseAuditData(value) {
 function auditActivityLabel(event, data) {
   const labels = {
     'admin.submission_claimed': 'claimed a review',
+    'admin.submission_note_added': 'added a staff note',
+    'admin.submission_decided': 'decided a support review',
+    'admin.ticket_message_sent': 'messaged a Discord ticket',
+    'admin.staff_chat_message_sent': 'sent a staff chat message',
+    'admin.player_created': 'manually added a player',
+    'admin.player_updated': 'updated a player',
+    'admin.player_deleted': 'deleted a player',
+    'admin.player_application_removed': 'removed an applied player',
+    'admin.player_application_status_updated': 'updated an applied player',
+    'support.application_approved': 'approved a Lifesteal application',
+    'support.application_denied': 'denied a Lifesteal application',
     'support.application_submitted': 'received a Lifesteal application',
+    'support.submission_created': 'received a support submission',
     'support.rules_ack_created': 'generated a rules acknowledgement',
     'verification.completed': 'completed account verification',
     'minecraft.linked': 'linked a Minecraft account',
@@ -202,6 +244,55 @@ function auditActivityLabel(event, data) {
   return {
     action: labels[event.type] || event.type.replaceAll('.', ' '),
     target: data.submissionCode || data.applicationCode || data.minecraftName || data.project || 'SHD platform'
+  };
+}
+
+function adminAuditType(eventType) {
+  if (eventType.startsWith('admin.submission') || eventType.startsWith('support.application_')) return 'Review';
+  if (eventType.startsWith('support.')) return 'Submission';
+  if (eventType.startsWith('admin.player')) return 'Player';
+  if (eventType.startsWith('minecraft.') || eventType.startsWith('gameplay.') || eventType.includes('sync')) return 'Integration';
+  if (eventType.includes('security') || eventType.includes('rejected') || eventType.includes('ip_')) return 'Security';
+  return 'System';
+}
+
+function adminAuditResult(eventType, data) {
+  if (data?.error || data?.roleSyncError || String(eventType).includes('rejected') || String(eventType).includes('failed')) return 'Warning';
+  if (String(eventType).includes('denied') || String(eventType).includes('deleted') || String(eventType).includes('removed')) return 'Blocked';
+  return 'Success';
+}
+
+async function buildAdminAuditPayload(client, limit = 100) {
+  const events = statements.recentAudit.all(Math.min(200, Math.max(1, Number(limit) || 100)));
+  const actorNames = await resolveStaffNames(client, events.map((event) => event.discord_id));
+  const rows = events.map((event) => {
+    const data = parseAuditData(event.data_json);
+    const label = auditActivityLabel(event, data);
+    return {
+      id: event.id,
+      actor: event.discord_id ? actorNames.get(event.discord_id) : 'System',
+      actorId: event.discord_id ?? null,
+      type: adminAuditType(event.type),
+      eventType: event.type,
+      action: label.action,
+      target: label.target,
+      result: adminAuditResult(event.type, data),
+      createdAt: event.created_at,
+      data
+    };
+  });
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  return {
+    ok: true,
+    events: rows,
+    summary: {
+      eventsToday: rows.filter((event) => event.createdAt >= todayStart.getTime()).length,
+      staffActions: rows.filter((event) => event.actorId).length,
+      integrationEvents: rows.filter((event) => event.type === 'Integration').length,
+      warnings: rows.filter((event) => event.result !== 'Success').length
+    },
+    updatedAt: Date.now()
   };
 }
 
@@ -808,6 +899,7 @@ export function createAdminRouter(client) {
           : null,
         role: access.role,
         workspaces: access.workspaces,
+        permissions: access.permissions,
         iat: Date.now(),
         exp: Date.now() + sessionLifetimeMs
       };
@@ -844,6 +936,16 @@ export function createAdminRouter(client) {
     }
   });
 
+  router.get('/audit', requireAdminSession(client), async (req, res) => {
+    if (requirePermission(req, res, 'global:audit', 'Global audit access required.')) return;
+    try {
+      return res.json(await buildAdminAuditPayload(client, req.query.limit));
+    } catch (error) {
+      console.error('Admin audit lookup failed', error);
+      return res.status(500).json({ ok: false, code: 'ADMIN_AUDIT_FAILED', error: 'Could not load audit events.' });
+    }
+  });
+
   router.get('/submissions', requireAdminSession(client), async (req, res) => {
     if (!req.adminSession.workspaces.includes('lifesteal')) {
       return res.status(403).json({ ok: false, code: 'ADMIN_WORKSPACE_DENIED', error: 'Lifesteal access required.' });
@@ -873,6 +975,7 @@ export function createAdminRouter(client) {
     if (!req.adminSession.workspaces.includes('lifesteal')) {
       return res.status(403).json({ ok: false, code: 'ADMIN_WORKSPACE_DENIED', error: 'Lifesteal access required.' });
     }
+    if (requirePermission(req, res, 'lifesteal:players', 'Player management permission required.')) return;
 
     const discordId = normalizeDiscordId(req.body?.discordId);
     const minecraftName = normalizeMinecraftName(req.body?.minecraftName);
@@ -930,6 +1033,7 @@ export function createAdminRouter(client) {
     if (!req.adminSession.workspaces.includes('lifesteal')) {
       return res.status(403).json({ ok: false, code: 'ADMIN_WORKSPACE_DENIED', error: 'Lifesteal access required.' });
     }
+    if (requirePermission(req, res, 'lifesteal:players', 'Player management permission required.')) return;
 
     const playerId = decodeURIComponent(String(req.params.playerId ?? ''));
     const [source, rawId] = playerId.split(':');
@@ -1008,6 +1112,7 @@ export function createAdminRouter(client) {
     if (!req.adminSession.workspaces.includes('lifesteal')) {
       return res.status(403).json({ ok: false, code: 'ADMIN_WORKSPACE_DENIED', error: 'Lifesteal access required.' });
     }
+    if (requirePermission(req, res, 'lifesteal:players', 'Player management permission required.')) return;
 
     const playerId = decodeURIComponent(String(req.params.playerId ?? ''));
     const [source, rawId] = playerId.split(':');
@@ -1094,6 +1199,7 @@ export function createAdminRouter(client) {
     if (!req.adminSession.workspaces.includes('lifesteal')) {
       return res.status(403).json({ ok: false, code: 'ADMIN_WORKSPACE_DENIED', error: 'Lifesteal access required.' });
     }
+    if (requirePermission(req, res, 'lifesteal:staff-chat', 'Staff chat permission required.')) return;
 
     const content = staffChatContent(req.body?.content);
     if (content.length < 1) {
@@ -1164,6 +1270,7 @@ export function createAdminRouter(client) {
     if (!req.adminSession.workspaces.includes('lifesteal')) {
       return res.status(403).json({ ok: false, code: 'ADMIN_WORKSPACE_DENIED', error: 'Lifesteal access required.' });
     }
+    if (requirePermission(req, res, 'lifesteal:ticket', 'Ticket messaging permission required.')) return;
 
     const code = String(req.params.code ?? '').trim().toUpperCase();
     const content = staffChatContent(req.body?.content);
@@ -1214,6 +1321,7 @@ export function createAdminRouter(client) {
     if (!req.adminSession.workspaces.includes('lifesteal')) {
       return res.status(403).json({ ok: false, code: 'ADMIN_WORKSPACE_DENIED', error: 'Lifesteal access required.' });
     }
+    if (requirePermission(req, res, 'lifesteal:review', 'Review permission required.')) return;
 
     const code = String(req.params.code ?? '').trim().toUpperCase();
     const now = Date.now();
@@ -1289,6 +1397,7 @@ export function createAdminRouter(client) {
     if (!req.adminSession.workspaces.includes('lifesteal')) {
       return res.status(403).json({ ok: false, code: 'ADMIN_WORKSPACE_DENIED', error: 'Lifesteal access required.' });
     }
+    if (requirePermission(req, res, 'lifesteal:review', 'Review permission required.')) return;
 
     const code = String(req.params.code ?? '').trim().toUpperCase();
     if (code.startsWith('SHD-APP-')) {
@@ -1331,6 +1440,7 @@ export function createAdminRouter(client) {
     if (!req.adminSession.workspaces.includes('lifesteal')) {
       return res.status(403).json({ ok: false, code: 'ADMIN_WORKSPACE_DENIED', error: 'Lifesteal access required.' });
     }
+    if (requirePermission(req, res, 'lifesteal:review', 'Review permission required.')) return;
 
     const code = String(req.params.code ?? '').trim().toUpperCase();
     if (code.startsWith('SHD-APP-')) {
@@ -1484,9 +1594,23 @@ export function createAdminRouter(client) {
       reviewedBy: req.adminSession.id,
       reason
     });
+    if (current.ticket_thread_id) {
+      const lookup = await ticketThread(client, current.ticket_thread_id);
+      if (lookup.ok) {
+        const message = status === 'waiting_on_player'
+          ? `Staff needs more information for ${code}.\n${reason}`
+          : status === 'resolved'
+            ? `Your ${code} request has been resolved.\n${reason}`
+            : `Your ${code} request was denied.\nReason: ${reason}`;
+        await lookup.channel.send({
+          content: message,
+          allowedMentions: { parse: [] }
+        }).catch(() => null);
+      }
+    }
     audit('admin.submission_decided', {
       discordId: req.adminSession.id,
-      data: { submissionCode: code, status }
+      data: { submissionCode: code, status, ticketThreadId: current.ticket_thread_id ?? null }
     });
     await staffAuditLog(client, 'Admin Review Decision', [
       { name: 'Submission', value: code, inline: true },

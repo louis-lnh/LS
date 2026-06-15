@@ -798,7 +798,7 @@ main {
 
 .signup-rules-document {
   overflow-y: auto;
-  max-height: 64vh;
+  max-height: 57vh;
   padding: clamp(1rem, 3vw, 2rem);
   scroll-behavior: smooth;
 }
