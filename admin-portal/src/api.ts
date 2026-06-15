@@ -137,6 +137,15 @@ export type AdminPlayersPayload = {
   updatedAt: number
 }
 
+export type CreateAdminPlayerPayload = {
+  discordId: string
+  discordUsername?: string
+  minecraftName: string
+  minecraftUuid?: string
+  badge: AdminPlayerBadge
+  status: Exclude<AdminPlayerStatus, 'Applied'>
+}
+
 type SessionResponse = {
   ok: boolean
   user: AdminUser | null
@@ -236,7 +245,7 @@ export async function addAdminSubmissionNote(code: string, text: string): Promis
   return response.submission
 }
 
-export async function decideAdminSubmission(code: string, status: 'waiting_on_player' | 'resolved' | 'denied', reason: string): Promise<AdminApiSubmission> {
+export async function decideAdminSubmission(code: string, status: 'waiting_on_player' | 'resolved' | 'approved' | 'denied', reason: string): Promise<AdminApiSubmission> {
   const response = await adminRequest<{ ok: boolean; submission: AdminApiSubmission }>(
     `/submissions/${encodeURIComponent(code)}/decision`,
     {
@@ -293,6 +302,18 @@ export async function getAdminPlayers(): Promise<AdminPlayersPayload> {
   if (adminDemoMode) return { players: [], updatedAt: Date.now() }
   const response = await adminRequest<AdminPlayersPayload & { ok: boolean }>('/players')
   return response
+}
+
+export async function createAdminPlayer(payload: CreateAdminPlayerPayload): Promise<AdminPlayersPayload> {
+  const response = await adminRequest<{ ok: boolean; players: AdminPlayer[]; updatedAt?: number }>(
+    '/players',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    },
+  )
+  return { players: response.players, updatedAt: response.updatedAt ?? Date.now() }
 }
 
 export async function updateAdminPlayer(id: string, patch: { status?: AdminPlayerStatus; badge?: AdminPlayerBadge }): Promise<AdminPlayersPayload> {

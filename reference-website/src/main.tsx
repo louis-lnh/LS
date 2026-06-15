@@ -1123,8 +1123,8 @@ function RulesPage() {
         Official rules for the SHD Lifesteal event. This version is text-first and mirrors the final public rule document.
       </PageIntro>
       <aside className="rules-key-info">
-        <strong>Need the rules key?</strong>
-        <span>Read through the rules, then scroll to the bottom to generate the SHD-RULES key for your application.</span>
+        <strong>Applying?</strong>
+        <span>The public rules stay available here at all times. Signup applications now review and accept the rules directly inside the SHD Support Portal.</span>
       </aside>
       <div className="rules-layout">
         <aside className="rules-index" aria-label="Rules index">
@@ -1139,7 +1139,6 @@ function RulesPage() {
           {parsedRules.blocks.map((block, index) => (
             <RuleBlockView block={block} key={`${block.type}-${index}`} />
           ))}
-          <RulesAcknowledgement />
         </article>
       </div>
     </section>
@@ -1795,7 +1794,7 @@ function SignupPage() {
   return (
     <section className="content-page page-frame">
       <PageIntro label="Apply" title="Season 1 Applications">
-        Public application hub for joining the Lifesteal season with a rules key, support form, and Discord ticket verification.
+        Public application hub for joining the Lifesteal season through the SHD Support Portal and Discord ticket verification.
       </PageIntro>
       <div className="apply-page">
         <article className="apply-hero">
@@ -1803,21 +1802,21 @@ function SignupPage() {
             <span className="apply-status">Applications Open</span>
             <h2>Apply for the whitelist</h2>
             <p>
-              Read the Lifesteal rules first and generate your rules key at the bottom of the rules page. The SHD Support
-              portal uses that key before creating your application key for Discord ticket verification.
+              Read the Lifesteal rules whenever you need them here. When you apply, the SHD Support portal will ask you
+              to review and accept the rules before creating your application key for Discord ticket verification.
             </p>
           </div>
           <div className="apply-portal-card">
             <span>Portal</span>
             <strong>support.shd-esports.com</strong>
             <p>SHD support portal for applications, appeals, reports, and staff review.</p>
-            <a className="primary-action" href="https://support.shd-esports.com/applications">Open Support Portal</a>
+            <a className="primary-action" href="https://support.shd-esports.com/signup">Open Support Portal</a>
           </div>
         </article>
 
         <div className="apply-flow" aria-label="Application review flow">
-          <ApplyStep number="01" title="Read Rules" detail="Read the Lifesteal rules and generate your SHD-RULES key." />
-          <ApplyStep number="02" title="Submit Form" detail="Open SHD Support, select Minecraft, and complete MC - Signup." />
+          <ApplyStep number="01" title="Submit Form" detail="Open SHD Support, select Minecraft, and complete Lifesteal Signup." />
+          <ApplyStep number="02" title="Accept Rules" detail="Review the rules inside the support flow and confirm that you understand them." />
           <ApplyStep number="03" title="Get App Key" detail="Save your generated SHD-APP key after submission." />
           <ApplyStep number="04" title="Open Ticket" detail="Send the SHD-APP key inside your Discord ticket." />
           <ApplyStep number="05" title="Staff Review" detail="The bot verifies your ticket and staff reviews the application." />
@@ -1830,7 +1829,7 @@ function SignupPage() {
             <ul>
               <li>Minecraft Java account ready</li>
               <li>Discord account available for tickets</li>
-              <li>Rules key generated from this website</li>
+              <li>Enough time to reread and accept the rules during signup</li>
               <li>No alt account abuse</li>
               <li>Understand heart loss and elimination</li>
             </ul>

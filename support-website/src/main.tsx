@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './styles.css'
 import heroImage from './assets/lifesteal-hero.png'
 import logoImage from './assets/shd-logo.png'
+import rulesMarkdown from './content/rules.md?raw'
 
 type PageId =
   | 'home'
@@ -23,7 +24,6 @@ type PageId =
 
 type SectionId = 'minecraft' | 'support' | 'valorant' | 'info'
 type SignupField =
-  | 'rulesCode'
   | 'discordName'
   | 'discordId'
   | 'minecraftName'
@@ -43,6 +43,13 @@ type SubmittedApplication = {
   applicationCode: string
   status: string
 }
+type SignupStep = 'form' | 'rules' | 'submitted'
+type RuleBlock =
+  | { type: 'h2' | 'h3'; text: string; id?: string }
+  | { type: 'p'; text: string }
+  | { type: 'ul'; items: string[] }
+  | { type: 'hr' }
+type RuleIndexItem = { id: string; number: string; title: string }
 
 type MinecraftFormId = 'ban-appeal' | 'player-report' | 'minecraft-support'
 type MinecraftFormField = {
@@ -129,7 +136,6 @@ const routeItems: Array<{ id: PageId; label: string }> = [
 ]
 
 const initialSignup: SignupState = {
-  rulesCode: '',
   discordName: '',
   discordId: '',
   minecraftName: '',
@@ -152,7 +158,6 @@ function fieldLabel(path: unknown) {
     foundLifesteal: 'How did you find Lifesteal',
     experience: 'Lifesteal or SMP experience',
     motivation: 'Why do you want to join',
-    rulesCode: 'Rules acknowledgement key',
     discordUsername: 'Discord username',
     minecraftName: 'Minecraft Java name',
     region: 'Region',
@@ -190,6 +195,72 @@ function supportSubmissionError(body: SupportSubmissionResponse) {
   }
   return cleanApiError(body.error ?? 'Application submission failed.')
 }
+
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+}
+
+function parseRules(markdown: string) {
+  const blocks: RuleBlock[] = []
+  const index: RuleIndexItem[] = []
+  const listItems: string[] = []
+  let title = 'SHD Lifesteal Rules'
+
+  const flushList = () => {
+    if (listItems.length > 0) {
+      blocks.push({ type: 'ul', items: [...listItems] })
+      listItems.length = 0
+    }
+  }
+
+  markdown.split(/\r?\n/).forEach((rawLine) => {
+    const line = rawLine.trim()
+    if (!line) {
+      flushList()
+      return
+    }
+
+    const heading = line.match(/^(#{1,3})\s+(.+)$/)
+    if (heading) {
+      flushList()
+      const level = heading[1].length
+      const text = heading[2].trim()
+      if (level === 1 && blocks.length === 0) {
+        title = text
+        return
+      }
+      const id = level === 1 || text.match(/^\d+\./) ? slugify(text) : undefined
+      if (id) {
+        const number = text.match(/^(\d+)\./)?.[1] ?? ''
+        index.push({ id, number: number.padStart(2, '0'), title: text.replace(/^\d+\.\s*/, '') })
+      }
+      blocks.push({ type: level === 1 ? 'h2' : 'h3', text, id })
+      return
+    }
+
+    if (line === '---') {
+      flushList()
+      blocks.push({ type: 'hr' })
+      return
+    }
+
+    if (/^[-*]\s+/.test(line)) {
+      listItems.push(line.replace(/^[-*]\s+/, ''))
+      return
+    }
+
+    flushList()
+    blocks.push({ type: 'p', text: line })
+  })
+
+  flushList()
+  return { title, blocks, index }
+}
+
+const parsedRules = parseRules(rulesMarkdown)
 
 function pageFromPath(): PageId {
   const value = window.location.pathname.replace(/^\/+/, '').split('/')[0]
@@ -525,6 +596,9 @@ function formDescription(page: PageId) {
 function SignupPage({ onNavigate }: { onNavigate: (page: PageId) => void }) {
   const [form, setForm] = useState<SignupState>(initialSignup)
   const [submitted, setSubmitted] = useState<SubmittedApplication | null>(null)
+  const [step, setStep] = useState<SignupStep>('form')
+  const [rulesScrolled, setRulesScrolled] = useState(false)
+  const [rulesAccepted, setRulesAccepted] = useState(false)
   const [submitError, setSubmitError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
@@ -532,19 +606,37 @@ function SignupPage({ onNavigate }: { onNavigate: (page: PageId) => void }) {
     setForm((current) => ({ ...current, [field]: value }))
   }
 
-  const canSubmit = form.rulesCode.trim() && form.discordName.trim() && form.minecraftName.trim() && form.region.trim() && form.foundLifesteal.trim() && form.experience.trim() && form.motivation.trim() && form.rules === 'accepted'
+  const canSubmit = form.discordName.trim() && form.minecraftName.trim() && form.region.trim() && form.foundLifesteal.trim() && form.experience.trim() && form.motivation.trim() && form.rules === 'accepted'
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!canSubmit || submitting) return
+    setSubmitError('')
+    setStep('rules')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const submitWithRules = async () => {
+    if (!canSubmit || !rulesScrolled || !rulesAccepted || submitting) return
     setSubmitting(true)
     setSubmitError('')
     try {
+      const rulesResponse = await fetch(`${supportApiBase}/rules/acknowledge`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ project: 'lifesteal' }),
+      })
+      const rulesBody = await rulesResponse.json() as { ok?: boolean; code?: string; error?: string }
+      if (!rulesResponse.ok || !rulesBody.ok || !rulesBody.code) {
+        setSubmitError(cleanApiError(rulesBody.error ?? 'Rules acknowledgement failed.'))
+        return
+      }
+
       const response = await fetch(`${supportApiBase}/support/lifesteal-signup`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          rulesCode: form.rulesCode,
+          rulesCode: rulesBody.code,
           discordUsername: form.discordName,
           discordId: form.discordId || null,
           minecraftName: form.minecraftName,
@@ -568,6 +660,8 @@ function SignupPage({ onNavigate }: { onNavigate: (page: PageId) => void }) {
         applicationCode: body.applicationCode,
         status: body.status,
       })
+      setStep('submitted')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (error) {
       setSubmitError(error instanceof Error ? cleanApiError(error.message) : 'Application submission failed.')
     } finally {
@@ -575,7 +669,7 @@ function SignupPage({ onNavigate }: { onNavigate: (page: PageId) => void }) {
     }
   }
 
-  if (submitted) {
+  if (submitted && step === 'submitted') {
     return (
       <section className="content-page page-frame">
         <PageIntro label="Application Saved" title="Submitted" backTo="minecraft" onNavigate={onNavigate}>
@@ -585,9 +679,57 @@ function SignupPage({ onNavigate }: { onNavigate: (page: PageId) => void }) {
           <span className="section-kicker">Application Key</span>
           <strong>{submitted.applicationCode}</strong>
           <p>The bot will attach this application to your Discord ticket. Staff will review it there and the bot will notify you if you are approved.</p>
+          <p>By submitting, you confirmed that you read and understood the Lifesteal rules. Not knowing the rules is not an excuse for breaking them.</p>
           <div className="result-actions">
             <button className="secondary-action" onClick={() => onNavigate('info')} type="button">View Info Hub</button>
-            <button className="secondary-action" onClick={() => setSubmitted(null)} type="button">Edit Submission</button>
+            <button className="secondary-action" onClick={() => { setSubmitted(null); setStep('form') }} type="button">New Submission</button>
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  if (step === 'rules') {
+    return (
+      <section className="content-page page-frame">
+        <PageIntro label="Rules Review" title={parsedRules.title} backTo="signup" onNavigate={() => setStep('form')}>
+          Review the Lifesteal rules before your signup is sent to staff. Scroll through the rules, confirm that you understand them, then submit your application.
+        </PageIntro>
+        <div className="signup-rules-shell">
+          <aside className="signup-rules-index" aria-label="Rules index">
+            {parsedRules.index.map((section) => (
+              <a href={`#signup-${section.id}`} key={section.id}>
+                <span>{section.number || '--'}</span>
+                {section.title}
+              </a>
+            ))}
+          </aside>
+          <article
+            className="signup-rules-document"
+            onScroll={(event) => {
+              const element = event.currentTarget
+              if (element.scrollTop + element.clientHeight >= element.scrollHeight - 16) {
+                setRulesScrolled(true)
+              }
+            }}
+          >
+            {parsedRules.blocks.map((block, index) => (
+              <RuleBlockView block={block} idPrefix="signup-" key={`${block.type}-${index}`} />
+            ))}
+          </article>
+        </div>
+        <div className="rules-confirm rules-confirm-panel">
+          <label>
+            <input checked={rulesAccepted} disabled={!rulesScrolled} onChange={(event) => setRulesAccepted(event.target.checked)} type="checkbox" />
+            <span>I read and understand the Lifesteal rules. I understand that not knowing the rules is not an excuse.</span>
+          </label>
+          {!rulesScrolled && <p className="form-message">Scroll to the bottom of the rules before accepting.</p>}
+          <div className="form-actions">
+            <button className="secondary-action" onClick={() => setStep('form')} type="button">Back To Form</button>
+            <button className="primary-action" disabled={!rulesScrolled || !rulesAccepted || submitting} onClick={submitWithRules} type="button">
+              {submitting ? 'Submitting...' : 'Accept Rules And Submit'}
+            </button>
+            <p className={submitError ? 'form-message error' : 'form-message'}>{submitError || 'Your rules acknowledgement key will be created automatically after acceptance.'}</p>
           </div>
         </div>
       </section>
@@ -600,14 +742,6 @@ function SignupPage({ onNavigate }: { onNavigate: (page: PageId) => void }) {
         Apply for the SHD Lifesteal season. Your answers are saved for Discord verification and staff review.
       </PageIntro>
       <form className="signup-form" onSubmit={submit}>
-        <div className="form-section">
-          <div>
-            <span className="section-kicker">Rules Verification</span>
-            <h2>Rules Key</h2>
-          </div>
-          <FormField label="Rules acknowledgement key" required value={form.rulesCode} onChange={(value) => update('rulesCode', value)} placeholder="SHD-RULES-XXXXXX" />
-        </div>
-
         <div className="form-section">
           <div>
             <span className="section-kicker">Identity</span>
@@ -645,13 +779,13 @@ function SignupPage({ onNavigate }: { onNavigate: (page: PageId) => void }) {
         <div className="rules-confirm">
           <label>
             <input checked={form.rules === 'accepted'} onChange={(event) => update('rules', event.target.checked ? 'accepted' : '')} type="checkbox" />
-            <span>I agree to the SHD Support Terms and Privacy notice for submitting and reviewing this application.</span>
+            <span>I agree to the SHD Support Terms and Privacy notice for submitting and reviewing this application. I understand that the next step will ask me to review and accept the Lifesteal rules.</span>
           </label>
         </div>
 
         <div className="form-actions">
-          <button className="primary-action" disabled={!canSubmit || submitting} type="submit">{submitting ? 'Submitting...' : 'Submit Application'}</button>
-          <p className={submitError ? 'form-message error' : 'form-message'}>{submitError || (canSubmit ? 'Ready for review.' : 'Required fields must be completed before submission.')}</p>
+          <button className="primary-action" disabled={!canSubmit || submitting} type="submit">Continue To Rules</button>
+          <p className={submitError ? 'form-message error' : 'form-message'}>{submitError || (canSubmit ? 'Ready for rules review.' : 'Required fields must be completed before continuing.')}</p>
         </div>
       </form>
     </section>
@@ -886,6 +1020,32 @@ function MinecraftFieldControl({ field, value, onChange }: { field: MinecraftFor
     )
   }
   return <FormField label={field.label} required={field.required} value={value} onChange={onChange} placeholder={field.placeholder} />
+}
+
+function RuleBlockView({ block, idPrefix = '' }: { block: RuleBlock; idPrefix?: string }) {
+  if (block.type === 'h2') {
+    return <h2 id={block.id ? `${idPrefix}${block.id}` : undefined}>{block.text}</h2>
+  }
+
+  if (block.type === 'h3') {
+    return <h3>{block.text}</h3>
+  }
+
+  if (block.type === 'ul') {
+    return (
+      <ul>
+        {block.items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    )
+  }
+
+  if (block.type === 'hr') {
+    return <hr />
+  }
+
+  return <p>{block.text}</p>
 }
 
 function FormField({ label, value, onChange, placeholder, required = false }: { label: string; value: string; onChange: (value: string) => void; placeholder: string; required?: boolean }) {

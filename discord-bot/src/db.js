@@ -183,6 +183,7 @@ export const statements = {
         risk_band: row.riskBand ?? existingLinked?.risk_band ?? 'low',
         risk_reasons: row.riskReasons ?? existingLinked?.risk_reasons ?? [],
         role: row.role ?? 'player',
+        role_managed_at: row.roleManagedAt ?? existingLinked?.role_managed_at ?? null,
         public_stats_opt_in: row.publicStatsOptIn ?? existingLinked?.public_stats_opt_in ?? false,
         roster_status_updated_at: row.rosterStatusUpdatedAt ?? existingLinked?.roster_status_updated_at ?? row.verifiedAt,
         region: row.region ?? existingLinked?.region ?? null,

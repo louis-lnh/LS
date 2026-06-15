@@ -4,6 +4,7 @@ import { PermissionFlagsBits } from 'discord.js';
 import { config } from './config.js';
 import { statements } from './db.js';
 import { audit, staffAuditLog } from './logger.js';
+import { resolveMinecraftProfile, whitelistAdd, whitelistRemove } from './minecraft.js';
 
 const sessionCookieName = 'shd_admin_session';
 const oauthStateCookieName = 'shd_admin_oauth_state';
@@ -324,6 +325,23 @@ function normalizePlayerBadge(value) {
   return adminPlayerBadgeMap.has(badge) ? badge : null;
 }
 
+function normalizeDiscordId(value) {
+  const id = String(value ?? '').trim();
+  return /^\d{10,30}$/.test(id) ? id : null;
+}
+
+function normalizeMinecraftName(value) {
+  const name = String(value ?? '').trim();
+  return /^[A-Za-z0-9_]{2,16}$/.test(name) ? name : null;
+}
+
+function normalizeManualMinecraftUuid(value, minecraftName) {
+  const uuid = String(value ?? '').trim().toLowerCase();
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(uuid)) return uuid;
+  if (/^[0-9a-f]{32}$/.test(uuid)) return uuid;
+  return `manual:${minecraftName.toLowerCase()}`;
+}
+
 function playerStatusLabel(linked) {
   const status = String(linked.status ?? '').toLowerCase();
   if (status === 'banned') return 'Banned';
@@ -540,12 +558,39 @@ function supportDecisionStatus(value) {
   return null;
 }
 
+function adminApplicationDecisionStatus(value) {
+  const action = String(value ?? '').trim().toLowerCase();
+  if (['approved', 'approve', 'resolved', 'resolve', 'completed'].includes(action)) return 'approved';
+  if (['denied', 'deny', 'rejected', 'reject', 'closed', 'close'].includes(action)) return 'denied';
+  return null;
+}
+
 function supportReviewOwnershipError(submission, sessionId) {
   if (!submission) return 'not_found';
   if (finalSupportSubmissionStatuses.has(submission.status)) return 'final';
   if (!submission.claimed_by) return 'unclaimed';
   if (submission.claimed_by !== sessionId) return 'claimed';
   return null;
+}
+
+function supportApplicationReviewOwnershipError(application, sessionId) {
+  if (!application) return 'not_found';
+  if (!application.discord_id_verified || !application.ticket_thread_id) return 'no_ticket';
+  if (['approved', 'denied', 'rejected', 'closed'].includes(application.status)) return 'final';
+  const ticket = statements.findTicketByThread.get(application.ticket_thread_id);
+  if (!ticket) return 'no_ticket';
+  if (!ticket.claimed_by) return 'unclaimed';
+  if (ticket.claimed_by !== sessionId) return 'claimed';
+  return null;
+}
+
+async function adminMinecraftSideEffect({ type, action, run }) {
+  try {
+    const result = await run();
+    return { ok: true, result, error: null };
+  } catch (error) {
+    return { ok: false, result: null, error: error.message || `${action} failed`, type };
+  }
 }
 
 function compactFields(entries) {
@@ -822,6 +867,63 @@ export function createAdminRouter(client) {
       console.error('Admin player lookup failed', error);
       return res.status(500).json({ ok: false, code: 'ADMIN_PLAYERS_FAILED', error: 'Could not load players.' });
     }
+  });
+
+  router.post('/players', requireAdminSession(client), async (req, res) => {
+    if (!req.adminSession.workspaces.includes('lifesteal')) {
+      return res.status(403).json({ ok: false, code: 'ADMIN_WORKSPACE_DENIED', error: 'Lifesteal access required.' });
+    }
+
+    const discordId = normalizeDiscordId(req.body?.discordId);
+    const minecraftName = normalizeMinecraftName(req.body?.minecraftName);
+    const discordUsername = normalizeAdminText(req.body?.discordUsername, 80) || discordId;
+    const nextStatus = normalizePlayerStatus(req.body?.status ?? 'Registered');
+    const nextBadge = normalizePlayerBadge(req.body?.badge ?? 'player');
+    if (!discordId) return res.status(400).json({ ok: false, code: 'ADMIN_PLAYER_DISCORD_INVALID', error: 'Discord ID must be a numeric Discord user ID.' });
+    if (!minecraftName) return res.status(400).json({ ok: false, code: 'ADMIN_PLAYER_MINECRAFT_INVALID', error: 'Minecraft name must be 2-16 letters, numbers, or underscores.' });
+    if (!nextStatus || nextStatus.label === 'Applied') return res.status(400).json({ ok: false, code: 'ADMIN_PLAYER_STATUS_INVALID', error: 'Manual player status is invalid.' });
+    if (!nextBadge) return res.status(400).json({ ok: false, code: 'ADMIN_PLAYER_BADGE_INVALID', error: 'Manual player badge is invalid.' });
+
+    const now = Date.now();
+    const minecraftUuid = normalizeManualMinecraftUuid(req.body?.minecraftUuid, minecraftName);
+    try {
+      statements.upsertLinked.run({
+        discordId,
+        minecraftUuid,
+        minecraftName,
+        discordUsername,
+        ipHash: null,
+        ipPrefixHash: null,
+        verifiedAt: now,
+        lastSeenAt: now,
+        status: nextStatus.status,
+        suspicious: nextStatus.suspicious,
+        suspiciousReason: 'Manually added from the admin player manager.',
+        riskScore: nextStatus.suspicious ? 60 : 0,
+        riskBand: nextStatus.suspicious ? 'high' : 'low',
+        riskReasons: nextStatus.suspicious ? ['Manual admin status'] : [],
+        role: nextBadge,
+        roleManagedAt: now,
+        publicStatsOptIn: nextStatus.publicStatsOptIn,
+        rosterStatusUpdatedAt: now
+      });
+    } catch (error) {
+      return res.status(409).json({ ok: false, code: 'ADMIN_PLAYER_LINK_CONFLICT', error: error.message || 'Could not create manual player link.' });
+    }
+
+    audit('admin.player_created', {
+      discordId: req.adminSession.id,
+      minecraftUuid,
+      data: { targetDiscordId: discordId, minecraftName, status: nextStatus.label, badge: nextBadge, manual: true }
+    });
+    await staffAuditLog(client, 'Admin Player Manually Added', [
+      { name: 'Player', value: minecraftName, inline: true },
+      { name: 'Discord ID', value: discordId, inline: true },
+      { name: 'Status', value: nextStatus.label, inline: true },
+      { name: 'Badge', value: playerBadgeLabel(nextBadge), inline: true },
+      { name: 'Staff', value: `${req.adminSession.displayName} (${req.adminSession.id})`, inline: true }
+    ]);
+    return res.status(201).json({ ok: true, players: buildAdminPlayers(), player: findAdminPlayer(`linked:${discordId}`), updatedAt: Date.now() });
   });
 
   router.patch('/players/:playerId', requireAdminSession(client), async (req, res) => {
@@ -1232,7 +1334,133 @@ export function createAdminRouter(client) {
 
     const code = String(req.params.code ?? '').trim().toUpperCase();
     if (code.startsWith('SHD-APP-')) {
-      return res.status(409).json({ ok: false, code: 'ADMIN_APPLICATION_COMMAND_ONLY', error: 'Application approvals still use the Discord approval command so whitelist automation stays intact.' });
+      const application = statements.findSupportApplicationByCode.get(code);
+      const status = adminApplicationDecisionStatus(req.body?.status);
+      const reason = normalizeAdminText(req.body?.reason, 3000) || 'Reviewed from the admin portal.';
+      if (!status) {
+        return res.status(400).json({ ok: false, code: 'ADMIN_APPLICATION_DECISION_INVALID', error: 'Application decision must be approved or denied.' });
+      }
+      const ownershipError = supportApplicationReviewOwnershipError(application, req.adminSession.id);
+      if (ownershipError === 'not_found') return res.status(404).json({ ok: false, code: 'ADMIN_SUBMISSION_NOT_FOUND', error: 'Submission not found.' });
+      if (ownershipError === 'no_ticket') return res.status(409).json({ ok: false, code: 'ADMIN_APPLICATION_NOT_VERIFIED', error: 'The applicant must verify their application in Discord before staff can decide it.' });
+      if (ownershipError === 'final') return res.status(409).json({ ok: false, code: 'ADMIN_SUBMISSION_FINAL', error: 'This application has already been decided.' });
+      if (ownershipError === 'unclaimed') return res.status(409).json({ ok: false, code: 'ADMIN_SUBMISSION_UNCLAIMED', error: 'Claim this application before deciding it.' });
+      if (ownershipError === 'claimed') return res.status(409).json({ ok: false, code: 'ADMIN_SUBMISSION_ALREADY_CLAIMED', error: 'This application is claimed by another staff member.' });
+
+      const now = Date.now();
+      let profile = null;
+      let linked = statements.findLinkedByDiscord.get(application.discord_id_verified);
+      let whitelistResult = { ok: true, error: null };
+      let updatedStatus = status;
+
+      if (status === 'approved') {
+        try {
+          profile = await resolveMinecraftProfile(application.minecraft_name);
+        } catch (error) {
+          return res.status(409).json({ ok: false, code: 'ADMIN_MINECRAFT_PROFILE_FAILED', error: error.message || 'Could not resolve the Minecraft profile.' });
+        }
+        const existingRole = linked?.role ?? 'player';
+        const existingRoleManagedAt = linked?.role_managed_at ?? null;
+        statements.upsertLinked.run({
+          discordId: application.discord_id_verified,
+          minecraftUuid: profile.uuid,
+          minecraftName: profile.name,
+          discordUsername: application.discord_username,
+          ipHash: linked?.ip_hash ?? null,
+          ipPrefixHash: linked?.ip_prefix_hash ?? null,
+          verifiedAt: linked?.verified_at ?? now,
+          lastSeenAt: now,
+          status: 'active',
+          suspicious: 0,
+          suspiciousReason: reason,
+          riskScore: linked?.risk_score ?? 0,
+          riskBand: linked?.risk_band ?? 'low',
+          riskReasons: linked?.risk_reasons ?? [],
+          role: existingRole,
+          roleManagedAt: existingRoleManagedAt,
+          publicStatsOptIn: true,
+          rosterStatusUpdatedAt: now
+        });
+        linked = statements.findLinkedByDiscord.get(application.discord_id_verified);
+        whitelistResult = await adminMinecraftSideEffect({
+          type: 'minecraft.whitelist_add',
+          action: 'Add approved applicant to Minecraft whitelist',
+          run: () => whitelistAdd(profile.name)
+        });
+        updatedStatus = whitelistResult.ok ? 'approved' : 'approved_whitelist_pending';
+      } else {
+        const matchingLinked = linked &&
+          String(linked.minecraft_name ?? '').trim().toLowerCase() === String(application.minecraft_name).trim().toLowerCase()
+          ? linked
+          : null;
+        if (matchingLinked) {
+          statements.setLinkedStatus.run({
+            discordId: application.discord_id_verified,
+            status: 'denied',
+            suspicious: 0,
+            reason,
+            rosterStatusUpdatedAt: now
+          });
+          statements.updateProfile.run({
+            discordId: application.discord_id_verified,
+            publicStatsOptIn: false
+          });
+          whitelistResult = await adminMinecraftSideEffect({
+            type: 'minecraft.whitelist_remove',
+            action: 'Remove denied applicant from Minecraft whitelist',
+            run: () => whitelistRemove(matchingLinked.minecraft_name)
+          });
+        }
+      }
+
+      const updatedApplication = statements.updateSupportApplicationStatus.run({
+        code,
+        status: updatedStatus,
+        reviewedAt: now,
+        reviewedBy: req.adminSession.id,
+        reason
+      });
+      const ticket = await client.channels.fetch(application.ticket_thread_id).catch(() => null);
+      if (ticket?.isTextBased?.()) {
+        const message = status === 'approved'
+          ? whitelistResult.ok
+            ? `<@${application.discord_id_verified}> your Lifesteal application was approved. You should be able to join when the server opens.`
+            : `<@${application.discord_id_verified}> your Lifesteal application was approved, but Minecraft access could not be finished automatically. Staff will help you here.`
+          : `<@${application.discord_id_verified}> your Lifesteal application was not approved.\nReason: ${reason}`;
+        await ticket.send(message).catch(() => null);
+      }
+
+      const minecraftUuid = profile?.uuid ?? linked?.minecraft_uuid ?? null;
+      statements.addCase.run({
+        action: status === 'approved' ? 'support_application_approve' : 'support_application_deny',
+        targetDiscordId: application.discord_id_verified,
+        targetMinecraftUuid: minecraftUuid,
+        moderatorId: req.adminSession.id,
+        reason,
+        createdAt: now
+      });
+      audit(status === 'approved' ? 'support.application_approved' : 'support.application_denied', {
+        discordId: application.discord_id_verified,
+        minecraftUuid,
+        data: {
+          applicationId: updatedApplication.id,
+          applicationCode: updatedApplication.code,
+          moderatorId: req.adminSession.id,
+          whitelistOk: whitelistResult.ok,
+          source: 'admin_portal'
+        }
+      });
+      await staffAuditLog(client, status === 'approved' ? 'Admin Application Approved' : 'Admin Application Denied', [
+        { name: 'Application', value: `${updatedApplication.id} / ${updatedApplication.code}`, inline: true },
+        { name: 'Applicant', value: `<@${application.discord_id_verified}>`, inline: true },
+        { name: 'Minecraft', value: profile?.name ?? application.minecraft_name, inline: true },
+        { name: 'Staff', value: `${req.adminSession.displayName} (${req.adminSession.id})`, inline: true },
+        whitelistResult.ok ? null : { name: 'Whitelist Warning', value: whitelistResult.error },
+        { name: 'Reason', value: reason }
+      ].filter(Boolean));
+
+      const submission = await findAdminSubmission(client, code);
+      return res.json({ ok: true, submission, whitelistOk: whitelistResult.ok });
     }
 
     const status = supportDecisionStatus(req.body?.status);

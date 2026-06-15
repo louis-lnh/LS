@@ -36,6 +36,7 @@ import {
   ShieldCheck,
   Trash2,
   UserCheck,
+  UserPlus,
   UserRoundSearch,
   Users,
   X,
@@ -50,6 +51,7 @@ import {
   addAdminSubmissionNote,
   beginDiscordLogin,
   claimAdminSubmission,
+  createAdminPlayer,
   decideAdminSubmission,
   demoAdminUser,
   endAdminSession,
@@ -68,6 +70,7 @@ import {
   type AdminPlayer,
   type AdminPlayerBadge,
   type AdminPlayerStatus,
+  type CreateAdminPlayerPayload,
   type AdminUser,
   type StaffChatMessage,
   type TicketActivityMessage,
@@ -537,7 +540,7 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
   const selected = submissions.find((submission) => submission.id === selectedId) ?? submissions[0]
   const selectedDecided = selected ? ['Approved', 'Denied'].includes(selected.status) : false
   const selectedOwned = selected ? (selected.claimedById ? selected.claimedById === user.id : selected.claimedBy === reviewerName) : false
-  const selectedSupportsAdminActions = Boolean(selected && (adminDemoMode || selected.type !== 'Application'))
+  const selectedSupportsAdminActions = Boolean(selected)
   const canWriteSelected = Boolean(selected && selectedSupportsAdminActions && (adminDemoMode || (selectedOwned && !selectedDecided)))
   const canMessageTicket = Boolean(selected?.ticketThreadId && (adminDemoMode || (selectedOwned && !selectedDecided)))
   const openSubmissionCount = submissions.filter((submission) => !['Approved', 'Denied'].includes(submission.status)).length
@@ -665,11 +668,7 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
       }))
       return
     }
-    if (selected.type === 'Application') {
-      setClaimError('Applications still use the Discord approval command so whitelist automation stays intact.')
-      return
-    }
-    const apiStatus = status === 'Waiting on player' ? 'waiting_on_player' : status === 'Denied' ? 'denied' : 'resolved'
+    const apiStatus = status === 'Waiting on player' ? 'waiting_on_player' : status === 'Denied' ? 'denied' : status === 'Approved' ? 'approved' : 'resolved'
     setActionState('decision')
     try {
       const updated = submissionFromApi(await decideAdminSubmission(selected.id, apiStatus, body))
@@ -1418,6 +1417,7 @@ function LifestealOverviewPage({ submissions, onNavigate }: { submissions: Submi
 
 const playerStatuses: AdminPlayerStatus[] = ['Whitelisted', 'Registered', 'Applied', 'Review', 'Banned', 'Denied']
 const editablePlayerStatuses: AdminPlayerStatus[] = ['Whitelisted', 'Registered', 'Review', 'Banned', 'Denied']
+const manualPlayerStatuses: Exclude<AdminPlayerStatus, 'Applied'>[] = ['Registered', 'Whitelisted', 'Review', 'Banned', 'Denied']
 const playerBadges: AdminPlayerBadge[] = ['Owner', 'Admin', 'Mod', 'SHD Team', 'Player']
 
 const players: AdminPlayer[] = [
@@ -1434,8 +1434,18 @@ function PlayersPage() {
   const [status, setStatus] = useState('All')
   const [state, setState] = useState<'loading' | 'ready' | 'error'>(adminDemoMode ? 'ready' : 'loading')
   const [error, setError] = useState('')
+  const [manualOpen, setManualOpen] = useState(false)
+  const [manualForm, setManualForm] = useState<CreateAdminPlayerPayload>({
+    discordId: '',
+    discordUsername: '',
+    minecraftName: '',
+    minecraftUuid: '',
+    badge: 'Player',
+    status: 'Registered',
+  })
   const [selectedId, setSelectedId] = useState<string | null>(adminDemoMode ? players[0]?.id ?? null : null)
   const [actionId, setActionId] = useState<string | null>(null)
+  const [manualState, setManualState] = useState<'idle' | 'saving'>('idle')
   const [timeNow, setTimeNow] = useState(Date.now())
   const selected = items.find((player) => player.id === selectedId) ?? null
 
@@ -1512,13 +1522,60 @@ function PlayersPage() {
     }
   }
 
+  const submitManualPlayer = async () => {
+    const payload: CreateAdminPlayerPayload = {
+      ...manualForm,
+      discordId: manualForm.discordId.trim(),
+      discordUsername: manualForm.discordUsername?.trim(),
+      minecraftName: manualForm.minecraftName.trim(),
+      minecraftUuid: manualForm.minecraftUuid?.trim(),
+    }
+    if (!payload.discordId || !payload.minecraftName || manualState === 'saving') return
+    setManualState('saving')
+    setError('')
+    if (adminDemoMode) {
+      const demoPlayer: AdminPlayer = {
+        id: `linked:manual-${Date.now()}`,
+        source: 'linked',
+        discordId: payload.discordId,
+        discord: payload.discordUsername || payload.discordId,
+        minecraftUuid: payload.minecraftUuid || null,
+        minecraft: payload.minecraftName,
+        badge: payload.badge,
+        badgeValue: payload.badge.toLowerCase().replaceAll(' ', '-'),
+        status: payload.status,
+        sourceStatus: payload.status === 'Banned' ? 'banned' : payload.status === 'Denied' ? 'denied' : payload.status === 'Review' ? 'review' : 'active',
+        hearts: null,
+        risk: payload.status === 'Review' || payload.status === 'Banned' ? 'high' : 'low',
+        updatedAt: Date.now(),
+        applicationCode: null,
+        application: null,
+      }
+      replacePlayers([demoPlayer, ...items])
+      setManualOpen(false)
+      setManualForm({ discordId: '', discordUsername: '', minecraftName: '', minecraftUuid: '', badge: 'Player', status: 'Registered' })
+      setManualState('idle')
+      return
+    }
+    try {
+      const response = await createAdminPlayer(payload)
+      replacePlayers(response.players)
+      setManualOpen(false)
+      setManualForm({ discordId: '', discordUsername: '', minecraftName: '', minecraftUuid: '', badge: 'Player', status: 'Registered' })
+    } catch (actionError) {
+      setError(actionError instanceof AdminApiError ? actionError.message : 'Could not add player manually.')
+    } finally {
+      setManualState('idle')
+    }
+  }
+
   const visible = items.filter((player) => {
     const matchesQuery = !query.trim() || [player.minecraft, player.discord].some((value) => value.toLowerCase().includes(query.toLowerCase()))
     return matchesQuery && (status === 'All' || player.status === status)
   })
   return (
     <main className="page-workspace">
-      <PageHeader eyebrow="Identity & Access" title="Players" detail="Inspect linked accounts, public state, access status, and saved application context." action={<button className="page-action secondary" disabled={state === 'loading'} onClick={() => loadPlayers()} type="button"><RefreshCw size={16} />Refresh</button>} />
+      <PageHeader eyebrow="Identity & Access" title="Players" detail="Inspect linked accounts, public state, access status, and saved application context." action={<div className="page-actions"><button className="page-action" onClick={() => setManualOpen(true)} type="button"><UserPlus size={16} />Add player</button><button className="page-action secondary" disabled={state === 'loading'} onClick={() => loadPlayers()} type="button"><RefreshCw size={16} />Refresh</button></div>} />
       {error && <div className="operations-state error"><FileWarning size={16} /><span>{error}</span></div>}
       <section className="table-toolbar">
         <label className="search-field"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Minecraft or Discord" /></label>
@@ -1583,6 +1640,28 @@ function PlayersPage() {
           )}
         </aside>
       </section>
+      {manualOpen && <div className="modal-layer" role="presentation" onMouseDown={(event) => {
+        if (event.target === event.currentTarget) setManualOpen(false)
+      }}>
+        <section className="admin-modal manual-player-modal" aria-label="Manual player add workflow" role="dialog" aria-modal="true">
+          <header>
+            <div><span className="eyebrow">Manual Roster Add</span><h2>Add Player</h2><p>Create a linked roster entry without an application key.</p></div>
+            <button aria-label="Close manual add" onClick={() => setManualOpen(false)} type="button"><X size={18} /></button>
+          </header>
+          <div className="manual-player-grid">
+            <label><span>Discord ID</span><input value={manualForm.discordId} onChange={(event) => setManualForm((form) => ({ ...form, discordId: event.target.value }))} placeholder="1224803434675572827" /></label>
+            <label><span>Discord name</span><input value={manualForm.discordUsername} onChange={(event) => setManualForm((form) => ({ ...form, discordUsername: event.target.value }))} placeholder="Username or display name" /></label>
+            <label><span>Minecraft name</span><input value={manualForm.minecraftName} onChange={(event) => setManualForm((form) => ({ ...form, minecraftName: event.target.value }))} placeholder="PrimeLuigi" /></label>
+            <label><span>Minecraft UUID</span><input value={manualForm.minecraftUuid} onChange={(event) => setManualForm((form) => ({ ...form, minecraftUuid: event.target.value }))} placeholder="Optional, can be added later" /></label>
+            <label><span>Badge</span><select value={manualForm.badge} onChange={(event) => setManualForm((form) => ({ ...form, badge: event.target.value as AdminPlayerBadge }))}>{playerBadges.map((badge) => <option key={badge} value={badge}>{badge}</option>)}</select></label>
+            <label><span>Status</span><select value={manualForm.status} onChange={(event) => setManualForm((form) => ({ ...form, status: event.target.value as Exclude<AdminPlayerStatus, 'Applied'> }))}>{manualPlayerStatuses.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
+          </div>
+          <footer>
+            <button className="page-action secondary" onClick={() => setManualOpen(false)} type="button">Cancel</button>
+            <button className="page-action" disabled={manualState === 'saving' || !manualForm.discordId.trim() || !manualForm.minecraftName.trim()} onClick={submitManualPlayer} type="button"><UserPlus size={16} />{manualState === 'saving' ? 'Adding...' : 'Add player'}</button>
+          </footer>
+        </section>
+      </div>}
     </main>
   )
 }
@@ -1683,9 +1762,9 @@ function ReviewHeader({ actionsLive, actionLoading, activityVisible, claimLoadin
         {submission.claimedBy && !owned && <span className="claimed-label"><LockKeyhole size={14} />{submission.claimedBy}</span>}
         {owned && !decided && (
           <>
-            <button className="icon-action request" disabled={!actionsLive || actionLoading} onClick={() => onDecide('Waiting on player', 'Staff requested more information in Discord.')} title={actionsLive ? 'Request information' : 'Application approval still uses the Discord command'} type="button"><MessageSquareText size={17} /></button>
-            <button className="icon-action deny" disabled={!actionsLive || actionLoading} onClick={() => onDecide('Denied', 'Submission denied from the admin portal.')} title={actionsLive ? 'Deny' : 'Application denial still uses the Discord command'} type="button"><XCircle size={18} /></button>
-            <button className="approve-button" disabled={!actionsLive || actionLoading} onClick={() => onDecide('Approved', 'Submission resolved from the admin portal.')} title={actionsLive ? 'Resolve' : 'Application approval still uses the Discord command'} type="button"><Check size={17} />Resolve</button>
+            {submission.type !== 'Application' && <button className="icon-action request" disabled={!actionsLive || actionLoading} onClick={() => onDecide('Waiting on player', 'Staff requested more information in Discord.')} title="Request information" type="button"><MessageSquareText size={17} /></button>}
+            <button className="icon-action deny" disabled={!actionsLive || actionLoading} onClick={() => onDecide('Denied', `${submission.type} denied from the admin portal.`)} title="Deny" type="button"><XCircle size={18} /></button>
+            <button className="approve-button" disabled={!actionsLive || actionLoading} onClick={() => onDecide('Approved', `${submission.type} approved from the admin portal.`)} title={submission.type === 'Application' ? 'Approve application' : 'Resolve'} type="button"><Check size={17} />{submission.type === 'Application' ? 'Approve' : 'Resolve'}</button>
           </>
         )}
       </div>
