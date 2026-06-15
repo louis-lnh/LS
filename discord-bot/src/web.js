@@ -1002,7 +1002,27 @@ function savePublicLifestealSnapshot(snapshots, status) {
 }
 
 function publicEvents(limit = 20) {
-  return statements.recentAudit.all(100)
+  const scheduledEvents = (statements.snapshot.get().lifesteal_events ?? [])
+    .filter((event) => event.public && event.status !== 'draft' && event.status !== 'cancelled')
+    .sort((left, right) => left.starts_at - right.starts_at || (left.priority ?? 10) - (right.priority ?? 10))
+    .slice(0, limit)
+    .map((event) => ({
+      id: `lifesteal-event-${event.id}`,
+      source: 'admin_schedule',
+      title: event.title,
+      startsAt: event.starts_at,
+      endsAt: event.ends_at ?? null,
+      type: event.type,
+      reward: event.reward ?? '',
+      objective: event.objective,
+      summary: event.summary,
+      priority: event.priority ?? 10,
+      status: event.status ?? 'scheduled',
+      created_at: event.created_at,
+      updated_at: event.updated_at
+    }));
+
+  const auditEvents = statements.recentAudit.all(100)
     .filter((row) => row.type.startsWith('minecraft.event.'))
     .map((row) => {
       const data = JSON.parse(row.data_json ?? '{}');
@@ -1019,6 +1039,8 @@ function publicEvents(limit = 20) {
       minecraft_name: data.minecraftName ?? null,
       created_at: row.created_at
     }));
+
+  return scheduledEvents.length > 0 ? scheduledEvents : auditEvents;
 }
 
 function saveOverlayLifestealPlayer(snapshots) {

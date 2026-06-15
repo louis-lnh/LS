@@ -149,12 +149,14 @@ function workspaceAccess(member, guild) {
       'lifesteal:review',
       'lifesteal:ticket',
       'lifesteal:players',
+      'lifesteal:events',
       'lifesteal:staff-chat'
     ]
     : [
       'lifesteal:read',
       'lifesteal:review',
       'lifesteal:ticket',
+      'lifesteal:events',
       'lifesteal:staff-chat'
     ];
   return {
@@ -684,6 +686,99 @@ async function adminMinecraftSideEffect({ type, action, run }) {
   }
 }
 
+function normalizeEventText(value, max = 240) {
+  return String(value ?? '').trim().replace(/\s+/g, ' ').slice(0, max);
+}
+
+function normalizeEventStatus(value) {
+  const status = String(value ?? 'scheduled').trim().toLowerCase().replaceAll(' ', '_');
+  return ['draft', 'scheduled', 'live', 'completed', 'cancelled'].includes(status) ? status : null;
+}
+
+function eventTimestamp(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  const parsed = Date.parse(String(value ?? ''));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function eventPriority(value) {
+  const parsed = Number(value ?? 10);
+  return Number.isFinite(parsed) ? Math.max(0, Math.min(99, Math.round(parsed))) : 10;
+}
+
+function normalizeLifestealEventPayload(body, existing = null) {
+  const title = normalizeEventText(body?.title ?? existing?.title, 80);
+  const startsAt = eventTimestamp(body?.startsAt ?? existing?.starts_at);
+  const endsAtRaw = body?.endsAt === '' ? null : body?.endsAt ?? existing?.ends_at ?? null;
+  const endsAt = endsAtRaw === null ? null : eventTimestamp(endsAtRaw);
+  const status = normalizeEventStatus(body?.status ?? existing?.status);
+  const type = normalizeEventText(body?.type ?? existing?.type, 48) || 'Event';
+  const reward = normalizeEventText(body?.reward ?? existing?.reward, 80);
+  const objective = normalizeEventText(body?.objective ?? existing?.objective, 500);
+  const summary = normalizeEventText(body?.summary ?? existing?.summary, 500);
+  const priority = eventPriority(body?.priority ?? existing?.priority);
+  const isPublic = body?.public === undefined ? Boolean(existing?.public ?? true) : Boolean(body.public);
+  const announce = body?.announce === undefined ? Boolean(existing?.announce ?? false) : Boolean(body.announce);
+
+  if (title.length < 2) return { ok: false, error: 'Event title must contain at least 2 characters.' };
+  if (!startsAt) return { ok: false, error: 'Event start time is invalid.' };
+  if (endsAt !== null && (!endsAt || endsAt <= startsAt)) return { ok: false, error: 'Event end time must be after the start time.' };
+  if (!status) return { ok: false, error: 'Event status is invalid.' };
+  if (objective.length < 5) return { ok: false, error: 'Event objective must contain at least 5 characters.' };
+  if (summary.length < 5) return { ok: false, error: 'Event summary must contain at least 5 characters.' };
+
+  return {
+    ok: true,
+    event: { title, startsAt, endsAt, type, reward, objective, summary, priority, status, public: isPublic, announce }
+  };
+}
+
+function serializeLifestealEvent(event) {
+  return {
+    id: event.id,
+    title: event.title,
+    startsAt: event.starts_at,
+    endsAt: event.ends_at ?? null,
+    type: event.type,
+    reward: event.reward ?? '',
+    objective: event.objective,
+    summary: event.summary,
+    priority: event.priority ?? 10,
+    status: event.status ?? 'scheduled',
+    public: Boolean(event.public),
+    announce: Boolean(event.announce),
+    announcementMessageId: event.announcement_message_id ?? null,
+    createdBy: event.created_by,
+    createdAt: event.created_at,
+    updatedBy: event.updated_by,
+    updatedAt: event.updated_at
+  };
+}
+
+function buildAdminLifestealEvents() {
+  const snapshot = statements.snapshot.get();
+  return (snapshot.lifesteal_events ?? [])
+    .map(serializeLifestealEvent)
+    .sort((left, right) => left.startsAt - right.startsAt || left.priority - right.priority || left.id - right.id);
+}
+
+async function announceLifestealEvent(client, event) {
+  if (!config.admin.lifestealEventChannelId || !event.announce) return { ok: false, skipped: true, messageId: null };
+  const channel = await client.channels.fetch(config.admin.lifestealEventChannelId).catch(() => null);
+  if (!channel?.isTextBased?.()) return { ok: false, skipped: true, messageId: null };
+  const unix = Math.floor(event.starts_at / 1000);
+  const sent = await channel.send({
+    content: [
+      `**${event.title}**`,
+      event.summary,
+      `Starts: <t:${unix}:F> (<t:${unix}:R>)`,
+      event.reward ? `Reward: ${event.reward}` : null
+    ].filter(Boolean).join('\n'),
+    allowedMentions: { parse: [] }
+  });
+  return { ok: true, skipped: false, messageId: sent.id };
+}
+
 function compactFields(entries) {
   return entries
     .filter(([, value]) => value !== null && value !== undefined && String(value).trim() !== '')
@@ -1164,6 +1259,106 @@ export function createAdminRouter(client) {
       { name: 'Staff', value: `${req.adminSession.displayName} (${req.adminSession.id})`, inline: true }
     ]);
     return res.json({ ok: true, players: buildAdminPlayers() });
+  });
+
+  router.get('/lifesteal/events', requireAdminSession(client), (req, res) => {
+    if (!req.adminSession.workspaces.includes('lifesteal')) {
+      return res.status(403).json({ ok: false, code: 'ADMIN_WORKSPACE_DENIED', error: 'Lifesteal access required.' });
+    }
+    return res.json({ ok: true, events: buildAdminLifestealEvents(), updatedAt: Date.now() });
+  });
+
+  router.post('/lifesteal/events', requireAdminSession(client), async (req, res) => {
+    if (!req.adminSession.workspaces.includes('lifesteal')) {
+      return res.status(403).json({ ok: false, code: 'ADMIN_WORKSPACE_DENIED', error: 'Lifesteal access required.' });
+    }
+    if (requirePermission(req, res, 'lifesteal:events', 'Event management permission required.')) return;
+
+    const payload = normalizeLifestealEventPayload(req.body);
+    if (!payload.ok) return res.status(400).json({ ok: false, code: 'ADMIN_EVENT_INVALID', error: payload.error });
+    const now = Date.now();
+    let event = statements.createLifestealEvent.run({
+      ...payload.event,
+      createdBy: req.adminSession.id,
+      createdAt: now,
+      updatedBy: req.adminSession.id,
+      updatedAt: now
+    });
+    let announcement = { ok: false, skipped: true, messageId: null };
+    try {
+      announcement = await announceLifestealEvent(client, event);
+      if (announcement.messageId) {
+        event = statements.updateLifestealEvent.run({
+          id: event.id,
+          announcement_message_id: announcement.messageId,
+          updatedBy: req.adminSession.id,
+          updatedAt: Date.now()
+        });
+      }
+    } catch (error) {
+      announcement = { ok: false, skipped: false, messageId: null, error: error.message };
+    }
+    audit('admin.lifesteal_event_created', {
+      discordId: req.adminSession.id,
+      data: { eventId: event.id, title: event.title, startsAt: event.starts_at, announcementOk: announcement.ok }
+    });
+    await staffAuditLog(client, 'Lifesteal Event Created', [
+      { name: 'Event', value: event.title, inline: true },
+      { name: 'Start', value: new Date(event.starts_at).toISOString(), inline: true },
+      { name: 'Staff', value: `${req.adminSession.displayName} (${req.adminSession.id})`, inline: true },
+      announcement.skipped ? { name: 'Announcement', value: 'Skipped or channel not configured.', inline: true } : { name: 'Announcement', value: announcement.ok ? 'Sent' : 'Failed', inline: true }
+    ]);
+    return res.status(201).json({ ok: true, event: serializeLifestealEvent(event), events: buildAdminLifestealEvents(), announcement });
+  });
+
+  router.patch('/lifesteal/events/:eventId', requireAdminSession(client), async (req, res) => {
+    if (!req.adminSession.workspaces.includes('lifesteal')) {
+      return res.status(403).json({ ok: false, code: 'ADMIN_WORKSPACE_DENIED', error: 'Lifesteal access required.' });
+    }
+    if (requirePermission(req, res, 'lifesteal:events', 'Event management permission required.')) return;
+
+    const id = Number(req.params.eventId);
+    const existing = statements.snapshot.get().lifesteal_events.find((event) => event.id === id);
+    if (!existing) return res.status(404).json({ ok: false, code: 'ADMIN_EVENT_NOT_FOUND', error: 'Event not found.' });
+    const payload = normalizeLifestealEventPayload(req.body, existing);
+    if (!payload.ok) return res.status(400).json({ ok: false, code: 'ADMIN_EVENT_INVALID', error: payload.error });
+    const event = statements.updateLifestealEvent.run({
+      id,
+      title: payload.event.title,
+      starts_at: payload.event.startsAt,
+      ends_at: payload.event.endsAt,
+      type: payload.event.type,
+      reward: payload.event.reward,
+      objective: payload.event.objective,
+      summary: payload.event.summary,
+      priority: payload.event.priority,
+      status: payload.event.status,
+      public: payload.event.public,
+      announce: payload.event.announce,
+      updatedBy: req.adminSession.id,
+      updatedAt: Date.now()
+    });
+    audit('admin.lifesteal_event_updated', {
+      discordId: req.adminSession.id,
+      data: { eventId: event.id, title: event.title, startsAt: event.starts_at }
+    });
+    return res.json({ ok: true, event: serializeLifestealEvent(event), events: buildAdminLifestealEvents() });
+  });
+
+  router.delete('/lifesteal/events/:eventId', requireAdminSession(client), async (req, res) => {
+    if (!req.adminSession.workspaces.includes('lifesteal')) {
+      return res.status(403).json({ ok: false, code: 'ADMIN_WORKSPACE_DENIED', error: 'Lifesteal access required.' });
+    }
+    if (requirePermission(req, res, 'lifesteal:events', 'Event management permission required.')) return;
+
+    const id = Number(req.params.eventId);
+    const event = statements.deleteLifestealEvent.run(id);
+    if (!event) return res.status(404).json({ ok: false, code: 'ADMIN_EVENT_NOT_FOUND', error: 'Event not found.' });
+    audit('admin.lifesteal_event_deleted', {
+      discordId: req.adminSession.id,
+      data: { eventId: event.id, title: event.title }
+    });
+    return res.json({ ok: true, events: buildAdminLifestealEvents() });
   });
 
   router.get('/staff-chat/lifesteal', requireAdminSession(client), async (req, res) => {

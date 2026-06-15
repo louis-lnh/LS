@@ -6,6 +6,7 @@ import {
   Ban,
   Bot,
   Building2,
+  CalendarDays,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -24,6 +25,7 @@ import {
   LogOut,
   Menu,
   MessageSquareText,
+  Megaphone,
   Network,
   PanelLeftClose,
   PanelLeftOpen,
@@ -51,12 +53,15 @@ import {
   addAdminSubmissionNote,
   beginDiscordLogin,
   claimAdminSubmission,
+  createAdminLifestealEvent,
   createAdminPlayer,
   decideAdminSubmission,
   demoAdminUser,
   endAdminSession,
+  deleteAdminLifestealEvent,
   deleteAdminPlayer,
   getAdminAudit,
+  getAdminLifestealEvents,
   getAdminPlayers,
   getAdminSubmissions,
   getAdminOverview,
@@ -65,14 +70,17 @@ import {
   getSubmissionTicketActivity,
   sendSubmissionTicketMessage,
   sendLifestealStaffChatMessage,
+  updateAdminLifestealEvent,
   updateAdminPlayer,
   type AdminApiSubmission,
   type AdminAuditPayload,
+  type AdminLifestealEvent,
   type AdminOverview,
   type AdminPlayer,
   type AdminPlayerBadge,
   type AdminPlayerStatus,
   type CreateAdminPlayerPayload,
+  type UpsertAdminLifestealEventPayload,
   type AdminUser,
   type StaffChatMessage,
   type TicketActivityMessage,
@@ -90,6 +98,7 @@ type AdminView =
   | 'lifesteal-overview'
   | 'lifesteal-queue'
   | 'lifesteal-players'
+  | 'lifesteal-events'
   | 'lifesteal-applications'
   | 'lifesteal-appeals'
   | 'lifesteal-reports'
@@ -180,6 +189,7 @@ const viewPaths: Record<AdminView, string> = {
   'lifesteal-overview': '/lifesteal',
   'lifesteal-queue': '/lifesteal/queue',
   'lifesteal-players': '/lifesteal/players',
+  'lifesteal-events': '/lifesteal/events',
   'lifesteal-applications': '/lifesteal/applications',
   'lifesteal-appeals': '/lifesteal/appeals',
   'lifesteal-reports': '/lifesteal/reports',
@@ -196,6 +206,7 @@ function viewFromPath(): AdminView {
   const legacyPaths: Record<string, AdminView> = {
     '/overview': 'lifesteal-overview',
     '/players': 'lifesteal-players',
+    '/events': 'lifesteal-events',
     '/applications': 'lifesteal-applications',
     '/appeals': 'lifesteal-appeals',
     '/reports': 'lifesteal-reports',
@@ -792,6 +803,7 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
       {view === 'global-audit' && <AuditPage audit={auditPayload} state={auditState} submissions={submissions} />}
       {view === 'lifesteal-overview' && <LifestealOverviewPage submissions={submissions} onNavigate={navigate} />}
       {view === 'lifesteal-players' && <PlayersPage />}
+      {view === 'lifesteal-events' && <LifestealEventsPage user={user} />}
       {view === 'lifesteal-staff-chat' && <LifestealStaffChatPage user={user} />}
       {view === 'general-overview' && <ProjectOverviewPage project="General Support" onOpenInbox={() => navigate('general-inbox')} />}
       {view === 'general-inbox' && <WorkspaceInboxPage project="General Support" />}
@@ -992,6 +1004,7 @@ function Sidebar({ active, collapsed, openSubmissionCount, workspace, user, mobi
             <NavButton active={active === 'lifesteal-overview'} icon={<LayoutDashboard size={18} />} label="Overview" onClick={() => onNavigate('lifesteal-overview')} />
             <NavButton active={active === 'lifesteal-queue'} icon={<Inbox size={18} />} label="Review Queue" badge={String(openSubmissionCount)} onClick={() => onNavigate('lifesteal-queue')} />
             <NavButton active={active === 'lifesteal-players'} icon={<Users size={18} />} label="Players" onClick={() => onNavigate('lifesteal-players')} />
+            <NavButton active={active === 'lifesteal-events'} icon={<CalendarDays size={18} />} label="Events" onClick={() => onNavigate('lifesteal-events')} />
             <NavButton active={active === 'lifesteal-staff-chat'} icon={<MessageSquareText size={18} />} label="Staff Chat" onClick={() => onNavigate('lifesteal-staff-chat')} />
           </nav>
           <div className="sidebar-section">
@@ -1196,6 +1209,7 @@ function permissionLabel(permission: string) {
     'lifesteal:review': 'Review Queue',
     'lifesteal:ticket': 'Ticket Messages',
     'lifesteal:players': 'Player Manager',
+    'lifesteal:events': 'Event Manager',
     'lifesteal:staff-chat': 'Staff Chat',
   }
   return labels[permission] ?? permission
@@ -1482,6 +1496,202 @@ function LifestealOverviewPage({ submissions, onNavigate }: { submissions: Submi
             <ActivityRow actor="Support Portal" action="received private report" target="SHD-RPT-M4Q7VN" time="14:35" />
           </div>
         </article>
+      </section>
+    </main>
+  )
+}
+
+const defaultEventForm = {
+  title: 'Event Start',
+  startsAt: '2026-07-01T12:00',
+  endsAt: '',
+  type: 'Server Start',
+  reward: 'Season 1 begins',
+  objective: 'The server opens for the first public Season 1 session.',
+  summary: 'The countdown to Season 1. We are looking forward to starting the server together at this time.',
+  priority: '0',
+  status: 'scheduled' as AdminLifestealEvent['status'],
+  public: true,
+  announce: false,
+}
+
+function inputDateTime(timestamp: number | null) {
+  if (!timestamp) return ''
+  const date = new Date(timestamp)
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+  return local.toISOString().slice(0, 16)
+}
+
+function dateTimeValue(value: string) {
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : Date.now()
+}
+
+function adminEventDate(timestamp: number) {
+  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).format(timestamp)
+}
+
+function adminEventTime(timestamp: number) {
+  return new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }).format(timestamp)
+}
+
+function eventFormFromEvent(event: AdminLifestealEvent) {
+  return {
+    title: event.title,
+    startsAt: inputDateTime(event.startsAt),
+    endsAt: inputDateTime(event.endsAt),
+    type: event.type,
+    reward: event.reward,
+    objective: event.objective,
+    summary: event.summary,
+    priority: String(event.priority),
+    status: event.status,
+    public: event.public,
+    announce: event.announce,
+  }
+}
+
+function eventPayloadFromForm(form: typeof defaultEventForm): UpsertAdminLifestealEventPayload {
+  return {
+    title: form.title.trim(),
+    startsAt: dateTimeValue(form.startsAt),
+    endsAt: form.endsAt ? dateTimeValue(form.endsAt) : null,
+    type: form.type.trim(),
+    reward: form.reward.trim(),
+    objective: form.objective.trim(),
+    summary: form.summary.trim(),
+    priority: Number(form.priority) || 10,
+    status: form.status,
+    public: form.public,
+    announce: form.announce,
+  }
+}
+
+function LifestealEventsPage({ user }: { user: AdminUser }) {
+  const demoEvents: AdminLifestealEvent[] = [
+    { id: 1, title: 'Event Start', startsAt: Date.UTC(2026, 6, 1, 10, 0, 0), endsAt: null, type: 'Server Start', reward: 'Season 1 begins', objective: 'The server opens for the first public Season 1 session.', summary: 'The countdown to Season 1. We are looking forward to starting the server together at this time.', priority: 0, status: 'scheduled', public: true, announce: false, announcementMessageId: null, createdBy: 'demo', createdAt: Date.now(), updatedBy: 'demo', updatedAt: Date.now() },
+    { id: 2, title: 'End Opening', startsAt: Date.UTC(2026, 6, 8, 10, 0, 0), endsAt: null, type: 'End Event', reward: 'Dragon Egg race begins', objective: 'The End opens exactly seven days after server start.', summary: 'The first major objective fight opens the End and begins the race for the Dragon Egg.', priority: 0, status: 'scheduled', public: true, announce: false, announcementMessageId: null, createdBy: 'demo', createdAt: Date.now(), updatedBy: 'demo', updatedAt: Date.now() },
+  ]
+  const canManage = adminDemoMode || user.permissions.includes('lifesteal:events')
+  const [events, setEvents] = useState<AdminLifestealEvent[]>(adminDemoMode ? demoEvents : [])
+  const [selectedId, setSelectedId] = useState<number | null>(adminDemoMode ? demoEvents[0].id : null)
+  const selected = events.find((event) => event.id === selectedId) ?? null
+  const [form, setForm] = useState(defaultEventForm)
+  const [state, setState] = useState<'loading' | 'ready' | 'error'>(adminDemoMode ? 'ready' : 'loading')
+  const [actionState, setActionState] = useState<'idle' | 'saving' | 'deleting'>('idle')
+  const [message, setMessage] = useState('')
+
+  const loadEvents = async (silent = false) => {
+    if (adminDemoMode) return
+    if (!silent) setState('loading')
+    try {
+      const payload = await getAdminLifestealEvents()
+      setEvents(payload.events)
+      setSelectedId((current) => payload.events.some((event) => event.id === current) ? current : payload.events[0]?.id ?? null)
+      setState('ready')
+    } catch (error) {
+      setMessage(error instanceof AdminApiError ? error.message : 'Could not load events.')
+      setState('error')
+    }
+  }
+
+  useEffect(() => {
+    loadEvents()
+    if (adminDemoMode) return
+    const timer = window.setInterval(() => loadEvents(true), 15_000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
+    setForm(selected ? eventFormFromEvent(selected) : defaultEventForm)
+  }, [selectedId])
+
+  const update = <K extends keyof typeof defaultEventForm>(key: K, value: (typeof defaultEventForm)[K]) => {
+    setForm((current) => ({ ...current, [key]: value }))
+  }
+
+  const save = async () => {
+    if (!canManage || actionState !== 'idle') return
+    setActionState('saving')
+    setMessage('')
+    const payload = eventPayloadFromForm(form)
+    if (adminDemoMode) {
+      const nextEvent: AdminLifestealEvent = { id: selected?.id ?? Date.now(), ...payload, endsAt: payload.endsAt ?? null, reward: payload.reward ?? '', announcementMessageId: null, createdBy: user.id, createdAt: selected?.createdAt ?? Date.now(), updatedBy: user.id, updatedAt: Date.now() }
+      setEvents((current) => selected ? current.map((event) => event.id === selected.id ? nextEvent : event) : [...current, nextEvent].sort((left, right) => left.startsAt - right.startsAt || left.priority - right.priority))
+      setSelectedId(nextEvent.id)
+      setMessage('Event saved in demo mode.')
+      setActionState('idle')
+      return
+    }
+    try {
+      const response = selected ? await updateAdminLifestealEvent(selected.id, payload) : await createAdminLifestealEvent(payload)
+      setEvents(response.events)
+      setSelectedId(response.event.id)
+      setMessage(selected ? 'Event updated.' : 'Event created.')
+    } catch (error) {
+      setMessage(error instanceof AdminApiError ? error.message : 'Could not save event.')
+    } finally {
+      setActionState('idle')
+    }
+  }
+
+  const remove = async () => {
+    if (!selected || !canManage || actionState !== 'idle') return
+    setActionState('deleting')
+    setMessage('')
+    if (adminDemoMode) {
+      setEvents((current) => current.filter((event) => event.id !== selected.id))
+      setSelectedId(null)
+      setMessage('Event deleted in demo mode.')
+      setActionState('idle')
+      return
+    }
+    try {
+      const response = await deleteAdminLifestealEvent(selected.id)
+      setEvents(response.events)
+      setSelectedId(response.events[0]?.id ?? null)
+      setMessage('Event deleted.')
+    } catch (error) {
+      setMessage(error instanceof AdminApiError ? error.message : 'Could not delete event.')
+    } finally {
+      setActionState('idle')
+    }
+  }
+
+  return (
+    <main className="page-workspace">
+      <PageHeader eyebrow="Season Operations" title="Events" detail="Create public Lifesteal schedule entries that publish to the website and can optionally announce in Discord." action={<div className="page-actions"><button className="page-action" disabled={!canManage} onClick={() => { setSelectedId(null); setForm(defaultEventForm); setMessage('') }} type="button"><CalendarDays size={16} />New event</button><button className="page-action secondary" disabled={state === 'loading'} onClick={() => loadEvents()} type="button"><RefreshCw size={16} />Refresh</button></div>} />
+      <section className="event-admin-layout">
+        <div className="event-admin-list">
+          {state === 'loading' && <div className="empty-state"><Activity /><strong>Loading events...</strong></div>}
+          {state === 'error' && <div className="empty-state error"><FileWarning /><strong>Could not load events</strong></div>}
+          {events.map((event) => (
+            <button className={selectedId === event.id ? 'active' : ''} key={event.id} onClick={() => setSelectedId(event.id)} type="button">
+              <span className={`event-admin-status ${event.status}`}>{event.status}</span>
+              <strong>{event.title}</strong>
+              <small>{adminEventDate(event.startsAt)} · {adminEventTime(event.startsAt)} · {event.type}</small>
+            </button>
+          ))}
+          {state !== 'loading' && events.length === 0 && <div className="empty-state"><CalendarDays /><strong>No events yet</strong><span>Create the first schedule entry.</span></div>}
+        </div>
+        <section className="event-editor">
+          <header><div><span className="eyebrow">{selected ? `Editing #${selected.id}` : 'New Event'}</span><h2>{selected ? selected.title : 'Create Event'}</h2></div><span className="health-label"><Megaphone size={14} />{form.announce ? 'Announce' : 'Website only'}</span></header>
+          <div className="event-editor-grid">
+            <label><span>Title</span><input value={form.title} onChange={(event) => update('title', event.target.value)} /></label>
+            <label><span>Type</span><input value={form.type} onChange={(event) => update('type', event.target.value)} /></label>
+            <label><span>Start</span><input type="datetime-local" value={form.startsAt} onChange={(event) => update('startsAt', event.target.value)} /></label>
+            <label><span>End optional</span><input type="datetime-local" value={form.endsAt} onChange={(event) => update('endsAt', event.target.value)} /></label>
+            <label><span>Reward</span><input value={form.reward} onChange={(event) => update('reward', event.target.value)} /></label>
+            <label><span>Priority</span><input min="0" max="99" type="number" value={form.priority} onChange={(event) => update('priority', event.target.value)} /></label>
+            <label><span>Status</span><select value={form.status} onChange={(event) => update('status', event.target.value as AdminLifestealEvent['status'])}><option value="draft">Draft</option><option value="scheduled">Scheduled</option><option value="live">Live</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option></select></label>
+            <label className="event-toggle"><input checked={form.public} onChange={(event) => update('public', event.target.checked)} type="checkbox" /><span>Publish on website</span></label>
+            <label className="event-toggle"><input checked={form.announce} onChange={(event) => update('announce', event.target.checked)} type="checkbox" /><span>Send Discord announcement on create</span></label>
+          </div>
+          <label className="event-editor-wide"><span>Summary</span><textarea value={form.summary} onChange={(event) => update('summary', event.target.value)} /></label>
+          <label className="event-editor-wide"><span>Objective</span><textarea value={form.objective} onChange={(event) => update('objective', event.target.value)} /></label>
+          {message && <p className={message.includes('Could not') || message.includes('permission') ? 'form-message error' : 'form-message'}>{message}</p>}
+          <footer><button className="page-action" disabled={!canManage || actionState === 'saving'} onClick={save} type="button"><Check size={16} />{actionState === 'saving' ? 'Saving...' : selected ? 'Update event' : 'Create event'}</button><button className="page-action secondary" disabled={!selected || !canManage || actionState === 'deleting'} onClick={remove} type="button"><Trash2 size={16} />{actionState === 'deleting' ? 'Deleting...' : 'Delete'}</button></footer>
+        </section>
       </section>
     </main>
   )

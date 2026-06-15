@@ -171,6 +171,40 @@ export type CreateAdminPlayerPayload = {
   status: Exclude<AdminPlayerStatus, 'Applied'>
 }
 
+export type AdminLifestealEvent = {
+  id: number
+  title: string
+  startsAt: number
+  endsAt: number | null
+  type: string
+  reward: string
+  objective: string
+  summary: string
+  priority: number
+  status: 'draft' | 'scheduled' | 'live' | 'completed' | 'cancelled'
+  public: boolean
+  announce: boolean
+  announcementMessageId: string | null
+  createdBy: string
+  createdAt: number
+  updatedBy: string
+  updatedAt: number
+}
+
+export type UpsertAdminLifestealEventPayload = {
+  title: string
+  startsAt: number
+  endsAt?: number | null
+  type: string
+  reward?: string
+  objective: string
+  summary: string
+  priority: number
+  status: AdminLifestealEvent['status']
+  public: boolean
+  announce: boolean
+}
+
 type SessionResponse = {
   ok: boolean
   user: AdminUser | null
@@ -202,7 +236,7 @@ export const demoAdminUser: AdminUser = {
   avatarUrl: null,
   role: 'Owner',
   workspaces: ['global', 'lifesteal', 'general', 'valorant'],
-  permissions: ['global:audit', 'integrations:read', 'staff:read', 'staff:manage', 'lifesteal:read', 'lifesteal:review', 'lifesteal:ticket', 'lifesteal:players', 'lifesteal:staff-chat'],
+  permissions: ['global:audit', 'integrations:read', 'staff:read', 'staff:manage', 'lifesteal:read', 'lifesteal:review', 'lifesteal:ticket', 'lifesteal:players', 'lifesteal:events', 'lifesteal:staff-chat'],
   expiresAt: Date.now() + 8 * 60 * 60 * 1000,
 }
 
@@ -366,4 +400,33 @@ export async function deleteAdminPlayer(id: string): Promise<AdminPlayersPayload
     { method: 'DELETE' },
   )
   return { players: response.players, updatedAt: response.updatedAt ?? Date.now() }
+}
+
+export async function getAdminLifestealEvents(): Promise<{ events: AdminLifestealEvent[]; updatedAt: number }> {
+  if (adminDemoMode) return { events: [], updatedAt: Date.now() }
+  const response = await adminRequest<{ ok: boolean; events: AdminLifestealEvent[]; updatedAt?: number }>('/lifesteal/events')
+  return { events: response.events, updatedAt: response.updatedAt ?? Date.now() }
+}
+
+export async function createAdminLifestealEvent(payload: UpsertAdminLifestealEventPayload): Promise<{ events: AdminLifestealEvent[]; event: AdminLifestealEvent }> {
+  const response = await adminRequest<{ ok: boolean; event: AdminLifestealEvent; events: AdminLifestealEvent[] }>('/lifesteal/events', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  return { event: response.event, events: response.events }
+}
+
+export async function updateAdminLifestealEvent(id: number, payload: UpsertAdminLifestealEventPayload): Promise<{ events: AdminLifestealEvent[]; event: AdminLifestealEvent }> {
+  const response = await adminRequest<{ ok: boolean; event: AdminLifestealEvent; events: AdminLifestealEvent[] }>(`/lifesteal/events/${encodeURIComponent(String(id))}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  return { event: response.event, events: response.events }
+}
+
+export async function deleteAdminLifestealEvent(id: number): Promise<{ events: AdminLifestealEvent[] }> {
+  const response = await adminRequest<{ ok: boolean; events: AdminLifestealEvent[] }>(`/lifesteal/events/${encodeURIComponent(String(id))}`, { method: 'DELETE' })
+  return { events: response.events }
 }

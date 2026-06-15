@@ -134,13 +134,31 @@ type RankHistory = {
 }
 
 type EventItem = {
+  id?: string | number
   title: string
   startsAt: number
+  endsAt?: number | null
   priority: number
   type: string
   reward: string
   objective: string
   summary: string
+  status?: string
+}
+
+type PublicApiEvent = {
+  id: string | number
+  title?: string
+  startsAt?: number
+  starts_at?: number
+  endsAt?: number | null
+  type?: string
+  reward?: string
+  objective?: string
+  summary?: string
+  message?: string
+  priority?: number
+  status?: string
 }
 
 type RuleIndexItem = {
@@ -440,6 +458,55 @@ function useLiveData(): LiveData {
   }, [])
 
   return liveData
+}
+
+function publicEventFromApi(event: PublicApiEvent): EventItem | null {
+  const startsAt = event.startsAt ?? event.starts_at
+  if (!startsAt || !event.title) return null
+  return {
+    id: event.id,
+    title: event.title,
+    startsAt,
+    endsAt: event.endsAt ?? null,
+    priority: event.priority ?? 10,
+    type: event.type ?? 'Event',
+    reward: event.reward ?? '',
+    objective: event.objective ?? event.message ?? event.summary ?? event.title,
+    summary: event.summary ?? event.message ?? event.objective ?? event.title,
+    status: event.status ?? 'scheduled',
+  }
+}
+
+function usePublicEvents() {
+  const [publicEvents, setPublicEvents] = useState<EventItem[]>([])
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    const loadEvents = async () => {
+      try {
+        const response = await fetch(`${publicApiBase}/events`, { cache: 'no-store' })
+        const body = await response.json() as { ok?: boolean; events?: PublicApiEvent[] }
+        const nextEvents = body.ok && Array.isArray(body.events)
+          ? body.events.map(publicEventFromApi).filter((event): event is EventItem => Boolean(event))
+          : []
+        if (!cancelled) {
+          setPublicEvents(nextEvents)
+          setLoaded(true)
+        }
+      } catch {
+        if (!cancelled) setLoaded(true)
+      }
+    }
+    loadEvents()
+    const interval = window.setInterval(loadEvents, 15_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [])
+
+  return { events: publicEvents, loaded }
 }
 
 function isEliminated(player: Player) {
@@ -1658,10 +1725,12 @@ function Objective({ title, owner, detail }: { title: string; owner: string; det
 
 function EventsPage() {
   const [now, setNow] = useState(() => Date.now())
-  const upcomingEvents = [...events]
+  const liveEvents = usePublicEvents()
+  const scheduleEvents = liveEvents.events.length > 0 ? liveEvents.events : events
+  const upcomingEvents = [...scheduleEvents]
     .filter((event) => event.startsAt >= now)
     .sort((first, second) => first.startsAt - second.startsAt || first.priority - second.priority)
-  const featuredEvent = upcomingEvents[0] ?? [...events].sort((first, second) => second.startsAt - first.startsAt || first.priority - second.priority)[0]
+  const featuredEvent = upcomingEvents[0] ?? [...scheduleEvents].sort((first, second) => second.startsAt - first.startsAt || first.priority - second.priority)[0]
   const eventVisibleItems = Math.max(1, Math.min(4, upcomingEvents.length))
   const eventPanelHeight = `${7.2 + eventVisibleItems * 8.35 + Math.max(0, eventVisibleItems - 1) * 0.8}rem`
   const nextEventCountdown = featuredEvent ? countdownTo(featuredEvent.startsAt) : 'Season live'
@@ -1694,14 +1763,14 @@ function EventsPage() {
           <EventMeta label="Next Event In" value={nextEventCountdown} />
           <EventMeta label="Upcoming" value={String(upcomingEvents.length)} />
           <EventMeta label="Completed" value="-" />
-          <EventMeta label="Season Phase" value="Pre-End" />
+          <EventMeta label="Source" value={liveEvents.events.length > 0 ? 'Live Schedule' : liveEvents.loaded ? 'Launch Plan' : 'Loading'} />
         </div>
         <div className="event-board event-board-single" style={{ '--event-panel-height': eventPanelHeight } as React.CSSProperties}>
           <section className="event-timeline">
             <span className="event-section-label">Upcoming Schedule</span>
             <div className="event-scroll-list">
               {upcomingEvents.map((event) => (
-                <article className="timeline-event" key={event.title}>
+                <article className="timeline-event" key={event.id ?? event.title}>
                   <div className="timeline-marker" />
                   <div className="timeline-date">
                     <strong>{eventDate(event.startsAt)}</strong>

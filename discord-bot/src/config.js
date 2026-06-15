@@ -139,6 +139,7 @@ export const config = {
     clientSecret: process.env.DISCORD_CLIENT_SECRET ?? '',
     sessionSecret: process.env.ADMIN_SESSION_SECRET ?? '',
     lifestealStaffChannelId: process.env.ADMIN_LIFESTEAL_STAFF_CHANNEL_ID ?? '',
+    lifestealEventChannelId: process.env.ADMIN_LIFESTEAL_EVENT_CHANNEL_ID ?? '',
     ownerIds: (process.env.ADMIN_OWNER_IDS ?? '1224803434675572827')
       .split(',')
       .map((value) => value.trim())

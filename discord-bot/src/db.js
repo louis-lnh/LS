@@ -19,6 +19,7 @@ const initialState = {
   support_rule_acknowledgements: [],
   support_applications: [],
   support_submissions: [],
+  lifesteal_events: [],
   appeals: [],
   staff_notes: [],
   shared_ip_exceptions: [],
@@ -52,6 +53,7 @@ const initialState = {
   nextSupportRuleAckId: 1,
   nextSupportApplicationId: 1,
   nextSupportSubmissionId: 1,
+  nextLifestealEventId: 1,
   nextNoteId: 1,
   nextTicketId: 1
 };
@@ -848,6 +850,54 @@ export const statements = {
     run(key, value) {
       state.app_settings[key] = value;
       persist();
+    }
+  },
+  createLifestealEvent: {
+    run(row) {
+      const event = {
+        id: state.nextLifestealEventId++,
+        title: row.title,
+        starts_at: row.startsAt,
+        ends_at: row.endsAt ?? null,
+        type: row.type,
+        reward: row.reward ?? '',
+        objective: row.objective,
+        summary: row.summary,
+        priority: row.priority ?? 10,
+        status: row.status ?? 'scheduled',
+        public: row.public ?? true,
+        announce: row.announce ?? false,
+        announcement_message_id: row.announcementMessageId ?? null,
+        created_by: row.createdBy,
+        created_at: row.createdAt,
+        updated_by: row.updatedBy ?? row.createdBy,
+        updated_at: row.updatedAt ?? row.createdAt
+      };
+      state.lifesteal_events.push(event);
+      persist();
+      return event;
+    }
+  },
+  updateLifestealEvent: {
+    run(row) {
+      const event = state.lifesteal_events.find((item) => item.id === row.id);
+      if (!event) return null;
+      for (const key of ['title', 'starts_at', 'ends_at', 'type', 'reward', 'objective', 'summary', 'priority', 'status', 'public', 'announce', 'announcement_message_id']) {
+        if (row[key] !== undefined) event[key] = row[key];
+      }
+      event.updated_by = row.updatedBy;
+      event.updated_at = row.updatedAt;
+      persist();
+      return event;
+    }
+  },
+  deleteLifestealEvent: {
+    run(id) {
+      const index = state.lifesteal_events.findIndex((event) => event.id === id);
+      if (index === -1) return null;
+      const [event] = state.lifesteal_events.splice(index, 1);
+      persist();
+      return event;
     }
   },
   snapshot: {
