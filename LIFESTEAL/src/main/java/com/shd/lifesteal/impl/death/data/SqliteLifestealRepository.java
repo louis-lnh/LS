@@ -43,11 +43,13 @@ public final class SqliteLifestealRepository implements LifestealRepository {
                         revivals INTEGER NOT NULL DEFAULT 0,
                         heart_gains INTEGER NOT NULL DEFAULT 0,
                         heart_losses INTEGER NOT NULL DEFAULT 0,
+                        mace_kills INTEGER NOT NULL DEFAULT 0,
                         updated_at INTEGER NOT NULL
                     )
                     """);
             ensureColumn(connection, "heart_gains", "INTEGER NOT NULL DEFAULT 0");
             ensureColumn(connection, "heart_losses", "INTEGER NOT NULL DEFAULT 0");
+            ensureColumn(connection, "mace_kills", "INTEGER NOT NULL DEFAULT 0");
             ShdLifestealMod.LOGGER.info("Lifesteal SQLite store ready at {}", databasePath.toAbsolutePath());
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed to initialize lifesteal SQLite store", exception);
@@ -57,7 +59,7 @@ public final class SqliteLifestealRepository implements LifestealRepository {
     @Override
     public Optional<PlayerData> findPlayer(UUID playerId) {
         String sql = """
-                SELECT player_id, hearts, eliminated, kills, deaths, revivals, heart_gains, heart_losses
+                SELECT player_id, hearts, eliminated, kills, deaths, revivals, heart_gains, heart_losses, mace_kills
                 FROM players
                 WHERE player_id = ?
                 """;
@@ -81,7 +83,7 @@ public final class SqliteLifestealRepository implements LifestealRepository {
     @Override
     public List<PlayerData> findPlayers() {
         String sql = """
-                SELECT player_id, hearts, eliminated, kills, deaths, revivals, heart_gains, heart_losses
+                SELECT player_id, hearts, eliminated, kills, deaths, revivals, heart_gains, heart_losses, mace_kills
                 FROM players
                 """;
 
@@ -101,8 +103,8 @@ public final class SqliteLifestealRepository implements LifestealRepository {
     @Override
     public PlayerData savePlayer(PlayerData playerData) {
         String sql = """
-                INSERT INTO players (player_id, hearts, eliminated, kills, deaths, revivals, heart_gains, heart_losses, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO players (player_id, hearts, eliminated, kills, deaths, revivals, heart_gains, heart_losses, mace_kills, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(player_id) DO UPDATE SET
                     hearts = excluded.hearts,
                     eliminated = excluded.eliminated,
@@ -111,6 +113,7 @@ public final class SqliteLifestealRepository implements LifestealRepository {
                     revivals = excluded.revivals,
                     heart_gains = excluded.heart_gains,
                     heart_losses = excluded.heart_losses,
+                    mace_kills = excluded.mace_kills,
                     updated_at = excluded.updated_at
                 """;
 
@@ -124,7 +127,8 @@ public final class SqliteLifestealRepository implements LifestealRepository {
             statement.setInt(6, playerData.revivals());
             statement.setInt(7, playerData.heartGains());
             statement.setInt(8, playerData.heartLosses());
-            statement.setLong(9, System.currentTimeMillis());
+            statement.setInt(9, playerData.maceKills());
+            statement.setLong(10, System.currentTimeMillis());
             statement.executeUpdate();
             return playerData;
         } catch (SQLException exception) {
@@ -170,7 +174,8 @@ public final class SqliteLifestealRepository implements LifestealRepository {
                 result.getInt("deaths"),
                 result.getInt("revivals"),
                 result.getInt("heart_gains"),
-                result.getInt("heart_losses")
+                result.getInt("heart_losses"),
+                result.getInt("mace_kills")
         );
     }
 }

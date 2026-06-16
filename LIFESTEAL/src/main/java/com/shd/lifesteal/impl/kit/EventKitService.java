@@ -162,17 +162,6 @@ public final class EventKitService {
                 enchant(Enchantments.EFFICIENCY, 5),
                 enchant(Enchantments.SILK_TOUCH, 1)
         ));
-        ItemStack breachMace = eventMace(tool(context, Items.MACE, unbreakable, List.of(
-                enchant(Enchantments.BREACH, 4),
-                enchant(Enchantments.UNBREAKING, 3),
-                enchant(Enchantments.MENDING, 1)
-        )));
-        ItemStack densityMace = eventMace(tool(context, Items.MACE, unbreakable, List.of(
-                enchant(Enchantments.DENSITY, 5),
-                enchant(Enchantments.WIND_BURST, 1),
-                enchant(Enchantments.UNBREAKING, 3),
-                enchant(Enchantments.MENDING, 1)
-        )));
         ItemStack bow = tool(context, Items.BOW, unbreakable, List.of(
                 enchant(Enchantments.UNBREAKING, 3),
                 enchant(Enchantments.INFINITY, 1),
@@ -183,7 +172,7 @@ public final class EventKitService {
         ItemStack crossbow = crossbow(context, unbreakable);
         return List.of(
                 sword, empty(), empty(), empty(), empty(), empty(), empty(), empty(), bow,
-                pickaxe, empty(), empty(), breachMace, empty(), densityMace, empty(), empty(), spear,
+                pickaxe, empty(), empty(), empty(), empty(), empty(), empty(), empty(), spear,
                 axe, empty(), empty(), empty(), empty(), empty(), empty(), empty(), crossbow
         );
     }

@@ -6,12 +6,15 @@ import com.shd.lifesteal.impl.heart.DeathResolutionResult;
 import com.shd.lifesteal.impl.heart.HeartService;
 import com.shd.lifesteal.impl.heart.PlayerHeartApplier;
 import com.shd.lifesteal.impl.item.ModItems;
+import com.shd.lifesteal.impl.restriction.MaceLimitRules;
 import com.shd.lifesteal.impl.ui.LifestealSoundService;
 import com.shd.lifesteal.impl.ui.UiBridgeManager;
 import com.shd.lifesteal.impl.ui.UiNotifier;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.item.ItemStack;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
@@ -44,11 +47,29 @@ public final class DeathResolutionService {
     }
 
     public DeathResolutionResult resolve(ServerPlayerEntity victim) {
+        return resolve(victim, null);
+    }
+
+    public DeathResolutionResult resolve(ServerPlayerEntity victim, DamageSource damageSource) {
         Optional<UUID> creditedKiller = combatTagService.recentAttacker(victim.getUuid(), Instant.now());
-        DeathResolutionResult result = heartService.resolveDeath(victim.getUuid(), creditedKiller);
+        boolean trackedMaceKill = isTrackedMaceKill(damageSource, creditedKiller);
+        DeathResolutionResult result = heartService.resolveDeath(victim.getUuid(), creditedKiller, trackedMaceKill);
         combatTagService.clear(victim.getUuid());
         applySideEffects(victim, result);
         return result;
+    }
+
+    private boolean isTrackedMaceKill(DamageSource damageSource, Optional<UUID> creditedKiller) {
+        if (damageSource == null || creditedKiller.isEmpty()) {
+            return false;
+        }
+
+        Entity attacker = damageSource.getAttacker();
+        if (!(attacker instanceof ServerPlayerEntity player) || !creditedKiller.get().equals(player.getUuid())) {
+            return false;
+        }
+
+        return MaceLimitRules.heldTrackedMaceKey(player).isPresent();
     }
 
     private void applySideEffects(ServerPlayerEntity victim, DeathResolutionResult result) {

@@ -6,6 +6,7 @@ import com.shd.lifesteal.ShdLifestealMod;
 import com.shd.lifesteal.api.GracePeriodSnapshot;
 import com.shd.lifesteal.api.GameplayRoleSnapshot;
 import com.shd.lifesteal.impl.config.LifestealConfig;
+import com.shd.lifesteal.impl.dragon.DragonEggGlowHandler;
 import com.shd.lifesteal.impl.heart.HeartService;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -23,15 +24,17 @@ public final class DiscordRoleSyncService {
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
     private final LifestealConfig config;
     private final HeartService heartService;
+    private final DragonEggGlowHandler dragonEggGlowHandler;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(REQUEST_TIMEOUT)
             .build();
     private Instant nextSync = Instant.EPOCH;
     private CompletableFuture<?> pendingSync = CompletableFuture.completedFuture(null);
 
-    public DiscordRoleSyncService(LifestealConfig config, HeartService heartService) {
+    public DiscordRoleSyncService(LifestealConfig config, HeartService heartService, DragonEggGlowHandler dragonEggGlowHandler) {
         this.config = config;
         this.heartService = heartService;
+        this.dragonEggGlowHandler = dragonEggGlowHandler;
     }
 
     public void register() {
@@ -130,7 +133,7 @@ public final class DiscordRoleSyncService {
             player.addProperty("revivalsTotal", snapshot.revivals());
             player.addProperty("heartGains", snapshot.heartGains());
             player.addProperty("heartLosses", snapshot.heartLosses());
-            player.addProperty("maceKills", (Number) null);
+            player.addProperty("maceKills", snapshot.maceKills());
             player.addProperty("hearts", snapshot.hearts());
             player.addProperty("kills", snapshot.kills());
             player.addProperty("deaths", snapshot.deaths());
@@ -139,6 +142,14 @@ public final class DiscordRoleSyncService {
             player.addProperty("twentyHearts", snapshot.twentyHearts());
             player.addProperty("dragonEggHolder", snapshot.dragonEggHolder());
             player.addProperty("maceWielder", snapshot.maceWielder());
+            player.addProperty("maceIdentity", snapshot.maceIdentity());
+            dragonEggGlowHandler.glowExpiresAt(snapshot.playerId()).ifPresentOrElse(expiresAt -> {
+                player.addProperty("dragonEggGlowExpiresAt", expiresAt.toString());
+                player.addProperty("dragonEggGlowRemainingSeconds", Math.max(0L, Duration.between(Instant.now(), expiresAt).toSeconds()));
+            }, () -> {
+                player.addProperty("dragonEggGlowExpiresAt", "");
+                player.addProperty("dragonEggGlowRemainingSeconds", 0L);
+            });
             players.add(player);
         }
         root.add("players", players);

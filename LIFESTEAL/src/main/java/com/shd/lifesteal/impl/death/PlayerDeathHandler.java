@@ -32,7 +32,7 @@ public final class PlayerDeathHandler {
             return;
         }
 
-        deathResolutionService.resolve(player);
+        deathResolutionService.resolve(player, damageSource);
         playGlobalDeathSound(player);
     }
 

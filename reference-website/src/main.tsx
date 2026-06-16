@@ -40,6 +40,8 @@ type Player = {
   deaths: number
   revivals?: number
   maceKills: number | null
+  maceIdentity?: 'M1' | 'M2' | null
+  dragonEggGlowExpiresAt?: string | null
   playtime: string
   status?: string
   move: Move
@@ -76,6 +78,9 @@ type PublicPlayer = {
   revivals_total?: number
   revivals?: number
   mace_kills?: number | null
+  mace_identity?: string | null
+  dragon_egg_glow_expires_at?: string | null
+  dragon_egg_glow_remaining_seconds?: number | null
   playtime?: string
   status?: string | null
   eliminated?: boolean
@@ -89,6 +94,9 @@ type PublicObjectiveHolder = {
   state: 'held' | 'unclaimed'
   data_status?: string | Record<string, string>
   mace_kills?: number | null
+  mace_identity?: string | null
+  glow_expires_at?: string | null
+  glow_remaining_seconds?: number | null
   source_updated_at?: number | null
   updated_at?: number | null
 }
@@ -374,6 +382,7 @@ function publicPlayerToPlayer(player: PublicPlayer, index: number, rankMoves: Ra
   const prestige = [...new Set([...(player.prestige ?? []).filter(isPrestigeBadgeId), ...builtInPrestigeBadges(player)])]
   const status = player.status ?? (player.eliminated ? 'Eliminated' : hearts === 1 ? 'On Last Heart' : undefined)
   const updatedAt = player.source_updated_at ?? player.updated_at
+  const maceIdentity = player.mace_identity === 'M2' ? 'M2' : player.mace_identity === 'M1' ? 'M1' : null
 
   return {
     rank,
@@ -386,6 +395,8 @@ function publicPlayerToPlayer(player: PublicPlayer, index: number, rankMoves: Ra
     deaths: player.deaths_total ?? player.deaths ?? 0,
     revivals: player.revivals_total ?? player.revivals ?? 0,
     maceKills: player.mace_kills ?? null,
+    maceIdentity,
+    dragonEggGlowExpiresAt: player.dragon_egg_glow_expires_at ?? null,
     playtime: player.playtime ?? 'Hidden',
     status,
     move,
@@ -1284,6 +1295,7 @@ function RuleBlockView({ block }: { block: RuleBlock }) {
 function PlayersPage({ liveHealth, liveLoaded, liveObjectives, livePlayers, liveUpdatedAt }: { liveHealth: SyncHealth | null; liveLoaded: boolean; liveObjectives: PublicObjectives | null; livePlayers: Player[]; liveUpdatedAt: number | null }) {
   const [query, setQuery] = useState('')
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null)
+  const [objectiveTick, setObjectiveTick] = useState(() => Date.now())
   const normalizedQuery = query.trim().toLowerCase()
   const players = livePlayers
   const usingLiveObjectives = livePlayers.length > 0 && liveObjectives != null
@@ -1298,9 +1310,15 @@ function PlayersPage({ liveHealth, liveLoaded, liveObjectives, livePlayers, live
   const eliminatedPlayers = players.filter(isEliminated).length
   const activePlayers = players.length - eliminatedPlayers
   const dragonEggOwner = usingLiveObjectives ? liveObjectives?.dragon_egg?.owner ?? null : dragonEggHolder?.name ?? null
+  const dragonGlowExpiresAt = usingLiveObjectives ? liveObjectives?.dragon_egg?.glow_expires_at ?? null : dragonEggHolder?.dragonEggGlowExpiresAt ?? null
+  const dragonGlowExpiryMs = dragonGlowExpiresAt ? Date.parse(dragonGlowExpiresAt) : null
   const dragonEggDetail = usingLiveObjectives
-    ? (liveObjectives?.dragon_egg?.owner ? `Updated ${relativeTime(liveObjectives.dragon_egg.source_updated_at ?? liveObjectives.dragon_egg.updated_at)}` : 'No public holder synced')
-    : (dragonEggHolder ? `Updated ${dragonEggHolder.lastUpdated}` : 'No public holder synced')
+    ? (liveObjectives?.dragon_egg?.owner
+      ? (dragonGlowExpiryMs && dragonGlowExpiryMs > objectiveTick ? `${countdownTo(dragonGlowExpiryMs)} glow remaining` : `Updated ${relativeTime(liveObjectives.dragon_egg.source_updated_at ?? liveObjectives.dragon_egg.updated_at)}`)
+      : 'No public holder synced')
+    : (dragonEggHolder
+      ? (dragonGlowExpiryMs && dragonGlowExpiryMs > objectiveTick ? `${countdownTo(dragonGlowExpiryMs)} glow remaining` : `Updated ${dragonEggHolder.lastUpdated}`)
+      : 'No public holder synced')
   const liveMaces = liveObjectives?.maces ?? []
   const maceOneOwner = usingLiveObjectives ? liveMaces[0]?.owner ?? null : maceWielders[0]?.name ?? null
   const maceTwoOwner = usingLiveObjectives ? liveMaces[1]?.owner ?? null : maceWielders[1]?.name ?? null
@@ -1310,6 +1328,10 @@ function PlayersPage({ liveHealth, liveLoaded, liveObjectives, livePlayers, live
     if (!owner) return 'No public wielder synced'
     return kills == null ? 'Mace kills not synced yet' : `${kills} mace kills`
   }
+  useEffect(() => {
+    const interval = window.setInterval(() => setObjectiveTick(Date.now()), 1000)
+    return () => window.clearInterval(interval)
+  }, [])
   const filteredPlayers = useMemo(() => {
     if (!normalizedQuery) {
       return players

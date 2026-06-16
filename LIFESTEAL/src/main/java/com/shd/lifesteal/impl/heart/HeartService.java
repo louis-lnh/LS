@@ -12,6 +12,7 @@ import com.shd.lifesteal.impl.data.PlayerData;
 import com.shd.lifesteal.impl.elimination.EliminationService;
 import com.shd.lifesteal.impl.grace.GracePeriodService;
 import com.shd.lifesteal.impl.objective.PlayerObjectiveInventoryScanner;
+import com.shd.lifesteal.impl.restriction.MaceLimitRules;
 import com.shd.lifesteal.impl.ui.UiBridgeManager;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -108,7 +109,7 @@ public final class HeartService implements LifestealService {
         return state;
     }
 
-    public DeathResolutionResult resolveDeath(UUID victimId, Optional<UUID> creditedKiller) {
+    public DeathResolutionResult resolveDeath(UUID victimId, Optional<UUID> creditedKiller, boolean creditedKillUsedTrackedMace) {
         PlayerData current = getOrCreate(victimId);
         if (gracePeriodService.snapshot().active()) {
             PlayerData saved = repository.savePlayer(current.withDeathAdded());
@@ -152,10 +153,10 @@ public final class HeartService implements LifestealService {
         if (validKiller.isPresent()) {
             PlayerData killer = getOrCreate(validKiller.get());
             if (killer.hearts() >= config.maxHearts()) {
-                repository.savePlayer(killer.withKillAdded());
+                repository.savePlayer(killer.withKillAdded(creditedKillUsedTrackedMace));
                 dropHeartItem = true;
             } else {
-                PlayerData savedKiller = repository.savePlayer(killer.withKillAdded().withHeartChange(killer.hearts() + 1, true));
+                PlayerData savedKiller = repository.savePlayer(killer.withKillAdded(creditedKillUsedTrackedMace).withHeartChange(killer.hearts() + 1, true));
                 PlayerHeartState killerState = toApiState(savedKiller);
                 uiBridgeManager.onPlayerHeartStateChanged(killerState);
                 killerHeartResult = Optional.of(new HeartChangeResult(
@@ -204,14 +205,17 @@ public final class HeartService implements LifestealService {
                     playerData.revivals(),
                     playerData.heartGains(),
                     playerData.heartLosses(),
+                    playerData.maceKills(),
                     playerData.hearts() >= config.maxHearts(),
                     false,
-                    false
+                    false,
+                    ""
             ));
         }
 
         for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
             PlayerData playerData = getOrCreate(player.getUuid());
+            Optional<String> maceIdentity = MaceLimitRules.carriedTrackedMaceKey(player);
             snapshots.put(player.getUuid(), new GameplayRoleSnapshot(
                     player.getUuid(),
                     playerData.hearts(),
@@ -221,9 +225,11 @@ public final class HeartService implements LifestealService {
                     playerData.revivals(),
                     playerData.heartGains(),
                     playerData.heartLosses(),
+                    playerData.maceKills(),
                     playerData.hearts() >= config.maxHearts(),
                     PlayerObjectiveInventoryScanner.carries(player, Items.DRAGON_EGG),
-                    PlayerObjectiveInventoryScanner.carries(player, Items.MACE)
+                    maceIdentity.isPresent(),
+                    maceIdentity.orElse("")
             ));
         }
 
@@ -235,6 +241,7 @@ public final class HeartService implements LifestealService {
                 playerId,
                 config.startingHearts(),
                 false,
+                0,
                 0,
                 0,
                 0,

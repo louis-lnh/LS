@@ -1,6 +1,7 @@
 package com.shd.lifesteal.mixin;
 
 import com.shd.lifesteal.impl.restriction.DisabledFeatureRules;
+import com.shd.lifesteal.impl.restriction.MaceLimitRules;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.inventory.CraftingResultInventory;
 import net.minecraft.screen.ForgingScreenHandler;
@@ -17,7 +18,7 @@ public abstract class ForgingScreenHandlerMixin {
 
     @Inject(method = "canTakeOutput", at = @At("HEAD"), cancellable = true)
     private void shd$blockRestrictedForgingOutput(PlayerEntity player, boolean present, CallbackInfoReturnable<Boolean> cir) {
-        if (DisabledFeatureRules.isRestrictedOutput(output.getStack(0))) {
+        if (DisabledFeatureRules.isRestrictedOutput(output.getStack(0)) || MaceLimitRules.isCustomMace(output.getStack(0))) {
             cir.setReturnValue(false);
         }
     }

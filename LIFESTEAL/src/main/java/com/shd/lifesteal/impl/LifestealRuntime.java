@@ -95,7 +95,7 @@ public final class LifestealRuntime {
     private final DisabledFeatureHandler disabledFeatureHandler = new DisabledFeatureHandler(combatTagService, uiBridgeManager);
     private final RestrictedStorageHandler restrictedStorageHandler = new RestrictedStorageHandler(modItems);
     private final DragonEggGlowHandler dragonEggGlowHandler = new DragonEggGlowHandler(config);
-    private final DiscordRoleSyncService discordRoleSyncService = new DiscordRoleSyncService(config, heartService);
+    private final DiscordRoleSyncService discordRoleSyncService = new DiscordRoleSyncService(config, heartService, dragonEggGlowHandler);
     private final DragonEggBeaconEffectHandler dragonEggBeaconEffectHandler = new DragonEggBeaconEffectHandler(
             uiBridgeManager,
             configDirectory.resolve("dragon-egg-location.properties")

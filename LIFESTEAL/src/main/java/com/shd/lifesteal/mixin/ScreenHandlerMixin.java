@@ -8,12 +8,12 @@ import com.shd.lifesteal.impl.restriction.MaceLimitRules;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.screen.AbstractCraftingScreenHandler;
 import net.minecraft.screen.ForgingScreenHandler;
+import net.minecraft.screen.GrindstoneScreenHandler;
 import net.minecraft.screen.ScreenHandler;
 import net.minecraft.screen.slot.Slot;
 import net.minecraft.screen.slot.SlotActionType;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -34,19 +34,15 @@ public abstract class ScreenHandlerMixin {
 
         Slot slot = handler.getSlot(slotIndex);
         if (MaceLimitRules.blocksNewMace(slot.getStack(), serverPlayer.getEntityWorld().getServer())) {
-            serverPlayer.sendMessage(Text.literal("Only two maces may exist at a time."), true);
+            serverPlayer.sendMessage(Text.literal("Maces are event-only custom items."), true);
             ci.cancel();
             return;
         }
 
-        MaceLimitRules.CraftedMaceResult craftedMace = MaceLimitRules.markCraftedMace(
-                slot.getStack(),
-                serverPlayer.getEntityWorld().getServer(),
-                "crafted by " + serverPlayer.getName().getString(),
-                serverPlayer
-        );
-        if (craftedMace.created()) {
-            announceCraftedMace(serverPlayer, craftedMace.activeCount());
+        if (MaceLimitRules.isCustomMace(slot.getStack())) {
+            serverPlayer.sendMessage(Text.literal("Event maces cannot be modified."), true);
+            ci.cancel();
+            return;
         }
 
         if (slot.getStack().getItem() instanceof HeartItem) {
@@ -73,18 +69,6 @@ public abstract class ScreenHandlerMixin {
                 .orElse(false);
     }
 
-    private void announceCraftedMace(ServerPlayerEntity player, int activeCount) {
-        String playerName = player.getName().getString();
-        String message = activeCount >= MaceLimitRules.MAX_MACES
-                ? playerName + " acquired the second Mace. Maces are no longer craftable!"
-                : playerName + " acquired one Mace. " + Math.max(1, activeCount) + "/" + MaceLimitRules.MAX_MACES + " crafted.";
-        player.getEntityWorld()
-                .getServer()
-                .getPlayerManager()
-                .getPlayerList()
-                .forEach(onlinePlayer -> onlinePlayer.sendMessage(Text.literal(message).formatted(Formatting.GOLD), false));
-    }
-
     private boolean isCraftedHeartBlocked(ServerPlayerEntity player, LifestealService service) {
         if (service.gracePeriod().active()) {
             return true;
@@ -102,6 +86,9 @@ public abstract class ScreenHandlerMixin {
         }
         if (handler instanceof ForgingScreenHandler forgingHandler) {
             return forgingHandler.getResultSlotIndex() == slotIndex;
+        }
+        if (handler instanceof GrindstoneScreenHandler) {
+            return slotIndex == 2;
         }
         return false;
     }

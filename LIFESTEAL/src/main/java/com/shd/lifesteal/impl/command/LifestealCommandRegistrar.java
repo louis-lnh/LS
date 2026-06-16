@@ -3,6 +3,7 @@ package com.shd.lifesteal.impl.command;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.shd.lifesteal.api.HeartChangeReason;
@@ -20,6 +21,7 @@ import com.shd.lifesteal.impl.kit.EventKitService;
 import com.shd.lifesteal.impl.player.ResolvedPlayer;
 import com.shd.lifesteal.impl.player.WhitelistPlayerResolver;
 import com.shd.lifesteal.impl.player.WhitelistedPlayerArgumentType;
+import com.shd.lifesteal.impl.restriction.MaceLimitRules;
 import com.shd.lifesteal.impl.ui.LifestealSoundService;
 import com.shd.lifesteal.impl.ui.LifestealUiSettings;
 import com.shd.lifesteal.impl.ui.TimeText;
@@ -169,6 +171,10 @@ public final class LifestealCommandRegistrar {
                         .then(CommandManager.literal("resume")
                                 .requires(CommandManager.requirePermissionLevel(CommandManager.GAMEMASTERS_CHECK))
                                 .executes(context -> resumeEvent(context.getSource()))))
+                .then(CommandManager.literal("mace")
+                        .requires(CommandManager.requirePermissionLevel(CommandManager.OWNERS_CHECK))
+                        .then(maceCommand(MaceLimitRules.MACE_ONE))
+                        .then(maceCommand(MaceLimitRules.MACE_TWO)))
                 .then(CommandManager.literal("kit")
                         .requires(CommandManager.requirePermissionLevel(CommandManager.OWNERS_CHECK))
                         .then(CommandManager.literal("Wemmbu")
@@ -348,6 +354,26 @@ public final class LifestealCommandRegistrar {
                 ));
     }
 
+    private LiteralArgumentBuilder<ServerCommandSource> maceCommand(String key) {
+        return CommandManager.literal(key)
+                .executes(context -> giveMace(context.getSource(), key, null, false))
+                .then(playerArgument("player")
+                        .executes(context -> giveMace(
+                                context.getSource(),
+                                key,
+                                WhitelistedPlayerArgumentType.getPlayer(context, "player", playerResolver),
+                                false
+                        ))
+                        .then(CommandManager.argument("trackable", StringArgumentType.word())
+                                .suggests((context, builder) -> CommandSource.suggestMatching(java.util.List.of("yes", "no"), builder))
+                                .executes(context -> giveMace(
+                                        context.getSource(),
+                                        key,
+                                        WhitelistedPlayerArgumentType.getPlayer(context, "player", playerResolver),
+                                        trackableArgument(StringArgumentType.getString(context, "trackable"))
+                                ))));
+    }
+
     private int statusSelf(ServerCommandSource source) throws CommandSyntaxException {
         ServerPlayerEntity player = source.getPlayerOrThrow();
         return status(source, new ResolvedPlayer(
@@ -372,6 +398,37 @@ public final class LifestealCommandRegistrar {
                 state.eliminated() ? " and is eliminated" : ""
         ) + combatText), false);
         return state.hearts();
+    }
+
+    private int giveMace(ServerCommandSource source, String key, ResolvedPlayer target, boolean trackable) throws CommandSyntaxException {
+        ServerPlayerEntity recipient = target == null
+                ? source.getPlayerOrThrow()
+                : target.onlinePlayer().orElse(null);
+        if (recipient == null) {
+            source.sendError(Text.literal("Target player must be online to receive an event mace."));
+            return 0;
+        }
+
+        String normalizedKey = MaceLimitRules.normalizeMaceKey(key).orElse(key);
+        ItemStack mace = MaceLimitRules.createEventMace(
+                source.getRegistryManager(),
+                normalizedKey,
+                trackable,
+                "issued by " + source.getName() + " to " + recipient.getName().getString(),
+                recipient
+        );
+        recipient.giveOrDropStack(mace);
+        source.sendFeedback(() -> Text.literal("Gave %s to %s%s.".formatted(
+                normalizedKey,
+                recipient.getName().getString(),
+                trackable ? " and marked it as tracked" : ""
+        )), true);
+        return 1;
+    }
+
+    private boolean trackableArgument(String value) {
+        String normalized = value == null ? "" : value.trim().toLowerCase(java.util.Locale.ROOT);
+        return normalized.equals("yes") || normalized.equals("true") || normalized.equals("trackable");
     }
 
     private String attackerName(ServerCommandSource source, CombatTagSnapshot snapshot) {

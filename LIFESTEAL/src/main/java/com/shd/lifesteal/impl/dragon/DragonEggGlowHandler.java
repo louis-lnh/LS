@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
@@ -32,6 +33,11 @@ public final class DragonEggGlowHandler {
             lastCarrying.remove(playerId);
             glowExpiresAt.remove(playerId);
         });
+    }
+
+    public Optional<Instant> glowExpiresAt(UUID playerId) {
+        return Optional.ofNullable(glowExpiresAt.get(playerId))
+                .filter(expiresAt -> expiresAt.isAfter(Instant.now()));
     }
 
     private void tick(MinecraftServer server) {

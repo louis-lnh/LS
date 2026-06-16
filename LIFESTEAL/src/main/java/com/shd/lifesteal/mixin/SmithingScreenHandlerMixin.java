@@ -1,6 +1,7 @@
 package com.shd.lifesteal.mixin;
 
 import com.shd.lifesteal.impl.restriction.DisabledFeatureRules;
+import com.shd.lifesteal.impl.restriction.MaceLimitRules;
 import net.minecraft.inventory.CraftingResultInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.screen.SmithingScreenHandler;
@@ -14,7 +15,7 @@ public abstract class SmithingScreenHandlerMixin {
     @Inject(method = "updateResult", at = @At("RETURN"))
     private void shd$clearRestrictedSmithingOutput(CallbackInfo ci) {
         CraftingResultInventory output = ((ForgingScreenHandlerAccessor) (Object) this).shd$getOutput();
-        if (DisabledFeatureRules.isRestrictedOutput(output.getStack(0))) {
+        if (DisabledFeatureRules.isRestrictedOutput(output.getStack(0)) || MaceLimitRules.isCustomMace(output.getStack(0))) {
             output.setStack(0, ItemStack.EMPTY);
         }
     }

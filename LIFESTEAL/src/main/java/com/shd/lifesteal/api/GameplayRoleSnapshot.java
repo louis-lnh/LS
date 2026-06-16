@@ -11,8 +11,10 @@ public record GameplayRoleSnapshot(
         int revivals,
         int heartGains,
         int heartLosses,
+        int maceKills,
         boolean twentyHearts,
         boolean dragonEggHolder,
-        boolean maceWielder
+        boolean maceWielder,
+        String maceIdentity
 ) {
 }

@@ -39,6 +39,9 @@ const gameplayRoleSnapshotSchema = z.object({
   heartGains: z.number().int().min(0).nullable().optional(),
   heartLosses: z.number().int().min(0).nullable().optional(),
   maceKills: z.number().int().min(0).nullable().optional(),
+  maceIdentity: z.string().max(20).optional(),
+  dragonEggGlowExpiresAt: z.string().max(80).optional(),
+  dragonEggGlowRemainingSeconds: z.number().int().min(0).nullable().optional(),
   playtimeSeconds: z.number().int().min(0).optional(),
   eliminated: z.boolean().default(false),
   twentyHearts: z.boolean().default(false),
@@ -136,7 +139,7 @@ const publicEventTypes = new Set([
   'event'
 ]);
 
-const publicSchemaVersion = 2;
+const publicSchemaVersion = 3;
 const verificationFaviconPath = join(process.cwd(), '..', 'reference-website', 'public', 'heart.png');
 const publicSeason = {
   id: 'season-1',
@@ -525,6 +528,18 @@ function fieldStatus(value, available = true) {
   return available && value != null ? 'synced' : 'unavailable';
 }
 
+function normalizeMaceIdentity(value) {
+  const normalized = String(value ?? '').trim().toUpperCase();
+  return ['M1', 'M2'].includes(normalized) ? normalized : null;
+}
+
+function normalizeIsoDate(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  const time = Date.parse(text);
+  return Number.isFinite(time) ? new Date(time).toISOString() : null;
+}
+
 function publicStatusFromSync(status, updatedAt) {
   return {
     online_players: status?.onlinePlayers ?? null,
@@ -550,7 +565,8 @@ function publicPlayersFromSnapshots(snapshots, updatedAt) {
 
     const prestige = linkedPrestigeBadges(linked);
     if (snapshot.dragonEggHolder) prestige.push('dragon-egg');
-    if (snapshot.maceWielder) prestige.push('mace-1');
+    const maceIdentity = normalizeMaceIdentity(snapshot.maceIdentity);
+    if (snapshot.maceWielder) prestige.push(maceIdentity === 'M2' ? 'mace-2' : 'mace-1');
 
     const hearts = snapshot.heartsCurrent ?? snapshot.hearts ?? null;
     const heartGains = snapshot.heartGains ?? null;
@@ -569,10 +585,13 @@ function publicPlayersFromSnapshots(snapshots, updatedAt) {
       deaths_total: deaths,
       revivals_total: revivals,
       mace_kills: maceKills,
+      mace_identity: maceIdentity,
       playtime: formatPlaytime(snapshot.playtimeSeconds),
       eliminated: snapshot.eliminated,
       twenty_hearts: snapshot.twentyHearts,
       dragon_egg_holder: snapshot.dragonEggHolder,
+      dragon_egg_glow_expires_at: normalizeIsoDate(snapshot.dragonEggGlowExpiresAt),
+      dragon_egg_glow_remaining_seconds: snapshot.dragonEggGlowRemainingSeconds ?? null,
       mace_wielder: snapshot.maceWielder,
       prestige: [...new Set(prestige)],
       status: snapshot.eliminated
@@ -652,10 +671,13 @@ function publicPlayersWithApplications(snapshot) {
         deaths_total: 0,
         revivals_total: 0,
         mace_kills: null,
+        mace_identity: null,
         playtime: 'Hidden',
         eliminated: false,
         twenty_hearts: false,
         dragon_egg_holder: false,
+        dragon_egg_glow_expires_at: null,
+        dragon_egg_glow_remaining_seconds: null,
         mace_wielder: false,
         prestige,
         status: publicRosterStatusFromLinked(linked) ?? 'Registered',
@@ -693,10 +715,13 @@ function publicPlayersWithApplications(snapshot) {
       deaths_total: 0,
       revivals_total: 0,
       mace_kills: null,
+      mace_identity: null,
       playtime: 'Hidden',
       eliminated: false,
       twenty_hearts: false,
       dragon_egg_holder: false,
+      dragon_egg_glow_expires_at: null,
+      dragon_egg_glow_remaining_seconds: null,
       mace_wielder: false,
       prestige: [],
       status: 'Applied',
@@ -787,24 +812,27 @@ function publicObjectivesFromPlayers(players, updatedAt) {
       owner: dragonEggHolder?.name ?? null,
       owner_minecraft_uuid: dragonEggHolder?.minecraft_uuid ?? null,
       state: dragonEggHolder ? 'held' : 'unclaimed',
+      glow_expires_at: dragonEggHolder?.dragon_egg_glow_expires_at ?? null,
+      glow_remaining_seconds: dragonEggHolder?.dragon_egg_glow_remaining_seconds ?? null,
       data_status: 'synced',
       source_updated_at: updatedAt,
       updated_at: updatedAt
     },
-    maces: [0, 1].map((index) => {
-      const holder = maceWielders[index] ?? null;
+    maces: ['M1', 'M2'].map((identity, index) => {
+      const holder = maceWielders.find((player) => player.mace_identity === identity) ?? null;
       return {
         id: `mace_${index + 1}`,
-        title: `Mace ${index + 1}`,
+        title: identity === 'M2' ? 'Mace Two' : 'Mace One',
         owner: holder?.name ?? null,
         owner_minecraft_uuid: holder?.minecraft_uuid ?? null,
         state: holder ? 'held' : 'unclaimed',
-        mace_identity_status: 'unavailable',
+        mace_identity: identity,
+        mace_identity_status: holder ? 'synced' : 'unavailable',
         mace_kills: holder?.mace_kills ?? null,
         data_status: {
           holder: holder ? 'synced' : 'unavailable',
-          mace_identity: 'unavailable',
-          mace_kills: 'unavailable'
+          mace_identity: holder ? 'synced' : 'unavailable',
+          mace_kills: fieldStatus(holder?.mace_kills)
         },
         source_updated_at: updatedAt,
         updated_at: updatedAt
@@ -831,6 +859,8 @@ function normalizePublicPlayer(player, fallbackUpdatedAt) {
   const deaths = player.deaths_total ?? player.deaths ?? 0;
   const revivals = player.revivals_total ?? player.revivals ?? 0;
   const maceKills = player.mace_kills ?? null;
+  const maceIdentity = normalizeMaceIdentity(player.mace_identity);
+  const dragonEggGlowExpiresAt = normalizeIsoDate(player.dragon_egg_glow_expires_at);
 
   return {
     ...player,
@@ -841,6 +871,9 @@ function normalizePublicPlayer(player, fallbackUpdatedAt) {
     deaths_total: deaths,
     revivals_total: revivals,
     mace_kills: maceKills,
+    mace_identity: maceIdentity,
+    dragon_egg_glow_expires_at: dragonEggGlowExpiresAt,
+    dragon_egg_glow_remaining_seconds: player.dragon_egg_glow_remaining_seconds ?? null,
     data_status: {
       hearts_current: fieldStatus(hearts),
       heart_gains: fieldStatus(heartGains),
