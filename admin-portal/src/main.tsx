@@ -1216,41 +1216,264 @@ function permissionLabel(permission: string) {
   return labels[permission] ?? permission
 }
 
+type StaffWorkspaceId = 'global' | 'lifesteal' | 'general' | 'valorant'
+type StaffDirectoryMember = {
+  id: string
+  name: string
+  discord: string
+  discordId: string
+  role: string
+  workspaces: StaffWorkspaceId[]
+  permissions: string[]
+  status: 'Active' | 'Limited' | 'Invite pending' | 'Review'
+  trust: 'Full' | 'Scoped' | 'Pending'
+  source: string
+  lastActive: number
+  notes: string
+}
+
+const workspaceMeta: Record<StaffWorkspaceId, { label: string; detail: string; icon: ReactNode }> = {
+  global: { label: 'Global', detail: 'Audit, staff access, integrations', icon: <Building2 size={16} /> },
+  lifesteal: { label: 'Lifesteal', detail: 'Minecraft reviews, players, events', icon: <Gamepad2 size={16} /> },
+  general: { label: 'General', detail: 'SHD-wide support workspace', icon: <Headphones size={16} /> },
+  valorant: { label: 'Valorant', detail: 'Competitive support workspace', icon: <Crosshair size={16} /> },
+}
+
+const rolePolicies = [
+  { role: 'Owner', detail: 'Full platform ownership across every workspace.', permissions: ['global:audit', 'staff:manage', 'lifesteal:review', 'lifesteal:players', 'lifesteal:events'] },
+  { role: 'Admin', detail: 'Operational control without owner-only staff changes.', permissions: ['global:audit', 'lifesteal:review', 'lifesteal:players', 'lifesteal:events'] },
+  { role: 'Mod', detail: 'Queue work, ticket responses, reports, and player support.', permissions: ['lifesteal:review', 'lifesteal:ticket', 'lifesteal:staff-chat'] },
+  { role: 'SHD Team', detail: 'Scoped helper access for project-specific operations.', permissions: ['lifesteal:read', 'lifesteal:staff-chat'] },
+]
+
 function StaffAccessPage({ user }: { user: AdminUser }) {
-  const staff = [
-    { name: 'PrimeLuigi', discord: '@primeluigi', role: 'Owner', scopes: ['Global', 'Lifesteal', 'General', 'Valorant'], state: 'Active' },
-    { name: 'TlzMax5454', discord: '@tlzmax5454', role: 'SHD Team', scopes: ['Lifesteal'], state: 'Active' },
-    { name: 'xvoidism', discord: '@voidism', role: 'SHD Team', scopes: ['Lifesteal'], state: 'Active' },
-  ]
+  const staff = useMemo<StaffDirectoryMember[]>(() => {
+    const currentWorkspaces = user.workspaces.filter((workspace): workspace is StaffWorkspaceId => workspace in workspaceMeta)
+    return [
+      {
+        id: user.id,
+        name: user.displayName,
+        discord: `@${user.username}`,
+        discordId: user.id,
+        role: user.role,
+        workspaces: currentWorkspaces.length ? currentWorkspaces : ['global', 'lifesteal'],
+        permissions: user.permissions,
+        status: 'Active',
+        trust: 'Full',
+        source: 'Discord OAuth session',
+        lastActive: Date.now() - 2 * 60_000,
+        notes: 'Current signed-in staff identity. Owner-level changes should remain audited.',
+      },
+      {
+        id: '1224803434675572827',
+        name: 'TlzMax5454',
+        discord: '@tlzmax5454',
+        discordId: '1224803434675572827',
+        role: 'Owner',
+        workspaces: ['global', 'lifesteal', 'general', 'valorant'],
+        permissions: user.permissions,
+        status: 'Active',
+        trust: 'Full',
+        source: 'Manual owner allowlist',
+        lastActive: Date.now() - 24 * 60_000,
+        notes: 'Full admin portal access approved for project ownership and live operations.',
+      },
+      {
+        id: 'staff-xvoidism',
+        name: 'xvoidism',
+        discord: '@voidism',
+        discordId: 'pending-discord-id',
+        role: 'SHD Team',
+        workspaces: ['lifesteal'],
+        permissions: ['lifesteal:read', 'lifesteal:staff-chat'],
+        status: 'Active',
+        trust: 'Scoped',
+        source: 'Lifesteal staff role',
+        lastActive: Date.now() - 3 * 60 * 60_000,
+        notes: 'Season staff access is scoped to Lifesteal visibility and staff communication.',
+      },
+      {
+        id: 'staff-review-bot',
+        name: 'Review Bot',
+        discord: '@shd-lifesteal-bot',
+        discordId: 'bot-service',
+        role: 'Service',
+        workspaces: ['lifesteal'],
+        permissions: ['lifesteal:read', 'lifesteal:ticket', 'lifesteal:players', 'lifesteal:events'],
+        status: 'Limited',
+        trust: 'Scoped',
+        source: 'Bot token service',
+        lastActive: Date.now() - 9 * 60_000,
+        notes: 'Service identity for ticket bridge, roster state, event publishing, and audit events.',
+      },
+      {
+        id: 'staff-general-staged',
+        name: 'General Support Lead',
+        discord: '@pending',
+        discordId: 'pending',
+        role: 'Admin',
+        workspaces: ['general', 'valorant'],
+        permissions: ['integrations:read'],
+        status: 'Invite pending',
+        trust: 'Pending',
+        source: 'Future guild bot',
+        lastActive: Date.now() - 2 * 24 * 60 * 60_000,
+        notes: 'Placeholder for the second Discord guild once General and Valorant workflows connect.',
+      },
+    ]
+  }, [user])
+  const [query, setQuery] = useState('')
+  const [workspaceFilter, setWorkspaceFilter] = useState<'all' | StaffWorkspaceId>('all')
+  const [selectedId, setSelectedId] = useState(user.id)
+  const [inviteOpen, setInviteOpen] = useState(false)
+  const [inviteDraft, setInviteDraft] = useState<{ discordId: string; displayName: string; role: string; workspaces: StaffWorkspaceId[] }>({ discordId: '', displayName: '', role: 'SHD Team', workspaces: ['lifesteal'] })
+  const [inviteMessage, setInviteMessage] = useState('')
+
+  const visibleStaff = staff.filter((member) => {
+    const needle = query.trim().toLowerCase()
+    const matchesQuery = !needle || [member.name, member.discord, member.role, member.discordId].some((value) => value.toLowerCase().includes(needle))
+    const matchesWorkspace = workspaceFilter === 'all' || member.workspaces.includes(workspaceFilter)
+    return matchesQuery && matchesWorkspace
+  })
+  const selected = staff.find((member) => member.id === selectedId) ?? visibleStaff[0] ?? staff[0]
+  const ownerCount = staff.filter((member) => member.role === 'Owner').length
+  const activeCount = staff.filter((member) => member.status === 'Active').length
+  const pendingCount = staff.filter((member) => member.status !== 'Active').length
+  const protectedActions = user.permissions.filter((permission) => permission.includes(':manage') || permission.includes(':players') || permission.includes(':events')).length
+  const toggleInviteWorkspace = (workspace: StaffWorkspaceId) => {
+    setInviteDraft((current) => ({
+      ...current,
+      workspaces: current.workspaces.includes(workspace)
+        ? current.workspaces.filter((item) => item !== workspace)
+        : [...current.workspaces, workspace],
+    }))
+  }
+  const createInviteDraft = () => {
+    const label = inviteDraft.displayName.trim() || inviteDraft.discordId.trim() || 'New staff member'
+    setInviteMessage(`${label} invite draft staged for ${inviteDraft.workspaces.map((workspace) => workspaceMeta[workspace].label).join(', ')}.`)
+    setInviteOpen(false)
+  }
+
   return (
-    <main className="page-workspace">
-      <PageHeader eyebrow="Authorization" title="Staff & Access" detail="Discord remains the identity source; the admin portal translates guild roles into explicit workspace permissions." action={<button className="page-action" type="button"><UserCheck size={16} />Invite staff</button>} />
-      <section className="permission-summary">
-        <article><KeyRound size={19} /><strong>Discord OAuth</strong><p>One login for the complete SHD admin surface.</p></article>
-        <article><ShieldCheck size={19} /><strong>Scoped permissions</strong><p>Staff only see workspaces granted by their roles.</p></article>
-        <article><Activity size={19} /><strong>Audited actions</strong><p>Claims, decisions, messages, and access changes are recorded.</p></article>
+    <main className="page-workspace staff-access-page">
+      <PageHeader eyebrow="Authorization" title="Staff & Access" detail="Discord remains the identity source; the admin portal translates guild roles into explicit workspace permissions." action={<div className="page-actions"><button className="page-action" onClick={() => setInviteOpen(true)} type="button"><UserCheck size={16} />Invite staff</button><button className="page-action secondary" type="button"><ShieldCheck size={16} />Review roles</button></div>} />
+      <section className="access-command-grid">
+        <article><Users size={18} /><span>Authorized staff</span><strong>{staff.length}</strong><p>{activeCount} active identities</p></article>
+        <article><KeyRound size={18} /><span>Owners</span><strong>{ownerCount}</strong><p>Full platform access</p></article>
+        <article><LockKeyhole size={18} /><span>Protected actions</span><strong>{protectedActions}</strong><p>High impact permissions on this session</p></article>
+        <article><FileWarning size={18} /><span>Needs review</span><strong>{pendingCount}</strong><p>Pending or limited access states</p></article>
       </section>
-      <section className="current-access-card">
-        <div>
-          <span className="eyebrow">Current Session</span>
-          <h2>{user.displayName}</h2>
-          <p>{user.role} access from Discord OAuth.</p>
-        </div>
-        <div className="scope-list">
-          {user.permissions.map((permission) => <small key={permission}>{permissionLabel(permission)}</small>)}
-        </div>
+      <section className="access-hero-grid">
+        <article className="current-access-card">
+          <div>
+            <span className="eyebrow">Current Session</span>
+            <h2>{user.displayName}</h2>
+            <p>{user.role} access from Discord OAuth. Session refreshes through the admin API.</p>
+          </div>
+          <div className="scope-list">
+            {user.permissions.map((permission) => <small key={permission}>{permissionLabel(permission)}</small>)}
+          </div>
+        </article>
+        <article className="access-health-card">
+          <header><div><span className="eyebrow">Access Model</span><h2>Role source of truth</h2></div><span className="service-state live"><span />Protected</span></header>
+          <div className="access-health-list">
+            <div><CheckCircle2 size={15} /><span><strong>Discord OAuth</strong><small>Login identity and avatar source</small></span></div>
+            <div><CheckCircle2 size={15} /><span><strong>Workspace scopes</strong><small>Navigation and API routes stay isolated</small></span></div>
+            <div><CheckCircle2 size={15} /><span><strong>Audit trail</strong><small>Claims, decisions, player edits, and event actions</small></span></div>
+          </div>
+        </article>
       </section>
-      <section className="staff-table">
-        <header><span>Staff member</span><span>Portal role</span><span>Workspace access</span><span>Status</span></header>
-        {staff.map((member) => (
-          <article key={member.name}>
-            <span className="staff-identity"><span className="avatar">{member.name.slice(0, 2).toUpperCase()}</span><span><strong>{member.name}</strong><small>{member.discord}</small></span></span>
-            <strong>{member.role}</strong>
-            <span className="scope-list">{member.scopes.map((scope) => <small key={scope}>{scope}</small>)}</span>
-            <span className="health-label"><CheckCircle2 size={14} />{member.state}</span>
+      {inviteMessage && <div className="operations-state"><CheckCircle2 size={16} /><span>{inviteMessage}</span></div>}
+      <section className="staff-access-layout">
+        <article className="staff-directory-panel">
+          <header>
+            <div><span className="eyebrow">Directory</span><h2>Staff identities</h2></div>
+            <span>{visibleStaff.length}</span>
+          </header>
+          <div className="staff-access-toolbar">
+            <label className="event-search-field"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search staff..." /></label>
+            <div className="event-status-filters">
+              {(['all', 'global', 'lifesteal', 'general', 'valorant'] as const).map((workspace) => (
+                <button className={workspaceFilter === workspace ? 'active' : ''} key={workspace} onClick={() => setWorkspaceFilter(workspace)} type="button">{workspace === 'all' ? 'All' : workspaceMeta[workspace].label}</button>
+              ))}
+            </div>
+          </div>
+          <div className="staff-roster-list">
+            {visibleStaff.map((member) => (
+              <button className={selected.id === member.id ? 'active' : ''} key={member.id} onClick={() => setSelectedId(member.id)} type="button">
+                <span className="avatar">{member.name.slice(0, 2).toUpperCase()}</span>
+                <span><strong>{member.name}</strong><small>{member.discord} / {member.role}</small></span>
+                <span className={`access-state ${member.status.toLowerCase().replaceAll(' ', '-')}`}>{member.status}</span>
+              </button>
+            ))}
+            {visibleStaff.length === 0 && <div className="panel-empty"><UserRoundSearch size={17} /><span>No staff identities match the current filter.</span></div>}
+          </div>
+        </article>
+        <aside className="staff-detail-card">
+          <header>
+            <span className="avatar large">{selected.name.slice(0, 2).toUpperCase()}</span>
+            <div><span className="eyebrow">{selected.role}</span><h2>{selected.name}</h2><p>{selected.discord} / {selected.discordId}</p></div>
+          </header>
+          <div className="staff-detail-actions">
+            <button type="button"><KeyRound size={15} />Copy ID</button>
+            <button type="button"><Activity size={15} />Audit</button>
+            <button type="button"><Settings2 size={15} />Edit</button>
+          </div>
+          <div className="staff-detail-facts">
+            <div><span>Status</span><strong>{selected.status}</strong></div>
+            <div><span>Trust</span><strong>{selected.trust}</strong></div>
+            <div><span>Source</span><strong>{selected.source}</strong></div>
+            <div><span>Last active</span><strong>{relativeTime(selected.lastActive)}</strong></div>
+          </div>
+          <section>
+            <span className="eyebrow">Workspaces</span>
+            <div className="workspace-chip-grid">
+              {selected.workspaces.map((workspace) => <span key={workspace}>{workspaceMeta[workspace].icon}<strong>{workspaceMeta[workspace].label}</strong><small>{workspaceMeta[workspace].detail}</small></span>)}
+            </div>
+          </section>
+          <section>
+            <span className="eyebrow">Permissions</span>
+            <div className="scope-list">{selected.permissions.map((permission) => <small key={permission}>{permissionLabel(permission)}</small>)}</div>
+          </section>
+          <section className="staff-note-card"><span className="eyebrow">Access note</span><p>{selected.notes}</p></section>
+        </aside>
+      </section>
+      <section className="role-policy-grid">
+        {rolePolicies.map((policy) => (
+          <article key={policy.role}>
+            <header><ShieldCheck size={18} /><strong>{policy.role}</strong></header>
+            <p>{policy.detail}</p>
+            <div className="scope-list">{policy.permissions.map((permission) => <small key={permission}>{permissionLabel(permission)}</small>)}</div>
           </article>
         ))}
       </section>
+      <section className="workspace-access-matrix">
+        <header><div><span className="eyebrow">Workspace Matrix</span><h2>Coverage by project</h2></div></header>
+        {Object.entries(workspaceMeta).map(([id, meta]) => {
+          const members = staff.filter((member) => member.workspaces.includes(id as StaffWorkspaceId))
+          return <article key={id}>
+            <span>{meta.icon}<strong>{meta.label}</strong><small>{meta.detail}</small></span>
+            <div className="scope-list">{members.map((member) => <small key={member.id}>{member.name}</small>)}</div>
+          </article>
+        })}
+      </section>
+      {inviteOpen && <div className="modal-layer">
+        <section className="admin-modal staff-invite-modal">
+          <header><div><span className="eyebrow">Access Draft</span><h2>Invite staff</h2><p>Draft the intended role and workspace scope before the backend creates Discord-backed access.</p></div><button aria-label="Close invite modal" onClick={() => setInviteOpen(false)} type="button"><X size={17} /></button></header>
+          <div className="manual-player-grid">
+            <label><span>Discord ID</span><input value={inviteDraft.discordId} onChange={(event) => setInviteDraft((current) => ({ ...current, discordId: event.target.value }))} placeholder="1224..." /></label>
+            <label><span>Display name</span><input value={inviteDraft.displayName} onChange={(event) => setInviteDraft((current) => ({ ...current, displayName: event.target.value }))} placeholder="Staff name" /></label>
+            <label><span>Portal role</span><select value={inviteDraft.role} onChange={(event) => setInviteDraft((current) => ({ ...current, role: event.target.value }))}><option>Owner</option><option>Admin</option><option>Mod</option><option>SHD Team</option></select></label>
+          </div>
+          <div className="invite-workspace-list">
+            {Object.entries(workspaceMeta).map(([id, meta]) => {
+              const workspace = id as StaffWorkspaceId
+              return <label key={workspace}><input checked={inviteDraft.workspaces.includes(workspace)} onChange={() => toggleInviteWorkspace(workspace)} type="checkbox" /><span>{meta.icon}<strong>{meta.label}</strong><small>{meta.detail}</small></span></label>
+            })}
+          </div>
+          <footer><button className="page-action secondary" onClick={() => setInviteOpen(false)} type="button">Cancel</button><button className="page-action" disabled={!inviteDraft.discordId.trim() && !inviteDraft.displayName.trim()} onClick={createInviteDraft} type="button"><UserPlus size={16} />Create draft</button></footer>
+        </section>
+      </div>}
     </main>
   )
 }

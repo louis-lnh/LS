@@ -423,6 +423,14 @@ body.resizing-layout { cursor: col-resize; user-select: none; }
 .workspace-tag { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--green); font-size: 0.67rem; font-weight: 700; }
 .unified-list .status-pill { justify-self: start; align-self: center; width: max-content; }
 
+.access-command-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.8rem; margin-top: 1rem; }
+.access-command-grid article { position: relative; display: grid; gap: 0.45rem; min-height: 7rem; padding: 1rem; overflow: hidden; border: 1px solid var(--line); border-radius: 6px; background: linear-gradient(180deg, rgba(234, 212, 159, 0.045), transparent), var(--panel); }
+.access-command-grid article::after { content: ""; position: absolute; inset: auto 0 0; height: 2px; background: linear-gradient(90deg, transparent, rgba(234, 212, 159, 0.32), transparent); }
+.access-command-grid svg { color: var(--gold); }
+.access-command-grid span { color: rgba(244,242,237,0.42); font-size: 0.62rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
+.access-command-grid strong { font: 700 1.35rem "Space Grotesk"; }
+.access-command-grid p { margin: 0; color: var(--muted); font-size: 0.7rem; line-height: 1.45; }
+.access-hero-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(20rem, 0.65fr); gap: 0.8rem; margin-top: 0.8rem; }
 .permission-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.8rem; margin-top: 1rem; }
 .permission-summary article { min-height: 8.5rem; padding: 1rem; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
 .permission-summary svg { color: var(--gold); }
@@ -441,6 +449,70 @@ body.resizing-layout { cursor: col-resize; user-select: none; }
 }
 .current-access-card h2 { margin: 0.25rem 0 0; font: 700 1.2rem "Space Grotesk"; }
 .current-access-card p { margin: 0.35rem 0 0; color: var(--muted); font-size: 0.75rem; }
+.access-health-card { display: grid; gap: 0.85rem; padding: 1rem; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+.access-health-card > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding-bottom: 0.8rem; border-bottom: 1px solid var(--line); }
+.access-health-card h2 { margin: 0.3rem 0 0; font: 700 1.05rem "Space Grotesk"; }
+.access-health-list { display: grid; gap: 0.55rem; }
+.access-health-list > div { display: grid; grid-template-columns: 1rem minmax(0, 1fr); gap: 0.55rem; align-items: start; min-height: 3.1rem; padding: 0.65rem; border: 1px solid var(--line); border-radius: 5px; background: #0d0d0f; }
+.access-health-list svg { color: var(--green); margin-top: 0.1rem; }
+.access-health-list span { display: grid; gap: 0.2rem; }
+.access-health-list strong { font-size: 0.74rem; }
+.access-health-list small { color: var(--muted); font-size: 0.66rem; line-height: 1.45; }
+.staff-access-layout { display: grid; grid-template-columns: minmax(23rem, 0.85fr) minmax(22rem, 0.7fr); gap: 0.8rem; margin-top: 0.8rem; align-items: start; }
+.staff-directory-panel, .staff-detail-card, .workspace-access-matrix, .role-policy-grid article { border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+.staff-directory-panel { overflow: hidden; }
+.staff-directory-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem; border-bottom: 1px solid var(--line); }
+.staff-directory-panel h2, .workspace-access-matrix h2 { margin: 0.3rem 0 0; font: 700 1.1rem "Space Grotesk"; }
+.staff-directory-panel > header > span { display: grid; place-items: center; min-width: 2rem; height: 2rem; border: 1px solid var(--line); border-radius: 5px; color: var(--gold); font-weight: 800; }
+.staff-access-toolbar { display: grid; gap: 0.7rem; padding: 0.8rem; border-bottom: 1px solid var(--line); }
+.staff-access-toolbar .event-search-field { margin: 0; }
+.staff-access-toolbar .event-status-filters { padding: 0; border-bottom: 0; }
+.staff-roster-list { display: grid; max-height: 35rem; overflow-y: auto; }
+.staff-roster-list > button { display: grid; grid-template-columns: 2.45rem minmax(0, 1fr) auto; gap: 0.7rem; align-items: center; min-height: 4.6rem; padding: 0.75rem 0.9rem; border-bottom: 1px solid var(--line); background: #121214; color: #f4f2ed; text-align: left; }
+.staff-roster-list > button:hover, .staff-roster-list > button.active { background: rgba(234, 212, 159, 0.055); }
+.staff-roster-list > button.active { box-shadow: inset 2px 0 var(--gold); }
+.staff-roster-list > button > span:nth-child(2) { display: grid; gap: 0.25rem; min-width: 0; }
+.staff-roster-list strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.78rem; }
+.staff-roster-list small { overflow: hidden; color: var(--muted); font-size: 0.67rem; text-overflow: ellipsis; white-space: nowrap; }
+.access-state { justify-self: end; padding: 0.28rem 0.48rem; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 0.58rem; font-weight: 900; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
+.access-state.active { border-color: rgba(104, 201, 156, 0.32); color: var(--green); }
+.access-state.limited { color: var(--gold); }
+.access-state.invite-pending, .access-state.review { color: #84aaeb; }
+.staff-detail-card { position: sticky; top: 1rem; display: grid; gap: 1rem; padding: 1rem; }
+.staff-detail-card > header { display: grid; grid-template-columns: 3.2rem minmax(0, 1fr); gap: 0.85rem; align-items: center; padding-bottom: 1rem; border-bottom: 1px solid var(--line); }
+.staff-detail-card h2 { margin: 0.25rem 0 0; font: 800 1.3rem "Space Grotesk"; }
+.staff-detail-card p { margin: 0.25rem 0 0; color: var(--muted); font-size: 0.72rem; overflow-wrap: anywhere; }
+.avatar.large { width: 3.2rem; font-size: 0.9rem; }
+.staff-detail-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.45rem; }
+.staff-detail-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; min-height: 2.25rem; border: 1px solid var(--line); border-radius: 5px; background: #0d0d0f; color: var(--muted); font-size: 0.66rem; font-weight: 800; }
+.staff-detail-actions button:hover { border-color: rgba(234, 212, 159, 0.25); color: var(--gold); }
+.staff-detail-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.55rem; }
+.staff-detail-facts > div { min-height: 3.75rem; padding: 0.65rem; border: 1px solid var(--line); border-radius: 5px; background: #0d0d0f; }
+.staff-detail-facts span { color: rgba(244,242,237,0.42); font-size: 0.58rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.staff-detail-facts strong { display: block; margin-top: 0.35rem; font-size: 0.78rem; overflow-wrap: anywhere; }
+.workspace-chip-grid { display: grid; gap: 0.45rem; margin-top: 0.55rem; }
+.workspace-chip-grid > span, .workspace-access-matrix article > span { display: grid; grid-template-columns: 1.35rem minmax(0, 1fr); gap: 0.2rem 0.55rem; align-items: center; min-height: 3.2rem; padding: 0.6rem; border: 1px solid var(--line); border-radius: 5px; background: #0d0d0f; }
+.workspace-chip-grid svg, .workspace-access-matrix svg { grid-row: 1 / span 2; color: var(--gold); }
+.workspace-chip-grid strong, .workspace-access-matrix strong { font-size: 0.72rem; }
+.workspace-chip-grid small, .workspace-access-matrix small { color: var(--muted); font-size: 0.63rem; line-height: 1.35; }
+.staff-note-card { padding: 0.75rem; border: 1px solid rgba(234, 212, 159, 0.16); border-radius: 5px; background: rgba(234, 212, 159, 0.045); }
+.staff-note-card p { margin: 0.45rem 0 0; color: rgba(244,242,237,0.74); line-height: 1.55; }
+.role-policy-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.8rem; margin-top: 0.8rem; }
+.role-policy-grid article { display: grid; align-content: start; gap: 0.8rem; min-height: 13rem; padding: 1rem; }
+.role-policy-grid header { display: flex; align-items: center; gap: 0.55rem; color: var(--gold); }
+.role-policy-grid header strong { color: #f4f2ed; font: 800 0.9rem "Space Grotesk"; }
+.role-policy-grid p { margin: 0; color: var(--muted); font-size: 0.72rem; line-height: 1.55; }
+.workspace-access-matrix { display: grid; gap: 0; margin-top: 0.8rem; overflow: hidden; }
+.workspace-access-matrix > header { padding: 1rem; border-bottom: 1px solid var(--line); }
+.workspace-access-matrix article { display: grid; grid-template-columns: minmax(15rem, 0.45fr) minmax(0, 1fr); gap: 0.8rem; align-items: center; padding: 0.75rem 1rem; border-bottom: 1px solid var(--line); }
+.workspace-access-matrix article:last-child { border-bottom: 0; }
+.invite-workspace-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.65rem; padding: 0 1rem 1rem; }
+.invite-workspace-list label { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.65rem; align-items: start; min-height: 4.4rem; padding: 0.75rem; border: 1px solid var(--line); border-radius: 5px; background: #0d0d0f; }
+.invite-workspace-list input { margin-top: 0.15rem; accent-color: var(--gold); }
+.invite-workspace-list label > span { display: grid; grid-template-columns: 1.2rem minmax(0, 1fr); gap: 0.15rem 0.45rem; }
+.invite-workspace-list svg { grid-row: 1 / span 2; color: var(--gold); }
+.invite-workspace-list strong { font-size: 0.72rem; }
+.invite-workspace-list small { color: var(--muted); font-size: 0.64rem; line-height: 1.4; }
 .staff-table { margin-top: 0.8rem; overflow: hidden; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
 .staff-table > header,
 .staff-table > article { display: grid; grid-template-columns: minmax(13rem, 1.2fr) 0.7fr 1.4fr 0.5fr; gap: 0.8rem; align-items: center; padding: 0 0.9rem; }
@@ -589,9 +661,11 @@ body.resizing-layout { cursor: col-resize; user-select: none; }
 }
 
 @media (max-width: 1260px) {
-  .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .metric-grid, .access-command-grid, .role-policy-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .project-grid { grid-template-columns: 1fr; }
   .project-card { min-height: 10rem; }
+  .access-hero-grid, .staff-access-layout { grid-template-columns: 1fr; }
+  .staff-detail-card { position: static; }
 }
 
 @media (max-width: 900px) {
@@ -653,7 +727,7 @@ body.resizing-layout { cursor: col-resize; user-select: none; }
   .queue-item:focus { background: rgba(234, 212, 159, 0.055); }
   .page-header { align-items: flex-start; flex-direction: column; min-height: 0; padding: 1rem 0; }
   .page-header h1 { font-size: 2rem; }
-  .metric-grid, .overview-grid, .audit-summary, .inbox-sources, .permission-summary, .current-access-card, .integration-grid, .event-admin-summary, .event-admin-layout, .event-editor-grid, .event-preview-card dl, .event-editor-section.compact .event-editor-grid { grid-template-columns: 1fr; }
+  .metric-grid, .overview-grid, .audit-summary, .inbox-sources, .permission-summary, .access-command-grid, .access-hero-grid, .current-access-card, .staff-access-layout, .staff-detail-actions, .staff-detail-facts, .role-policy-grid, .workspace-access-matrix article, .invite-workspace-list, .integration-grid, .event-admin-summary, .event-admin-layout, .event-editor-grid, .event-preview-card dl, .event-editor-section.compact .event-editor-grid { grid-template-columns: 1fr; }
   .dashboard-panel.wide { grid-column: auto; }
   .table-toolbar { align-items: stretch; flex-direction: column; }
   .table-toolbar .search-field { width: 100%; }
@@ -686,6 +760,8 @@ body.resizing-layout { cursor: col-resize; user-select: none; }
   .staff-table > article { grid-template-columns: 1fr auto; gap: 0.7rem; padding: 0.9rem; }
   .staff-identity { grid-column: 1 / -1; }
   .scope-list { grid-column: 1 / -1; }
+  .staff-roster-list > button { grid-template-columns: 2.35rem minmax(0, 1fr); }
+  .staff-roster-list .access-state { grid-column: 2; justify-self: start; }
   .project-hero-panel { grid-template-columns: 1fr; }
   .staff-chat-shell { min-height: calc(100vh - 11rem); }
   .staff-chat-shell > header { align-items: flex-start; flex-direction: column; }
