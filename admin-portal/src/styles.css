@@ -423,6 +423,44 @@ body.resizing-layout { cursor: col-resize; user-select: none; }
 .workspace-tag { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--green); font-size: 0.67rem; font-weight: 700; }
 .unified-list .status-pill { justify-self: start; align-self: center; width: max-content; }
 
+.staff-access-switchboard {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.8rem;
+  align-items: stretch;
+  margin: 0 -1.5rem;
+  padding: 0.8rem 1.5rem;
+  border-bottom: 1px solid var(--line);
+  background: rgba(11, 11, 12, 0.94);
+  backdrop-filter: blur(14px);
+}
+.staff-access-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.55rem; min-width: 0; }
+.staff-access-tabs button {
+  display: grid;
+  grid-template-columns: 1.8rem minmax(0, 1fr);
+  gap: 0.55rem;
+  align-items: center;
+  min-height: 3.4rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #111113;
+  color: var(--muted);
+  text-align: left;
+}
+.staff-access-tabs button > svg { color: var(--gold); }
+.staff-access-tabs button > span { display: grid; gap: 0.16rem; min-width: 0; }
+.staff-access-tabs strong { color: #f4f2ed; font-size: 0.72rem; }
+.staff-access-tabs small { overflow: hidden; color: var(--muted); font-size: 0.62rem; text-overflow: ellipsis; white-space: nowrap; }
+.staff-access-tabs button:hover,
+.staff-access-tabs button.active { border-color: rgba(234, 212, 159, 0.28); background: rgba(234, 212, 159, 0.06); }
+.staff-access-metrics { display: grid; grid-template-columns: repeat(4, minmax(4.4rem, auto)); gap: 0.45rem; }
+.staff-access-metrics span { display: grid; align-content: center; min-height: 3.4rem; padding: 0.45rem 0.65rem; border: 1px solid var(--line); border-radius: 6px; background: #0d0d0f; }
+.staff-access-metrics strong { font: 800 1rem "Space Grotesk"; color: #f4f2ed; }
+.staff-access-metrics small { color: var(--muted); font-size: 0.56rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; }
 .access-command-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.8rem; margin-top: 1rem; }
 .access-command-grid article { position: relative; display: grid; gap: 0.45rem; min-height: 7rem; padding: 1rem; overflow: hidden; border: 1px solid var(--line); border-radius: 6px; background: linear-gradient(180deg, rgba(234, 212, 159, 0.045), transparent), var(--panel); }
 .access-command-grid article::after { content: ""; position: absolute; inset: auto 0 0; height: 2px; background: linear-gradient(90deg, transparent, rgba(234, 212, 159, 0.32), transparent); }
@@ -459,7 +497,7 @@ body.resizing-layout { cursor: col-resize; user-select: none; }
 .access-health-list strong { font-size: 0.74rem; }
 .access-health-list small { color: var(--muted); font-size: 0.66rem; line-height: 1.45; }
 .staff-access-layout { display: grid; grid-template-columns: minmax(23rem, 0.85fr) minmax(22rem, 0.7fr); gap: 0.8rem; margin-top: 0.8rem; align-items: start; }
-.staff-directory-panel, .staff-detail-card, .workspace-access-matrix, .role-policy-grid article { border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+.staff-directory-panel, .staff-detail-card, .workspace-access-matrix, .role-policy-grid article, .staff-panel-card { border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
 .staff-directory-panel { overflow: hidden; }
 .staff-directory-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem; border-bottom: 1px solid var(--line); }
 .staff-directory-panel h2, .workspace-access-matrix h2 { margin: 0.3rem 0 0; font: 700 1.1rem "Space Grotesk"; }
@@ -467,7 +505,7 @@ body.resizing-layout { cursor: col-resize; user-select: none; }
 .staff-access-toolbar { display: grid; gap: 0.7rem; padding: 0.8rem; border-bottom: 1px solid var(--line); }
 .staff-access-toolbar .event-search-field { margin: 0; }
 .staff-access-toolbar .event-status-filters { padding: 0; border-bottom: 0; }
-.staff-roster-list { display: grid; max-height: 35rem; overflow-y: auto; }
+.staff-roster-list { display: grid; max-height: calc(100vh - 22rem); min-height: 18rem; overflow-y: auto; }
 .staff-roster-list > button { display: grid; grid-template-columns: 2.45rem minmax(0, 1fr) auto; gap: 0.7rem; align-items: center; min-height: 4.6rem; padding: 0.75rem 0.9rem; border-bottom: 1px solid var(--line); background: #121214; color: #f4f2ed; text-align: left; }
 .staff-roster-list > button:hover, .staff-roster-list > button.active { background: rgba(234, 212, 159, 0.055); }
 .staff-roster-list > button.active { box-shadow: inset 2px 0 var(--gold); }
@@ -482,6 +520,7 @@ body.resizing-layout { cursor: col-resize; user-select: none; }
 .staff-detail-card > header { display: grid; grid-template-columns: 3.2rem minmax(0, 1fr); gap: 0.85rem; align-items: center; padding-bottom: 1rem; border-bottom: 1px solid var(--line); }
 .staff-detail-card h2 { margin: 0.25rem 0 0; font: 800 1.3rem "Space Grotesk"; }
 .staff-detail-card p { margin: 0.25rem 0 0; color: var(--muted); font-size: 0.72rem; overflow-wrap: anywhere; }
+.avatar img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
 .avatar.large { width: 3.2rem; font-size: 0.9rem; }
 .staff-detail-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.45rem; }
 .staff-detail-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; min-height: 2.25rem; border: 1px solid var(--line); border-radius: 5px; background: #0d0d0f; color: var(--muted); font-size: 0.66rem; font-weight: 800; }
@@ -491,12 +530,25 @@ body.resizing-layout { cursor: col-resize; user-select: none; }
 .staff-detail-facts span { color: rgba(244,242,237,0.42); font-size: 0.58rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
 .staff-detail-facts strong { display: block; margin-top: 0.35rem; font-size: 0.78rem; overflow-wrap: anywhere; }
 .workspace-chip-grid { display: grid; gap: 0.45rem; margin-top: 0.55rem; }
-.workspace-chip-grid > span, .workspace-access-matrix article > span { display: grid; grid-template-columns: 1.35rem minmax(0, 1fr); gap: 0.2rem 0.55rem; align-items: center; min-height: 3.2rem; padding: 0.6rem; border: 1px solid var(--line); border-radius: 5px; background: #0d0d0f; }
+.workspace-chip-grid > span, .workspace-access-matrix article > span, .workspace-access-matrix > button > span { display: grid; grid-template-columns: 1.35rem minmax(0, 1fr); gap: 0.2rem 0.55rem; align-items: center; min-height: 3.2rem; padding: 0.6rem; border: 1px solid var(--line); border-radius: 5px; background: #0d0d0f; }
 .workspace-chip-grid svg, .workspace-access-matrix svg { grid-row: 1 / span 2; color: var(--gold); }
 .workspace-chip-grid strong, .workspace-access-matrix strong { font-size: 0.72rem; }
 .workspace-chip-grid small, .workspace-access-matrix small { color: var(--muted); font-size: 0.63rem; line-height: 1.35; }
 .staff-note-card { padding: 0.75rem; border: 1px solid rgba(234, 212, 159, 0.16); border-radius: 5px; background: rgba(234, 212, 159, 0.045); }
 .staff-note-card p { margin: 0.45rem 0 0; color: rgba(244,242,237,0.74); line-height: 1.55; }
+.staff-detail-actions button:disabled { opacity: 0.45; cursor: not-allowed; }
+.staff-management-panel { display: grid; grid-template-columns: minmax(0, 1fr) minmax(18rem, 0.35fr); gap: 0.8rem; margin-top: 0.8rem; align-items: start; }
+.staff-panel-card { display: grid; gap: 0.9rem; padding: 1rem; }
+.staff-panel-card > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding-bottom: 0.85rem; border-bottom: 1px solid var(--line); }
+.staff-panel-card h2 { margin: 0.3rem 0 0; font: 700 1.15rem "Space Grotesk"; }
+.role-policy-list { display: grid; gap: 0.65rem; }
+.role-policy-list article { display: grid; gap: 0.65rem; padding: 0.8rem; border: 1px solid var(--line); border-radius: 6px; background: #0d0d0f; }
+.role-policy-list article > header { display: flex; align-items: center; gap: 0.6rem; }
+.role-policy-list article > header svg { color: var(--gold); }
+.role-policy-list article > header strong { margin-right: auto; font: 800 0.85rem "Space Grotesk"; }
+.role-policy-list article > header button { display: inline-flex; align-items: center; gap: 0.4rem; min-height: 2rem; padding: 0 0.55rem; border: 1px solid var(--line); border-radius: 5px; background: #151517; color: var(--gold); font-size: 0.62rem; font-weight: 800; }
+.role-policy-list article > header button:disabled { opacity: 0.45; cursor: not-allowed; }
+.role-policy-list p { margin: 0; color: var(--muted); font-size: 0.72rem; line-height: 1.55; }
 .role-policy-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.8rem; margin-top: 0.8rem; }
 .role-policy-grid article { display: grid; align-content: start; gap: 0.8rem; min-height: 13rem; padding: 1rem; }
 .role-policy-grid header { display: flex; align-items: center; gap: 0.55rem; color: var(--gold); }
@@ -504,8 +556,25 @@ body.resizing-layout { cursor: col-resize; user-select: none; }
 .role-policy-grid p { margin: 0; color: var(--muted); font-size: 0.72rem; line-height: 1.55; }
 .workspace-access-matrix { display: grid; gap: 0; margin-top: 0.8rem; overflow: hidden; }
 .workspace-access-matrix > header { padding: 1rem; border-bottom: 1px solid var(--line); }
-.workspace-access-matrix article { display: grid; grid-template-columns: minmax(15rem, 0.45fr) minmax(0, 1fr); gap: 0.8rem; align-items: center; padding: 0.75rem 1rem; border-bottom: 1px solid var(--line); }
-.workspace-access-matrix article:last-child { border-bottom: 0; }
+.workspace-access-matrix > header p { margin: 0.45rem 0 0; color: var(--muted); font-size: 0.72rem; }
+.workspace-access-matrix article,
+.workspace-access-matrix > button { display: grid; grid-template-columns: minmax(15rem, 0.45fr) minmax(0, 1fr) 2rem; gap: 0.8rem; align-items: center; width: 100%; padding: 0.75rem 1rem; border-bottom: 1px solid var(--line); background: transparent; color: white; text-align: left; }
+.workspace-access-matrix article:last-child,
+.workspace-access-matrix > button:last-child { border-bottom: 0; }
+.workspace-access-matrix > button:hover { background: rgba(234, 212, 159, 0.045); }
+.workspace-access-matrix > button > b { display: grid; place-items: center; width: 2rem; aspect-ratio: 1; border: 1px solid var(--line); border-radius: 5px; color: var(--gold); }
+.staff-activity-panel { margin-top: 0.8rem; }
+.staff-action-list { display: grid; gap: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 6px; background: #0d0d0f; }
+.staff-action-list article { display: grid; grid-template-columns: 1.8rem minmax(0, 1fr) 5rem; gap: 0.75rem; align-items: start; min-height: 4.4rem; padding: 0.8rem; border-bottom: 1px solid var(--line); }
+.staff-action-list article:last-child { border-bottom: 0; }
+.staff-action-list strong { color: var(--gold); font-size: 0.72rem; }
+.staff-action-list p { margin: 0.25rem 0 0; font-size: 0.74rem; }
+.staff-action-list small { display: block; margin-top: 0.25rem; color: var(--muted); font-size: 0.66rem; line-height: 1.4; }
+.staff-action-list time { justify-self: end; color: rgba(244,242,237,0.38); font-size: 0.62rem; white-space: nowrap; }
+.staff-edit-note { display: grid; gap: 0.4rem; padding: 0 1rem 1rem; }
+.staff-edit-note span { color: var(--muted); font-size: 0.66rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.staff-edit-note textarea { min-height: 6rem; resize: vertical; border: 1px solid var(--line); border-radius: 5px; outline: none; background: #0d0d0f; color: white; padding: 0.75rem; line-height: 1.5; }
+.staff-edit-note textarea:focus { border-color: rgba(234, 212, 159, 0.35); }
 .invite-workspace-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.65rem; padding: 0 1rem 1rem; }
 .invite-workspace-list label { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.65rem; align-items: start; min-height: 4.4rem; padding: 0.75rem; border: 1px solid var(--line); border-radius: 5px; background: #0d0d0f; }
 .invite-workspace-list input { margin-top: 0.15rem; accent-color: var(--gold); }
@@ -664,7 +733,8 @@ body.resizing-layout { cursor: col-resize; user-select: none; }
   .metric-grid, .access-command-grid, .role-policy-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .project-grid { grid-template-columns: 1fr; }
   .project-card { min-height: 10rem; }
-  .access-hero-grid, .staff-access-layout { grid-template-columns: 1fr; }
+  .access-hero-grid, .staff-access-layout, .staff-management-panel { grid-template-columns: 1fr; }
+  .staff-access-switchboard { grid-template-columns: 1fr; }
   .staff-detail-card { position: static; }
 }
 
@@ -703,6 +773,9 @@ body.resizing-layout { cursor: col-resize; user-select: none; }
   .workspace.activity-hidden { grid-template-columns: 19rem 0 minmax(0, 1fr); }
   .pane-resizer { display: none; }
   .page-workspace { min-height: calc(100vh - 3.6rem); margin-left: 0; padding: 1rem; }
+  .staff-access-switchboard { top: 3.6rem; margin: 0 -1rem; padding: 0.75rem 1rem; }
+  .staff-access-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .staff-access-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .queue-list { max-height: none; }
   .review-scroll { height: auto; }
   .review-overview { grid-template-columns: 1fr; }
@@ -728,6 +801,10 @@ body.resizing-layout { cursor: col-resize; user-select: none; }
   .page-header { align-items: flex-start; flex-direction: column; min-height: 0; padding: 1rem 0; }
   .page-header h1 { font-size: 2rem; }
   .metric-grid, .overview-grid, .audit-summary, .inbox-sources, .permission-summary, .access-command-grid, .access-hero-grid, .current-access-card, .staff-access-layout, .staff-detail-actions, .staff-detail-facts, .role-policy-grid, .workspace-access-matrix article, .invite-workspace-list, .integration-grid, .event-admin-summary, .event-admin-layout, .event-editor-grid, .event-preview-card dl, .event-editor-section.compact .event-editor-grid { grid-template-columns: 1fr; }
+  .staff-access-tabs, .staff-access-metrics, .staff-management-panel, .workspace-access-matrix > button, .staff-action-list article, .manual-player-grid { grid-template-columns: 1fr; }
+  .staff-access-switchboard { position: static; }
+  .staff-access-metrics span { min-height: 2.7rem; }
+  .staff-action-list time { justify-self: start; }
   .dashboard-panel.wide { grid-column: auto; }
   .table-toolbar { align-items: stretch; flex-direction: column; }
   .table-toolbar .search-field { width: 100%; }

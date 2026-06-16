@@ -1221,6 +1221,22 @@ function permissionLabel(permission: string) {
 
 type StaffWorkspaceId = AdminWorkspaceId
 type StaffDirectoryMember = AdminStaffMember
+type StaffAccessPanel = 'directory' | 'policy' | 'workspaces' | 'activity'
+type StaffActionLogEntry = {
+  id: string
+  actor: string
+  action: string
+  target: string
+  detail: string
+  time: number
+}
+type StaffEditDraft = {
+  role: string
+  status: StaffDirectoryMember['status']
+  trust: StaffDirectoryMember['trust']
+  workspaces: StaffWorkspaceId[]
+  notes: string
+}
 
 const workspaceMeta: Record<StaffWorkspaceId, { label: string; detail: string; icon: ReactNode }> = {
   global: { label: 'Global', detail: 'Audit, staff access, integrations', icon: <Building2 size={16} /> },
@@ -1231,10 +1247,54 @@ const workspaceMeta: Record<StaffWorkspaceId, { label: string; detail: string; i
 
 const rolePolicies = [
   { role: 'Owner', detail: 'Full platform ownership across every workspace.', permissions: ['global:audit', 'staff:manage', 'lifesteal:review', 'lifesteal:players', 'lifesteal:events'] },
-  { role: 'Admin', detail: 'Operational control without owner-only staff changes.', permissions: ['global:audit', 'lifesteal:review', 'lifesteal:players', 'lifesteal:events'] },
-  { role: 'Mod', detail: 'Queue work, ticket responses, reports, and player support.', permissions: ['lifesteal:review', 'lifesteal:ticket', 'lifesteal:staff-chat'] },
+  { role: 'Administrator', detail: 'Operational control without owner-only staff changes.', permissions: ['global:audit', 'staff:read', 'lifesteal:review', 'lifesteal:players', 'lifesteal:events'] },
+  { role: 'Moderator', detail: 'Queue work, ticket responses, reports, and player support.', permissions: ['lifesteal:review', 'lifesteal:ticket', 'lifesteal:staff-chat'] },
   { role: 'SHD Team', detail: 'Scoped helper access for project-specific operations.', permissions: ['lifesteal:read', 'lifesteal:staff-chat'] },
 ]
+
+const staffPanelMeta: Record<StaffAccessPanel, { label: string; detail: string; icon: ReactNode }> = {
+  directory: { label: 'Directory', detail: 'Find staff and inspect access.', icon: <Users size={15} /> },
+  policy: { label: 'Role Policy', detail: 'Review permission templates.', icon: <ShieldCheck size={15} /> },
+  workspaces: { label: 'Workspaces', detail: 'Check coverage per project.', icon: <Building2 size={15} /> },
+  activity: { label: 'Activity', detail: 'Recent staged page actions.', icon: <Activity size={15} /> },
+}
+
+const staffStatusOptions: StaffDirectoryMember['status'][] = ['Active', 'Limited', 'Invite pending', 'Review']
+const staffTrustOptions: StaffDirectoryMember['trust'][] = ['Full', 'Scoped', 'Pending']
+const staffRoleOptions = ['Owner', 'Administrator', 'Moderator', 'Staff', 'SHD Team', 'Service']
+
+function permissionsForStaffRole(role: string, workspaces: StaffWorkspaceId[]) {
+  const permissions = new Set<string>()
+  const normalized = role.toLowerCase()
+
+  if (workspaces.includes('global') || ['owner', 'administrator', 'admin'].includes(normalized)) {
+    permissions.add('staff:read')
+    permissions.add('global:audit')
+    permissions.add('integrations:read')
+  }
+
+  if (normalized === 'owner') {
+    permissions.add('staff:manage')
+  }
+
+  if (workspaces.includes('lifesteal') || ['owner', 'administrator', 'admin', 'service'].includes(normalized)) {
+    permissions.add('lifesteal:read')
+    permissions.add('lifesteal:review')
+    permissions.add('lifesteal:ticket')
+    permissions.add('lifesteal:staff-chat')
+  }
+
+  if (['owner', 'administrator', 'admin', 'service'].includes(normalized)) {
+    permissions.add('lifesteal:players')
+    permissions.add('lifesteal:events')
+  }
+
+  return [...permissions]
+}
+
+function workspaceLabels(workspaces: StaffWorkspaceId[]) {
+  return workspaces.length ? workspaces.map((workspace) => workspaceMeta[workspace].label).join(', ') : 'No workspace'
+}
 
 function staffMemberFromUser(user: AdminUser): StaffDirectoryMember {
   const workspaces = user.workspaces.filter((workspace): workspace is StaffWorkspaceId => workspace in workspaceMeta)
@@ -1262,17 +1322,31 @@ function StaffAccessPage({ user }: { user: AdminUser }) {
   const [staff, setStaff] = useState<StaffDirectoryMember[]>(fallbackStaff)
   const [staffState, setStaffState] = useState<'loading' | 'ready' | 'error'>(adminDemoMode ? 'ready' : 'loading')
   const [staffError, setStaffError] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [activePanel, setActivePanel] = useState<StaffAccessPanel>('directory')
   const [query, setQuery] = useState('')
   const [workspaceFilter, setWorkspaceFilter] = useState<'all' | StaffWorkspaceId>('all')
   const [selectedId, setSelectedId] = useState(user.id)
   const [inviteOpen, setInviteOpen] = useState(false)
   const [inviteDraft, setInviteDraft] = useState<{ discordId: string; displayName: string; role: string; workspaces: StaffWorkspaceId[] }>({ discordId: '', displayName: '', role: 'SHD Team', workspaces: ['lifesteal'] })
+  const [editOpen, setEditOpen] = useState(false)
+  const [editDraft, setEditDraft] = useState<StaffEditDraft>({ role: user.role, status: 'Active', trust: 'Scoped', workspaces: ['lifesteal'], notes: '' })
   const [inviteMessage, setInviteMessage] = useState('')
+  const [actionLog, setActionLog] = useState<StaffActionLogEntry[]>([])
+  const [timeNow, setTimeNow] = useState(Date.now())
 
   useEffect(() => {
     if (adminDemoMode) {
       setStaff(fallbackStaff)
       setStaffState('ready')
+      setActionLog((current) => current.length ? current : [{
+        id: `demo-${Date.now()}`,
+        actor: user.displayName,
+        action: 'opened access workspace',
+        target: 'Demo session',
+        detail: 'Frontend-only access workflow is ready for testing.',
+        time: Date.now(),
+      }])
       return
     }
 
@@ -1286,6 +1360,14 @@ function StaffAccessPage({ user }: { user: AdminUser }) {
         const nextStaff = payload.staff.length ? payload.staff : fallbackStaff
         setStaff(nextStaff)
         setSelectedId((current) => nextStaff.some((member) => member.id === current) ? current : nextStaff[0]?.id ?? user.id)
+        setActionLog((current) => current.length ? current : [{
+          id: `load-${Date.now()}`,
+          actor: user.displayName,
+          action: 'loaded staff access',
+          target: `${nextStaff.length} identities`,
+          detail: payload.staff.length ? 'Live admin audit history connected.' : 'No audit actors returned, so the current OAuth session is shown.',
+          time: Date.now(),
+        }])
         setStaffState('ready')
       } catch (error) {
         if (cancelled) return
@@ -1300,7 +1382,12 @@ function StaffAccessPage({ user }: { user: AdminUser }) {
     return () => {
       cancelled = true
     }
-  }, [fallbackStaff, user.id])
+  }, [fallbackStaff, refreshKey, user.displayName, user.id])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setTimeNow(Date.now()), 30_000)
+    return () => window.clearInterval(timer)
+  }, [])
 
   const visibleStaff = staff.filter((member) => {
     const needle = query.trim().toLowerCase()
@@ -1308,11 +1395,37 @@ function StaffAccessPage({ user }: { user: AdminUser }) {
     const matchesWorkspace = workspaceFilter === 'all' || member.workspaces.includes(workspaceFilter)
     return matchesQuery && matchesWorkspace
   })
-  const selected = staff.find((member) => member.id === selectedId) ?? visibleStaff[0] ?? staff[0]
+  const selected = staff.find((member) => member.id === selectedId) ?? visibleStaff[0] ?? staff[0] ?? fallbackStaff[0]
   const ownerCount = staff.filter((member) => member.role === 'Owner').length
   const activeCount = staff.filter((member) => member.status === 'Active').length
   const pendingCount = staff.filter((member) => member.status !== 'Active').length
   const protectedActions = user.permissions.filter((permission) => permission.includes(':manage') || permission.includes(':players') || permission.includes(':events')).length
+  const canManageStaff = user.permissions.includes('staff:manage') || user.role === 'Owner'
+  const workspaceCoverage = Object.entries(workspaceMeta).map(([id, meta]) => {
+    const workspace = id as StaffWorkspaceId
+    const members = staff.filter((member) => member.workspaces.includes(workspace))
+    return { workspace, meta, members }
+  })
+  const recordAction = (action: string, target: string, detail: string) => {
+    setActionLog((current) => [{
+      id: `${Date.now()}-${current.length}`,
+      actor: user.displayName,
+      action,
+      target,
+      detail,
+      time: Date.now(),
+    }, ...current].slice(0, 50))
+  }
+  const refreshStaff = () => {
+    if (adminDemoMode) {
+      setStaff(fallbackStaff)
+      setSelectedId(user.id)
+      setInviteMessage('Demo staff data reset to the current session.')
+      recordAction('reset demo staff data', user.displayName, 'Frontend demo state was reset.')
+      return
+    }
+    setRefreshKey((current) => current + 1)
+  }
   const toggleInviteWorkspace = (workspace: StaffWorkspaceId) => {
     setInviteDraft((current) => ({
       ...current,
@@ -1321,44 +1434,112 @@ function StaffAccessPage({ user }: { user: AdminUser }) {
         : [...current.workspaces, workspace],
     }))
   }
+  const toggleEditWorkspace = (workspace: StaffWorkspaceId) => {
+    setEditDraft((current) => ({
+      ...current,
+      workspaces: current.workspaces.includes(workspace)
+        ? current.workspaces.filter((item) => item !== workspace)
+        : [...current.workspaces, workspace],
+    }))
+  }
   const createInviteDraft = () => {
     const label = inviteDraft.displayName.trim() || inviteDraft.discordId.trim() || 'New staff member'
-    setInviteMessage(`${label} invite draft staged for ${inviteDraft.workspaces.map((workspace) => workspaceMeta[workspace].label).join(', ')}.`)
+    const workspaces: StaffWorkspaceId[] = inviteDraft.workspaces.length ? inviteDraft.workspaces : ['lifesteal']
+    const draft: StaffDirectoryMember = {
+      id: `draft-${Date.now()}`,
+      name: inviteDraft.displayName.trim() || `Staff ${inviteDraft.discordId.slice(-4) || 'draft'}`,
+      discord: inviteDraft.discordId.trim() ? `ID ${inviteDraft.discordId.trim()}` : '@pending',
+      discordId: inviteDraft.discordId.trim() || 'pending',
+      avatarUrl: null,
+      role: inviteDraft.role,
+      workspaces,
+      permissions: permissionsForStaffRole(inviteDraft.role, workspaces),
+      status: 'Invite pending',
+      trust: 'Pending',
+      source: 'Local invite draft',
+      firstSeen: Date.now(),
+      lastActive: Date.now(),
+      portalActions: 0,
+      notes: 'Invite draft staged in the admin portal. This is waiting for a backend route before it can create real Discord access.',
+    }
+    setStaff((current) => [draft, ...current])
+    setSelectedId(draft.id)
+    setActivePanel('directory')
+    setInviteMessage(`${label} invite draft staged for ${workspaceLabels(workspaces)}.`)
+    recordAction('staged invite draft', label, `${inviteDraft.role} / ${workspaceLabels(workspaces)}`)
+    setInviteDraft({ discordId: '', displayName: '', role: 'SHD Team', workspaces: ['lifesteal'] })
     setInviteOpen(false)
+  }
+  const startRoleDraft = (role: string) => {
+    const workspaces: StaffWorkspaceId[] = role === 'Owner' ? ['global', 'lifesteal', 'general', 'valorant'] : ['lifesteal']
+    setInviteDraft({ discordId: '', displayName: '', role, workspaces })
+    setInviteOpen(true)
+    recordAction('started role draft', role, 'Opened the invite draft modal with a role template.')
+  }
+  const copySelectedId = async () => {
+    try {
+      await navigator.clipboard.writeText(selected.discordId)
+      setInviteMessage(`Copied ${selected.name}'s Discord ID.`)
+      recordAction('copied Discord ID', selected.name, selected.discordId)
+    } catch {
+      setInviteMessage(`${selected.name}'s Discord ID is ${selected.discordId}.`)
+    }
+  }
+  const openEditDraft = () => {
+    setEditDraft({
+      role: selected.role,
+      status: selected.status,
+      trust: selected.trust,
+      workspaces: selected.workspaces,
+      notes: selected.notes,
+    })
+    setEditOpen(true)
+  }
+  const saveEditDraft = () => {
+    const workspaces = editDraft.workspaces.length ? editDraft.workspaces : []
+    setStaff((current) => current.map((member) => member.id === selected.id
+      ? {
+          ...member,
+          role: editDraft.role,
+          status: editDraft.status,
+          trust: editDraft.trust,
+          workspaces,
+          permissions: permissionsForStaffRole(editDraft.role, workspaces),
+          notes: editDraft.notes.trim() || member.notes,
+          lastActive: Date.now(),
+        }
+      : member))
+    setInviteMessage(`${selected.name}'s access edit is staged locally.`)
+    recordAction('staged access edit', selected.name, `${editDraft.role} / ${editDraft.status} / ${workspaceLabels(workspaces)}`)
+    setEditOpen(false)
+  }
+  const openWorkspace = (workspace: StaffWorkspaceId) => {
+    setWorkspaceFilter(workspace)
+    setActivePanel('directory')
   }
 
   return (
     <main className="page-workspace staff-access-page">
-      <PageHeader eyebrow="Authorization" title="Staff & Access" detail="Discord remains the identity source; this view lists the current session plus real admin portal actors from audit history." action={<div className="page-actions"><button className="page-action" onClick={() => setInviteOpen(true)} type="button"><UserCheck size={16} />Invite staff</button><button className="page-action secondary" type="button"><ShieldCheck size={16} />Review roles</button></div>} />
-      <section className="access-command-grid">
-        <article><Users size={18} /><span>Portal actors</span><strong>{staff.length}</strong><p>{activeCount} active identities</p></article>
-        <article><KeyRound size={18} /><span>Owners</span><strong>{ownerCount}</strong><p>Full platform access</p></article>
-        <article><LockKeyhole size={18} /><span>Protected actions</span><strong>{protectedActions}</strong><p>High impact permissions on this session</p></article>
-        <article><FileWarning size={18} /><span>Needs review</span><strong>{pendingCount}</strong><p>Pending or limited access states</p></article>
-      </section>
-      <section className="access-hero-grid">
-        <article className="current-access-card">
-          <div>
-            <span className="eyebrow">Current Session</span>
-            <h2>{user.displayName}</h2>
-            <p>{user.role} access from Discord OAuth. Session refreshes through the admin API.</p>
-          </div>
-          <div className="scope-list">
-            {user.permissions.map((permission) => <small key={permission}>{permissionLabel(permission)}</small>)}
-          </div>
-        </article>
-        <article className="access-health-card">
-          <header><div><span className="eyebrow">Access Model</span><h2>Role source of truth</h2></div><span className="service-state live"><span />Protected</span></header>
-          <div className="access-health-list">
-            <div><CheckCircle2 size={15} /><span><strong>Discord OAuth</strong><small>Login identity and avatar source</small></span></div>
-            <div><CheckCircle2 size={15} /><span><strong>Workspace scopes</strong><small>Navigation and API routes stay isolated</small></span></div>
-            <div><CheckCircle2 size={15} /><span><strong>Audit trail</strong><small>Claims, decisions, player edits, and event actions</small></span></div>
-          </div>
-        </article>
+      <PageHeader eyebrow="Authorization" title="Staff & Access" detail="Discord remains the identity source; this page now works as a staged access workspace until backend write routes are connected." action={<div className="page-actions"><button className="page-action" disabled={!canManageStaff} onClick={() => setInviteOpen(true)} type="button"><UserCheck size={16} />Invite staff</button><button className="page-action secondary" onClick={() => setActivePanel('policy')} type="button"><ShieldCheck size={16} />Review roles</button><button className="page-action secondary" disabled={staffState === 'loading'} onClick={refreshStaff} type="button"><RefreshCw size={16} />Refresh</button></div>} />
+      <section className="staff-access-switchboard">
+        <div className="staff-access-tabs">
+          {(Object.entries(staffPanelMeta) as Array<[StaffAccessPanel, typeof staffPanelMeta[StaffAccessPanel]]>).map(([panel, meta]) => (
+            <button className={activePanel === panel ? 'active' : ''} key={panel} onClick={() => setActivePanel(panel)} type="button">
+              {meta.icon}
+              <span><strong>{meta.label}</strong><small>{meta.detail}</small></span>
+            </button>
+          ))}
+        </div>
+        <div className="staff-access-metrics">
+          <span><strong>{staff.length}</strong><small>Portal actors</small></span>
+          <span><strong>{ownerCount}</strong><small>Owners</small></span>
+          <span><strong>{pendingCount}</strong><small>Needs review</small></span>
+          <span><strong>{protectedActions}</strong><small>Your protected scopes</small></span>
+        </div>
       </section>
       {inviteMessage && <div className="operations-state"><CheckCircle2 size={16} /><span>{inviteMessage}</span></div>}
       {staffState === 'error' && <div className="operations-state error"><FileWarning size={16} /><span>{staffError}</span></div>}
-      <section className="staff-access-layout">
+      {activePanel === 'directory' && <section className="staff-access-layout">
         <article className="staff-directory-panel">
           <header>
             <div><span className="eyebrow">Directory</span><h2>Staff identities</h2></div>
@@ -1376,7 +1557,7 @@ function StaffAccessPage({ user }: { user: AdminUser }) {
             {staffState === 'loading' && <div className="panel-empty"><Activity size={17} /><span>Loading staff access...</span></div>}
             {visibleStaff.map((member) => (
               <button className={selected.id === member.id ? 'active' : ''} key={member.id} onClick={() => setSelectedId(member.id)} type="button">
-                <span className="avatar">{member.name.slice(0, 2).toUpperCase()}</span>
+                <span className="avatar">{member.avatarUrl ? <img alt="" src={member.avatarUrl} /> : initials(member.name)}</span>
                 <span><strong>{member.name}</strong><small>{member.discord} / {member.role}</small></span>
                 <span className={`access-state ${member.status.toLowerCase().replaceAll(' ', '-')}`}>{member.status}</span>
               </button>
@@ -1386,13 +1567,13 @@ function StaffAccessPage({ user }: { user: AdminUser }) {
         </article>
         <aside className="staff-detail-card">
           <header>
-            <span className="avatar large">{selected.name.slice(0, 2).toUpperCase()}</span>
+            <span className="avatar large">{selected.avatarUrl ? <img alt="" src={selected.avatarUrl} /> : initials(selected.name)}</span>
             <div><span className="eyebrow">{selected.role}</span><h2>{selected.name}</h2><p>{selected.discord} / {selected.discordId}</p></div>
           </header>
           <div className="staff-detail-actions">
-            <button type="button"><KeyRound size={15} />Copy ID</button>
-            <button type="button"><Activity size={15} />Audit</button>
-            <button type="button"><Settings2 size={15} />Edit</button>
+            <button onClick={() => void copySelectedId()} type="button"><KeyRound size={15} />Copy ID</button>
+            <button onClick={() => setActivePanel('activity')} type="button"><Activity size={15} />Activity</button>
+            <button disabled={!canManageStaff} onClick={openEditDraft} type="button"><Settings2 size={15} />Stage edit</button>
           </div>
           <div className="staff-detail-facts">
             <div><span>Status</span><strong>{selected.status}</strong></div>
@@ -1406,41 +1587,66 @@ function StaffAccessPage({ user }: { user: AdminUser }) {
             <span className="eyebrow">Workspaces</span>
             <div className="workspace-chip-grid">
               {selected.workspaces.map((workspace) => <span key={workspace}>{workspaceMeta[workspace].icon}<strong>{workspaceMeta[workspace].label}</strong><small>{workspaceMeta[workspace].detail}</small></span>)}
+              {selected.workspaces.length === 0 && <span><LockKeyhole size={16} /><strong>No active workspace</strong><small>This actor appears in history but has no current workspace scope.</small></span>}
             </div>
           </section>
           <section>
             <span className="eyebrow">Permissions</span>
-            <div className="scope-list">{selected.permissions.map((permission) => <small key={permission}>{permissionLabel(permission)}</small>)}</div>
+            <div className="scope-list">{selected.permissions.map((permission) => <small key={permission}>{permissionLabel(permission)}</small>)}{selected.permissions.length === 0 && <small>No active permissions</small>}</div>
           </section>
           <section className="staff-note-card"><span className="eyebrow">Access note</span><p>{selected.notes}</p></section>
         </aside>
-      </section>
-      <section className="role-policy-grid">
-        {rolePolicies.map((policy) => (
-          <article key={policy.role}>
-            <header><ShieldCheck size={18} /><strong>{policy.role}</strong></header>
-            <p>{policy.detail}</p>
-            <div className="scope-list">{policy.permissions.map((permission) => <small key={permission}>{permissionLabel(permission)}</small>)}</div>
-          </article>
-        ))}
-      </section>
-      <section className="workspace-access-matrix">
-        <header><div><span className="eyebrow">Workspace Matrix</span><h2>Coverage by project</h2></div></header>
-        {Object.entries(workspaceMeta).map(([id, meta]) => {
-          const members = staff.filter((member) => member.workspaces.includes(id as StaffWorkspaceId))
-          return <article key={id}>
+      </section>}
+      {activePanel === 'policy' && <section className="staff-management-panel">
+        <article className="staff-panel-card">
+          <header><div><span className="eyebrow">Permission Templates</span><h2>Role policy</h2></div><span className="service-state live"><span />Discord backed</span></header>
+          <div className="role-policy-list">
+            {rolePolicies.map((policy) => (
+              <article key={policy.role}>
+                <header><ShieldCheck size={18} /><strong>{policy.role}</strong><button disabled={!canManageStaff} onClick={() => startRoleDraft(policy.role)} type="button"><UserPlus size={14} />Draft invite</button></header>
+                <p>{policy.detail}</p>
+                <div className="scope-list">{policy.permissions.map((permission) => <small key={permission}>{permissionLabel(permission)}</small>)}</div>
+              </article>
+            ))}
+          </div>
+        </article>
+        <article className="staff-panel-card access-health-card compact">
+          <header><div><span className="eyebrow">Current session</span><h2>{user.displayName}</h2></div><span className="service-state live"><span />{user.role}</span></header>
+          <div className="scope-list">{user.permissions.map((permission) => <small key={permission}>{permissionLabel(permission)}</small>)}</div>
+        </article>
+      </section>}
+      {activePanel === 'workspaces' && <section className="workspace-access-matrix staff-workspace-panel">
+        <header><div><span className="eyebrow">Workspace Matrix</span><h2>Coverage by project</h2></div><p>Open a workspace to filter the directory instantly.</p></header>
+        {workspaceCoverage.map(({ workspace, meta, members }) => (
+          <button key={workspace} onClick={() => openWorkspace(workspace)} type="button">
             <span>{meta.icon}<strong>{meta.label}</strong><small>{meta.detail}</small></span>
-            <div className="scope-list">{members.map((member) => <small key={member.id}>{member.name}</small>)}</div>
-          </article>
-        })}
-      </section>
+            <div className="scope-list">{members.map((member) => <small key={member.id}>{member.name}</small>)}{members.length === 0 && <small>No active staff</small>}</div>
+            <b>{members.length}</b>
+          </button>
+        ))}
+      </section>}
+      {activePanel === 'activity' && <section className="staff-activity-panel">
+        <article className="staff-panel-card">
+          <header><div><span className="eyebrow">Local Action Trail</span><h2>Staged access activity</h2></div><button className="page-action secondary" disabled={actionLog.length === 0} onClick={() => setActionLog([])} type="button"><Trash2 size={15} />Clear</button></header>
+          <div className="staff-action-list">
+            {actionLog.map((item) => (
+              <article key={item.id}>
+                <span className="activity-icon"><Activity size={14} /></span>
+                <div><strong>{item.actor}</strong><p>{item.action} <b>{item.target}</b></p><small>{item.detail}</small></div>
+                <time>{relativeTime(item.time, timeNow)}</time>
+              </article>
+            ))}
+            {actionLog.length === 0 && <div className="panel-empty"><Activity size={17} /><span>No staged staff actions in this browser session.</span></div>}
+          </div>
+        </article>
+      </section>}
       {inviteOpen && <div className="modal-layer">
         <section className="admin-modal staff-invite-modal">
           <header><div><span className="eyebrow">Access Draft</span><h2>Invite staff</h2><p>Draft the intended role and workspace scope before the backend creates Discord-backed access.</p></div><button aria-label="Close invite modal" onClick={() => setInviteOpen(false)} type="button"><X size={17} /></button></header>
           <div className="manual-player-grid">
             <label><span>Discord ID</span><input value={inviteDraft.discordId} onChange={(event) => setInviteDraft((current) => ({ ...current, discordId: event.target.value }))} placeholder="1224..." /></label>
             <label><span>Display name</span><input value={inviteDraft.displayName} onChange={(event) => setInviteDraft((current) => ({ ...current, displayName: event.target.value }))} placeholder="Staff name" /></label>
-            <label><span>Portal role</span><select value={inviteDraft.role} onChange={(event) => setInviteDraft((current) => ({ ...current, role: event.target.value }))}><option>Owner</option><option>Admin</option><option>Mod</option><option>SHD Team</option></select></label>
+            <label><span>Portal role</span><select value={inviteDraft.role} onChange={(event) => setInviteDraft((current) => ({ ...current, role: event.target.value }))}>{staffRoleOptions.map((role) => <option key={role}>{role}</option>)}</select></label>
           </div>
           <div className="invite-workspace-list">
             {Object.entries(workspaceMeta).map(([id, meta]) => {
@@ -1449,6 +1655,24 @@ function StaffAccessPage({ user }: { user: AdminUser }) {
             })}
           </div>
           <footer><button className="page-action secondary" onClick={() => setInviteOpen(false)} type="button">Cancel</button><button className="page-action" disabled={!inviteDraft.discordId.trim() && !inviteDraft.displayName.trim()} onClick={createInviteDraft} type="button"><UserPlus size={16} />Create draft</button></footer>
+        </section>
+      </div>}
+      {editOpen && <div className="modal-layer">
+        <section className="admin-modal staff-edit-modal">
+          <header><div><span className="eyebrow">Staged access edit</span><h2>{selected.name}</h2><p>These changes are local until the real staff management API is connected.</p></div><button aria-label="Close edit modal" onClick={() => setEditOpen(false)} type="button"><X size={17} /></button></header>
+          <div className="manual-player-grid">
+            <label><span>Portal role</span><select value={editDraft.role} onChange={(event) => setEditDraft((current) => ({ ...current, role: event.target.value }))}>{staffRoleOptions.map((role) => <option key={role}>{role}</option>)}</select></label>
+            <label><span>Status</span><select value={editDraft.status} onChange={(event) => setEditDraft((current) => ({ ...current, status: event.target.value as StaffDirectoryMember['status'] }))}>{staffStatusOptions.map((status) => <option key={status}>{status}</option>)}</select></label>
+            <label><span>Trust</span><select value={editDraft.trust} onChange={(event) => setEditDraft((current) => ({ ...current, trust: event.target.value as StaffDirectoryMember['trust'] }))}>{staffTrustOptions.map((trust) => <option key={trust}>{trust}</option>)}</select></label>
+          </div>
+          <div className="invite-workspace-list">
+            {Object.entries(workspaceMeta).map(([id, meta]) => {
+              const workspace = id as StaffWorkspaceId
+              return <label key={workspace}><input checked={editDraft.workspaces.includes(workspace)} onChange={() => toggleEditWorkspace(workspace)} type="checkbox" /><span>{meta.icon}<strong>{meta.label}</strong><small>{meta.detail}</small></span></label>
+            })}
+          </div>
+          <label className="staff-edit-note"><span>Access note</span><textarea value={editDraft.notes} onChange={(event) => setEditDraft((current) => ({ ...current, notes: event.target.value }))} /></label>
+          <footer><button className="page-action secondary" onClick={() => setEditOpen(false)} type="button">Cancel</button><button className="page-action" onClick={saveEditDraft} type="button"><Check size={16} />Stage edit</button></footer>
         </section>
       </div>}
     </main>
