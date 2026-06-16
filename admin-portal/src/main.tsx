@@ -66,6 +66,7 @@ import {
   getAdminSubmissions,
   getAdminOverview,
   getAdminSession,
+  getAdminStaffAccess,
   getLifestealStaffChat,
   getSubmissionTicketActivity,
   resendAdminLifestealEventAnnouncement,
@@ -80,6 +81,8 @@ import {
   type AdminPlayer,
   type AdminPlayerBadge,
   type AdminPlayerStatus,
+  type AdminStaffMember,
+  type AdminWorkspaceId,
   type CreateAdminPlayerPayload,
   type UpsertAdminLifestealEventPayload,
   type AdminUser,
@@ -1216,21 +1219,8 @@ function permissionLabel(permission: string) {
   return labels[permission] ?? permission
 }
 
-type StaffWorkspaceId = 'global' | 'lifesteal' | 'general' | 'valorant'
-type StaffDirectoryMember = {
-  id: string
-  name: string
-  discord: string
-  discordId: string
-  role: string
-  workspaces: StaffWorkspaceId[]
-  permissions: string[]
-  status: 'Active' | 'Limited' | 'Invite pending' | 'Review'
-  trust: 'Full' | 'Scoped' | 'Pending'
-  source: string
-  lastActive: number
-  notes: string
-}
+type StaffWorkspaceId = AdminWorkspaceId
+type StaffDirectoryMember = AdminStaffMember
 
 const workspaceMeta: Record<StaffWorkspaceId, { label: string; detail: string; icon: ReactNode }> = {
   global: { label: 'Global', detail: 'Audit, staff access, integrations', icon: <Building2 size={16} /> },
@@ -1246,88 +1236,71 @@ const rolePolicies = [
   { role: 'SHD Team', detail: 'Scoped helper access for project-specific operations.', permissions: ['lifesteal:read', 'lifesteal:staff-chat'] },
 ]
 
+function staffMemberFromUser(user: AdminUser): StaffDirectoryMember {
+  const workspaces = user.workspaces.filter((workspace): workspace is StaffWorkspaceId => workspace in workspaceMeta)
+  return {
+    id: user.id,
+    name: user.displayName,
+    discord: `@${user.username}`,
+    discordId: user.id,
+    avatarUrl: user.avatarUrl,
+    role: user.role,
+    workspaces: workspaces.length ? workspaces : ['global', 'lifesteal'],
+    permissions: user.permissions,
+    status: 'Active',
+    trust: ['Owner', 'Administrator'].includes(user.role) ? 'Full' : 'Scoped',
+    source: 'Current Discord OAuth session',
+    firstSeen: Date.now(),
+    lastActive: Date.now(),
+    portalActions: 0,
+    notes: 'Current signed-in staff identity. Full staff history is loaded from admin audit data when the bot API is connected.',
+  }
+}
+
 function StaffAccessPage({ user }: { user: AdminUser }) {
-  const staff = useMemo<StaffDirectoryMember[]>(() => {
-    const currentWorkspaces = user.workspaces.filter((workspace): workspace is StaffWorkspaceId => workspace in workspaceMeta)
-    return [
-      {
-        id: user.id,
-        name: user.displayName,
-        discord: `@${user.username}`,
-        discordId: user.id,
-        role: user.role,
-        workspaces: currentWorkspaces.length ? currentWorkspaces : ['global', 'lifesteal'],
-        permissions: user.permissions,
-        status: 'Active',
-        trust: 'Full',
-        source: 'Discord OAuth session',
-        lastActive: Date.now() - 2 * 60_000,
-        notes: 'Current signed-in staff identity. Owner-level changes should remain audited.',
-      },
-      {
-        id: '1224803434675572827',
-        name: 'TlzMax5454',
-        discord: '@tlzmax5454',
-        discordId: '1224803434675572827',
-        role: 'Owner',
-        workspaces: ['global', 'lifesteal', 'general', 'valorant'],
-        permissions: user.permissions,
-        status: 'Active',
-        trust: 'Full',
-        source: 'Manual owner allowlist',
-        lastActive: Date.now() - 24 * 60_000,
-        notes: 'Full admin portal access approved for project ownership and live operations.',
-      },
-      {
-        id: 'staff-xvoidism',
-        name: 'xvoidism',
-        discord: '@voidism',
-        discordId: 'pending-discord-id',
-        role: 'SHD Team',
-        workspaces: ['lifesteal'],
-        permissions: ['lifesteal:read', 'lifesteal:staff-chat'],
-        status: 'Active',
-        trust: 'Scoped',
-        source: 'Lifesteal staff role',
-        lastActive: Date.now() - 3 * 60 * 60_000,
-        notes: 'Season staff access is scoped to Lifesteal visibility and staff communication.',
-      },
-      {
-        id: 'staff-review-bot',
-        name: 'Review Bot',
-        discord: '@shd-lifesteal-bot',
-        discordId: 'bot-service',
-        role: 'Service',
-        workspaces: ['lifesteal'],
-        permissions: ['lifesteal:read', 'lifesteal:ticket', 'lifesteal:players', 'lifesteal:events'],
-        status: 'Limited',
-        trust: 'Scoped',
-        source: 'Bot token service',
-        lastActive: Date.now() - 9 * 60_000,
-        notes: 'Service identity for ticket bridge, roster state, event publishing, and audit events.',
-      },
-      {
-        id: 'staff-general-staged',
-        name: 'General Support Lead',
-        discord: '@pending',
-        discordId: 'pending',
-        role: 'Admin',
-        workspaces: ['general', 'valorant'],
-        permissions: ['integrations:read'],
-        status: 'Invite pending',
-        trust: 'Pending',
-        source: 'Future guild bot',
-        lastActive: Date.now() - 2 * 24 * 60 * 60_000,
-        notes: 'Placeholder for the second Discord guild once General and Valorant workflows connect.',
-      },
-    ]
-  }, [user])
+  const fallbackStaff = useMemo<StaffDirectoryMember[]>(() => [staffMemberFromUser(user)], [user])
+  const [staff, setStaff] = useState<StaffDirectoryMember[]>(fallbackStaff)
+  const [staffState, setStaffState] = useState<'loading' | 'ready' | 'error'>(adminDemoMode ? 'ready' : 'loading')
+  const [staffError, setStaffError] = useState('')
   const [query, setQuery] = useState('')
   const [workspaceFilter, setWorkspaceFilter] = useState<'all' | StaffWorkspaceId>('all')
   const [selectedId, setSelectedId] = useState(user.id)
   const [inviteOpen, setInviteOpen] = useState(false)
   const [inviteDraft, setInviteDraft] = useState<{ discordId: string; displayName: string; role: string; workspaces: StaffWorkspaceId[] }>({ discordId: '', displayName: '', role: 'SHD Team', workspaces: ['lifesteal'] })
   const [inviteMessage, setInviteMessage] = useState('')
+
+  useEffect(() => {
+    if (adminDemoMode) {
+      setStaff(fallbackStaff)
+      setStaffState('ready')
+      return
+    }
+
+    let cancelled = false
+    const loadStaff = async () => {
+      setStaffState('loading')
+      setStaffError('')
+      try {
+        const payload = await getAdminStaffAccess()
+        if (cancelled) return
+        const nextStaff = payload.staff.length ? payload.staff : fallbackStaff
+        setStaff(nextStaff)
+        setSelectedId((current) => nextStaff.some((member) => member.id === current) ? current : nextStaff[0]?.id ?? user.id)
+        setStaffState('ready')
+      } catch (error) {
+        if (cancelled) return
+        setStaff(fallbackStaff)
+        setSelectedId(user.id)
+        setStaffError(error instanceof AdminApiError ? error.message : 'Could not load staff access.')
+        setStaffState('error')
+      }
+    }
+
+    loadStaff()
+    return () => {
+      cancelled = true
+    }
+  }, [fallbackStaff, user.id])
 
   const visibleStaff = staff.filter((member) => {
     const needle = query.trim().toLowerCase()
@@ -1356,9 +1329,9 @@ function StaffAccessPage({ user }: { user: AdminUser }) {
 
   return (
     <main className="page-workspace staff-access-page">
-      <PageHeader eyebrow="Authorization" title="Staff & Access" detail="Discord remains the identity source; the admin portal translates guild roles into explicit workspace permissions." action={<div className="page-actions"><button className="page-action" onClick={() => setInviteOpen(true)} type="button"><UserCheck size={16} />Invite staff</button><button className="page-action secondary" type="button"><ShieldCheck size={16} />Review roles</button></div>} />
+      <PageHeader eyebrow="Authorization" title="Staff & Access" detail="Discord remains the identity source; this view lists the current session plus real admin portal actors from audit history." action={<div className="page-actions"><button className="page-action" onClick={() => setInviteOpen(true)} type="button"><UserCheck size={16} />Invite staff</button><button className="page-action secondary" type="button"><ShieldCheck size={16} />Review roles</button></div>} />
       <section className="access-command-grid">
-        <article><Users size={18} /><span>Authorized staff</span><strong>{staff.length}</strong><p>{activeCount} active identities</p></article>
+        <article><Users size={18} /><span>Portal actors</span><strong>{staff.length}</strong><p>{activeCount} active identities</p></article>
         <article><KeyRound size={18} /><span>Owners</span><strong>{ownerCount}</strong><p>Full platform access</p></article>
         <article><LockKeyhole size={18} /><span>Protected actions</span><strong>{protectedActions}</strong><p>High impact permissions on this session</p></article>
         <article><FileWarning size={18} /><span>Needs review</span><strong>{pendingCount}</strong><p>Pending or limited access states</p></article>
@@ -1384,6 +1357,7 @@ function StaffAccessPage({ user }: { user: AdminUser }) {
         </article>
       </section>
       {inviteMessage && <div className="operations-state"><CheckCircle2 size={16} /><span>{inviteMessage}</span></div>}
+      {staffState === 'error' && <div className="operations-state error"><FileWarning size={16} /><span>{staffError}</span></div>}
       <section className="staff-access-layout">
         <article className="staff-directory-panel">
           <header>
@@ -1399,6 +1373,7 @@ function StaffAccessPage({ user }: { user: AdminUser }) {
             </div>
           </div>
           <div className="staff-roster-list">
+            {staffState === 'loading' && <div className="panel-empty"><Activity size={17} /><span>Loading staff access...</span></div>}
             {visibleStaff.map((member) => (
               <button className={selected.id === member.id ? 'active' : ''} key={member.id} onClick={() => setSelectedId(member.id)} type="button">
                 <span className="avatar">{member.name.slice(0, 2).toUpperCase()}</span>
@@ -1424,6 +1399,8 @@ function StaffAccessPage({ user }: { user: AdminUser }) {
             <div><span>Trust</span><strong>{selected.trust}</strong></div>
             <div><span>Source</span><strong>{selected.source}</strong></div>
             <div><span>Last active</span><strong>{relativeTime(selected.lastActive)}</strong></div>
+            <div><span>First seen</span><strong>{relativeTime(selected.firstSeen)}</strong></div>
+            <div><span>Portal actions</span><strong>{selected.portalActions}</strong></div>
           </div>
           <section>
             <span className="eyebrow">Workspaces</span>

@@ -11,6 +11,29 @@ export type AdminUser = {
   expiresAt: number
 }
 
+export type AdminStaffMember = {
+  id: string
+  name: string
+  discord: string
+  discordId: string
+  avatarUrl: string | null
+  role: string
+  workspaces: AdminWorkspaceId[]
+  permissions: string[]
+  status: 'Active' | 'Limited' | 'Invite pending' | 'Review'
+  trust: 'Full' | 'Scoped' | 'Pending'
+  source: string
+  firstSeen: number
+  lastActive: number
+  portalActions: number
+  notes: string
+}
+
+export type AdminStaffAccessPayload = {
+  staff: AdminStaffMember[]
+  updatedAt: number
+}
+
 export type AdminApiSubmission = {
   id: string
   workspace: 'lifesteal'
@@ -325,6 +348,12 @@ export async function getAdminOverview(): Promise<AdminOverview> {
 export async function getAdminAudit(limit = 100): Promise<AdminAuditPayload> {
   if (adminDemoMode) return { events: [], summary: { eventsToday: 0, staffActions: 0, integrationEvents: 0, warnings: 0 }, updatedAt: Date.now() }
   const response = await adminRequest<AdminAuditPayload & { ok: boolean }>(`/audit?limit=${encodeURIComponent(String(limit))}`)
+  return response
+}
+
+export async function getAdminStaffAccess(): Promise<AdminStaffAccessPayload> {
+  if (adminDemoMode) return { staff: [], updatedAt: Date.now() }
+  const response = await adminRequest<AdminStaffAccessPayload & { ok: boolean }>('/staff')
   return response
 }
 

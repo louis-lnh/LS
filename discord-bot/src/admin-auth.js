@@ -204,6 +204,80 @@ function publicSession(session) {
   };
 }
 
+function trustForAccess(access) {
+  if (!access) return 'Pending';
+  return ['Owner', 'Administrator'].includes(access.role) ? 'Full' : 'Scoped';
+}
+
+function statusForAccess(access) {
+  if (!access) return 'Review';
+  return ['Owner', 'Administrator', 'Moderator', 'Staff'].includes(access.role) ? 'Active' : 'Limited';
+}
+
+async function buildAdminStaffPayload(client, session) {
+  const guild = await client.guilds.fetch(config.guildId);
+  const auditEvents = statements.recentAudit.all(500)
+    .filter((event) => event.discord_id && String(event.type).startsWith('admin.'));
+  const grouped = new Map();
+
+  for (const event of auditEvents) {
+    const current = grouped.get(event.discord_id) ?? {
+      id: event.discord_id,
+      portalActions: 0,
+      firstSeen: event.created_at,
+      lastActive: event.created_at
+    };
+    current.portalActions += 1;
+    current.firstSeen = Math.min(current.firstSeen, event.created_at);
+    current.lastActive = Math.max(current.lastActive, event.created_at);
+    grouped.set(event.discord_id, current);
+  }
+
+  if (!grouped.has(session.id)) {
+    grouped.set(session.id, {
+      id: session.id,
+      portalActions: 0,
+      firstSeen: Date.now(),
+      lastActive: Date.now()
+    });
+  }
+
+  const staff = await Promise.all([...grouped.values()].map(async (entry) => {
+    const user = client.users.cache.get(entry.id) ?? await client.users.fetch(entry.id).catch(() => null);
+    const member = guild.members.cache.get(entry.id) ?? await guild.members.fetch(entry.id).catch(() => null);
+    const access = member ? workspaceAccess(member, guild) : null;
+    const isCurrent = entry.id === session.id;
+    return {
+      id: entry.id,
+      name: user?.globalName || user?.username || session.displayName || entry.id,
+      discord: user?.username ? `@${user.username}` : `ID ${entry.id}`,
+      discordId: entry.id,
+      avatarUrl: user?.displayAvatarURL?.({ size: 64 }) ?? null,
+      role: access?.role ?? (isCurrent ? session.role : 'Former staff'),
+      workspaces: access?.workspaces ?? (isCurrent ? session.workspaces : []),
+      permissions: access?.permissions ?? (isCurrent ? session.permissions ?? [] : []),
+      status: statusForAccess(access ?? (isCurrent ? session : null)),
+      trust: trustForAccess(access ?? (isCurrent ? session : null)),
+      source: isCurrent ? 'Current Discord OAuth session' : 'Admin portal audit history',
+      firstSeen: entry.firstSeen,
+      lastActive: entry.lastActive,
+      portalActions: entry.portalActions,
+      notes: access
+        ? 'This identity has Discord-backed admin portal access and has appeared in portal audit history.'
+        : 'This identity appears in admin portal audit history but no longer resolves to an active staff access role.'
+    };
+  }));
+
+  return {
+    ok: true,
+    staff: staff.sort((left, right) =>
+      (right.lastActive ?? 0) - (left.lastActive ?? 0) ||
+      left.name.localeCompare(right.name)
+    ),
+    updatedAt: Date.now()
+  };
+}
+
 function hasPermission(session, permission) {
   return session?.permissions?.includes(permission);
 }
@@ -1000,6 +1074,10 @@ export function createAdminRouter(client) {
         exp: Date.now() + sessionLifetimeMs
       };
       setCookie(res, sessionCookieName, signedValue(session), sessionLifetimeMs / 1000);
+      audit('admin.session_started', {
+        discordId: session.id,
+        data: { role: session.role, workspaces: session.workspaces }
+      });
       return res.redirect(safePortalUrl(state.returnTo));
     } catch (error) {
       console.error('Admin OAuth callback failed', error);
@@ -1029,6 +1107,16 @@ export function createAdminRouter(client) {
     } catch (error) {
       console.error('Admin bootstrap failed', error);
       return res.status(500).json({ ok: false, code: 'ADMIN_BOOTSTRAP_FAILED', error: 'Could not load global operations.' });
+    }
+  });
+
+  router.get('/staff', requireAdminSession(client), async (req, res) => {
+    if (requirePermission(req, res, 'staff:read', 'Staff access permission required.')) return;
+    try {
+      return res.json(await buildAdminStaffPayload(client, req.adminSession));
+    } catch (error) {
+      console.error('Admin staff access lookup failed', error);
+      return res.status(500).json({ ok: false, code: 'ADMIN_STAFF_FAILED', error: 'Could not load staff access.' });
     }
   });
 
