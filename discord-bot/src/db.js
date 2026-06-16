@@ -20,6 +20,7 @@ const initialState = {
   support_applications: [],
   support_submissions: [],
   lifesteal_events: [],
+  admin_staff_access: [],
   appeals: [],
   staff_notes: [],
   shared_ip_exceptions: [],
@@ -54,6 +55,7 @@ const initialState = {
   nextSupportApplicationId: 1,
   nextSupportSubmissionId: 1,
   nextLifestealEventId: 1,
+  nextAdminStaffAccessId: 1,
   nextNoteId: 1,
   nextTicketId: 1
 };
@@ -969,6 +971,118 @@ export const statements = {
       const [event] = state.lifesteal_events.splice(index, 1);
       persist();
       return event;
+    }
+  },
+  findAdminStaffAccess: {
+    all() {
+      return structuredClone(state.admin_staff_access.filter((row) => !row.deleted_at));
+    }
+  },
+  findAdminStaffAccessById: {
+    get(id) {
+      const numeric = Number(id);
+      if (Number.isFinite(numeric)) {
+        return structuredClone(state.admin_staff_access.find((row) => row.id === numeric && !row.deleted_at) ?? null);
+      }
+      return structuredClone(state.admin_staff_access.find((row) => row.discord_id === id && !row.deleted_at) ?? null);
+    }
+  },
+  createAdminStaffAccess: {
+    run(row) {
+      const existing = row.discordId
+        ? state.admin_staff_access.find((item) => item.discord_id === row.discordId && !item.deleted_at)
+        : null;
+      const now = row.createdAt ?? Date.now();
+      if (existing) {
+        Object.assign(existing, {
+          display_name: row.displayName,
+          role: row.role,
+          workspaces: row.workspaces,
+          status: row.status,
+          trust: row.trust,
+          notes: row.notes,
+          updated_by: row.createdBy,
+          updated_at: now
+        });
+        persist();
+        return structuredClone(existing);
+      }
+      const item = {
+        id: state.nextAdminStaffAccessId++,
+        discord_id: row.discordId ?? null,
+        display_name: row.displayName,
+        role: row.role,
+        workspaces: row.workspaces,
+        status: row.status,
+        trust: row.trust,
+        notes: row.notes,
+        created_by: row.createdBy,
+        created_at: now,
+        updated_by: row.createdBy,
+        updated_at: now,
+        deleted_at: null,
+        deleted_by: null
+      };
+      state.admin_staff_access.push(item);
+      persist();
+      return structuredClone(item);
+    }
+  },
+  updateAdminStaffAccess: {
+    run(row) {
+      const numeric = Number(row.id);
+      let item = Number.isFinite(numeric)
+        ? state.admin_staff_access.find((entry) => entry.id === numeric && !entry.deleted_at)
+        : null;
+      if (!item && row.discordId) {
+        item = state.admin_staff_access.find((entry) => entry.discord_id === row.discordId && !entry.deleted_at);
+      }
+      if (!item && row.createIfMissing) {
+        item = {
+          id: state.nextAdminStaffAccessId++,
+          discord_id: row.discordId ?? null,
+          display_name: row.displayName,
+          role: row.role,
+          workspaces: row.workspaces,
+          status: row.status,
+          trust: row.trust,
+          notes: row.notes,
+          created_by: row.updatedBy,
+          created_at: row.updatedAt,
+          updated_by: row.updatedBy,
+          updated_at: row.updatedAt,
+          deleted_at: null,
+          deleted_by: null
+        };
+        state.admin_staff_access.push(item);
+        persist();
+        return structuredClone(item);
+      }
+      if (!item) return null;
+      for (const key of ['discordId', 'displayName', 'role', 'workspaces', 'status', 'trust', 'notes']) {
+        if (row[key] === undefined) continue;
+        const targetKey = key === 'discordId' ? 'discord_id' : key === 'displayName' ? 'display_name' : key;
+        item[targetKey] = row[key];
+      }
+      item.updated_by = row.updatedBy;
+      item.updated_at = row.updatedAt;
+      persist();
+      return structuredClone(item);
+    }
+  },
+  deleteAdminStaffAccess: {
+    run(row) {
+      const numeric = Number(row.id);
+      const item = Number.isFinite(numeric)
+        ? state.admin_staff_access.find((entry) => entry.id === numeric && !entry.deleted_at)
+        : state.admin_staff_access.find((entry) => entry.discord_id === row.id && !entry.deleted_at);
+      if (!item) return null;
+      item.deleted_at = row.deletedAt;
+      item.deleted_by = row.deletedBy;
+      item.updated_at = row.deletedAt;
+      item.updated_by = row.deletedBy;
+      persist();
+      return structuredClone(item);
     }
   },
   snapshot: {

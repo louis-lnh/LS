@@ -1187,11 +1187,11 @@ function RulesPage() {
   return (
     <section className="content-page rules-page page-frame">
       <PageIntro label="Rules" title={parsedRules.title}>
-        Official rules for the SHD Lifesteal event. This version is text-first and mirrors the final public rule document.
+        Official rules for the SHD Lifesteal event.
       </PageIntro>
       <aside className="rules-key-info">
         <strong>Applying?</strong>
-        <span>The public rules stay available here at all times. Signup applications now review and accept the rules directly inside the SHD Support Portal.</span>
+        <span>Sign up through SHD's Support Portal! Friendly reminder: Not knowing the rules is not an excuse, so make sure you've read and understood them before applying.</span>
       </aside>
       <div className="rules-layout">
         <aside className="rules-index" aria-label="Rules index">
@@ -1366,7 +1366,7 @@ function PlayersPage({ liveHealth, liveLoaded, liveObjectives, livePlayers, live
     return (
       <section className="content-page page-frame">
         <PageIntro label="Players" title="Registered Players">
-          Season 1 has not started yet. Until live gameplay begins, this page only shows registered public players and the SHD team.
+          Take a look at all registered players for Season 1. Want to be part of the event? Sign up now! More information can be found on the Apply page or through the SHD Support Portal.
         </PageIntro>
         <div className="leaderboard-tools pre-season-tools">
           <div>
@@ -1397,7 +1397,7 @@ function PlayersPage({ liveHealth, liveLoaded, liveObjectives, livePlayers, live
     <section className="content-page page-frame">
       <div className={selectedPlayer ? 'players-content is-muted' : 'players-content'}>
         <PageIntro label="Players" title="Player List">
-          Leaderboard-style roster view for every season player, objective holders, combat stats, and live player profiles.
+          Follow the progress of all active players throughout Season 1. Track hearts, kills, deaths, rankings, and see who survives until the very end.
         </PageIntro>
         <div className="objective-row player-objectives">
           <Objective title="Dragon Egg" owner={dragonEggOwner ?? 'Unclaimed'} detail={dragonEggDetail} />
@@ -1743,7 +1743,7 @@ function EventsPage() {
   return (
     <section className="content-page page-frame">
       <PageIntro label="Events" title="Season Events">
-        Season start, grace period, objective windows, and planned public event timings.
+        Stay up to date with Season 1 schedules, server milestones, public events, and important gameplay phases.
       </PageIntro>
       <div className="events-dashboard">
         <article className="featured-event">
@@ -1811,7 +1811,7 @@ function WorldPage() {
   return (
     <section className="content-page page-frame">
       <PageIntro label="World" title="Map / World Info">
-        Public season world information, dimension limits, objective policy, and core server settings.
+        Explore the Season 1 world setup, including map boundaries, dimension information, progression rules, objective restrictions, and core server settings.
       </PageIntro>
       <div className="info-grid world-grid">
         <article className="info-card">
@@ -1835,14 +1835,14 @@ function WorldPage() {
           <ul>
             <li>Difficulty: Normal</li>
             <li>Version: 1.21.11</li>
-            <li>View Distance: 32 chunks test-wise</li>
-            <li>Simulation Distance: 12 chunks test-wise</li>
+            <li>View Distance: 32 chunks (test-wise)</li>
+            <li>Simulation Distance: 12 chunks (test-wise)</li>
           </ul>
         </article>
         <article className="info-card">
           <span>Objectives</span>
           <h2>Egg + Maces</h2>
-          <p>Objective holders are exposed publicly with live holder state, approximate coordinate context, and the in-game glowing effect while tracking is active.</p>
+          <p>Objective holders are publicly tracked through holder status, approximate location updates, and the in-game glowing effect while tracking is active.</p>
         </article>
         <article className="info-card">
           <span>Grace Period</span>
@@ -1853,7 +1853,7 @@ function WorldPage() {
       <div className="world-event-strip">
         <span>Event Starts In</span>
         <strong>{eventCountdown}</strong>
-        <p>July 1, 2026 - 12:00 CEST. Looking forward to starting the server at this date.</p>
+        <p>July 1, 2026 - 12:00 CEST. The Season 1 launch is scheduled for this date.</p>
       </div>
     </section>
   )
@@ -1863,7 +1863,7 @@ function SignupPage() {
   return (
     <section className="content-page page-frame">
       <PageIntro label="Apply" title="Season 1 Applications">
-        Public application hub for joining the Lifesteal season through the SHD Support Portal and Discord ticket verification.
+        Ready to join Season 1? Learn how the application process works, complete your registration, and secure your spot through the SHD Support Portal.
       </PageIntro>
       <div className="apply-page">
         <article className="apply-hero">
@@ -1884,7 +1884,7 @@ function SignupPage() {
         </article>
 
         <div className="apply-flow" aria-label="Application review flow">
-          <ApplyStep number="01" title="Submit Form" detail="Open SHD Support, select Minecraft, and complete Lifesteal Signup." />
+          <ApplyStep number="01" title="Submit Form" detail="Open the SHD Support Portal, select Minecraft, and complete the Lifesteal signup form." />
           <ApplyStep number="02" title="Accept Rules" detail="Review the rules inside the support flow and confirm that you understand them." />
           <ApplyStep number="03" title="Get App Key" detail="Save your generated SHD-APP key after submission." />
           <ApplyStep number="04" title="Open Ticket" detail="Send the SHD-APP key inside your Discord ticket." />
@@ -1898,7 +1898,7 @@ function SignupPage() {
             <ul>
               <li>Minecraft Java account ready</li>
               <li>Discord account available for tickets</li>
-              <li>Enough time to reread and accept the rules during signup</li>
+              <li>Willing to review and accept the server rules during signup</li>
               <li>No alt account abuse</li>
               <li>Understand heart loss and elimination</li>
             </ul>
@@ -1943,7 +1943,7 @@ function PunishmentsPage() {
   return (
     <section className="content-page page-frame">
       <PageIntro label="Moderation" title="Punishments & Appeals">
-        Public moderation hub for ban appeals, evidence review, support IDs, and staff decisions.
+        Transparency matters. Access appeal information, moderation guidelines, support case details, and official staff decisions in one place.
       </PageIntro>
       <div className="apply-page">
         <article className="apply-hero punishment-hero">

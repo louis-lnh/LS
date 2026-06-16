@@ -214,6 +214,129 @@ function statusForAccess(access) {
   return ['Owner', 'Administrator', 'Moderator', 'Staff'].includes(access.role) ? 'Active' : 'Limited';
 }
 
+const adminStaffRoles = new Set(['Owner', 'Administrator', 'Moderator', 'Staff', 'SHD Team', 'Service']);
+const adminStaffStatuses = new Set(['Active', 'Limited', 'Invite pending', 'Review']);
+const adminStaffTrust = new Set(['Full', 'Scoped', 'Pending']);
+const adminStaffWorkspaces = new Set(['global', 'lifesteal', 'general', 'valorant']);
+
+function normalizeStaffRole(value) {
+  const role = String(value ?? '').trim();
+  const match = [...adminStaffRoles].find((item) => item.toLowerCase() === role.toLowerCase());
+  return match ?? null;
+}
+
+function normalizeStaffStatus(value) {
+  const status = String(value ?? '').trim();
+  const match = [...adminStaffStatuses].find((item) => item.toLowerCase() === status.toLowerCase());
+  return match ?? null;
+}
+
+function normalizeStaffTrust(value) {
+  const trust = String(value ?? '').trim();
+  const match = [...adminStaffTrust].find((item) => item.toLowerCase() === trust.toLowerCase());
+  return match ?? null;
+}
+
+function normalizeStaffWorkspaces(value) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map((item) => String(item ?? '').trim()).filter((item) => adminStaffWorkspaces.has(item)))];
+}
+
+function staffPermissionsForRole(role, workspaces) {
+  const permissions = new Set();
+  const normalized = String(role ?? '').trim().toLowerCase();
+  if (workspaces.includes('global') || ['owner', 'administrator', 'admin'].includes(normalized)) {
+    permissions.add('staff:read');
+    permissions.add('global:audit');
+    permissions.add('integrations:read');
+  }
+  if (normalized === 'owner') permissions.add('staff:manage');
+  if (workspaces.includes('lifesteal') || ['owner', 'administrator', 'admin', 'service'].includes(normalized)) {
+    permissions.add('lifesteal:read');
+    permissions.add('lifesteal:review');
+    permissions.add('lifesteal:ticket');
+    permissions.add('lifesteal:staff-chat');
+  }
+  if (['owner', 'administrator', 'admin', 'service'].includes(normalized)) {
+    permissions.add('lifesteal:players');
+    permissions.add('lifesteal:events');
+  }
+  return [...permissions];
+}
+
+function staffAccessId(value) {
+  const id = String(value ?? '').trim();
+  if (id.startsWith('draft:')) return { recordId: Number(id.slice('draft:'.length)), discordId: null };
+  if (/^\d{10,30}$/.test(id)) return { recordId: null, discordId: id };
+  const numeric = Number(id);
+  return Number.isFinite(numeric) ? { recordId: numeric, discordId: null } : { recordId: null, discordId: null };
+}
+
+function normalizeStaffPayload(body, fallback = {}) {
+  const discordId = body?.discordId === undefined ? fallback.discord_id ?? fallback.discordId ?? null : normalizeDiscordId(body.discordId);
+  const displayName = normalizeAdminText(body?.displayName ?? fallback.display_name ?? fallback.displayName, 80);
+  const role = normalizeStaffRole(body?.role ?? fallback.role);
+  const status = normalizeStaffStatus(body?.status ?? fallback.status ?? 'Invite pending');
+  const trust = normalizeStaffTrust(body?.trust ?? fallback.trust ?? 'Pending');
+  const workspaces = normalizeStaffWorkspaces(body?.workspaces ?? fallback.workspaces ?? []);
+  const notes = normalizeAdminText(body?.notes ?? fallback.notes, 600);
+
+  if (body?.discordId !== undefined && !discordId) return { ok: false, error: 'Discord ID must be a numeric Discord user ID.' };
+  if (displayName.length < 2) return { ok: false, error: 'Display name must contain at least 2 characters.' };
+  if (!role) return { ok: false, error: 'Staff role is invalid.' };
+  if (!status) return { ok: false, error: 'Staff status is invalid.' };
+  if (!trust) return { ok: false, error: 'Staff trust state is invalid.' };
+  if (workspaces.length === 0) return { ok: false, error: 'Select at least one workspace.' };
+
+  return { ok: true, staff: { discordId, displayName, role, status, trust, workspaces, notes } };
+}
+
+function staffActivityFromEvents(events) {
+  return events.slice(0, 12).map((event) => {
+    const data = parseAuditData(event.data_json);
+    const label = auditActivityLabel(event, data);
+    return {
+      id: event.id,
+      action: label.action,
+      target: label.target,
+      eventType: event.type,
+      createdAt: event.created_at,
+      data
+    };
+  });
+}
+
+async function userForStaffId(client, id) {
+  if (!id) return null;
+  return client.users.cache.get(id) ?? await client.users.fetch(id).catch(() => null);
+}
+
+function serializeStaffRecord(row, user, activity = []) {
+  const workspaces = normalizeStaffWorkspaces(row.workspaces);
+  const role = normalizeStaffRole(row.role) ?? 'Staff';
+  const status = normalizeStaffStatus(row.status) ?? 'Invite pending';
+  const trust = normalizeStaffTrust(row.trust) ?? 'Pending';
+  return {
+    id: row.discord_id || `draft:${row.id}`,
+    accessRecordId: row.id,
+    name: row.display_name || user?.globalName || user?.username || row.discord_id || `Draft ${row.id}`,
+    discord: user?.username ? `@${user.username}` : row.discord_id ? `ID ${row.discord_id}` : '@pending',
+    discordId: row.discord_id ?? 'pending',
+    avatarUrl: user?.displayAvatarURL?.({ size: 64 }) ?? null,
+    role,
+    workspaces,
+    permissions: staffPermissionsForRole(role, workspaces),
+    status,
+    trust,
+    source: row.discord_id ? 'Saved admin access override' : 'Saved admin invite draft',
+    firstSeen: row.created_at,
+    lastActive: row.updated_at,
+    portalActions: activity.length,
+    notes: row.notes || 'Saved Staff & Access entry.',
+    activity
+  };
+}
+
 async function buildAdminStaffPayload(client, session) {
   const guild = await client.guilds.fetch(config.guildId);
   const auditEvents = statements.recentAudit.all(500)
@@ -242,35 +365,70 @@ async function buildAdminStaffPayload(client, session) {
     });
   }
 
+  const activityByActor = new Map();
+  for (const event of auditEvents) {
+    if (!event.discord_id) continue;
+    const events = activityByActor.get(event.discord_id) ?? [];
+    events.push(event);
+    activityByActor.set(event.discord_id, events);
+  }
+
+  const savedEntries = statements.findAdminStaffAccess.all();
+  const savedByDiscord = new Map(savedEntries.filter((entry) => entry.discord_id).map((entry) => [entry.discord_id, entry]));
+  for (const entry of savedEntries) {
+    if (entry.discord_id && !grouped.has(entry.discord_id)) {
+      grouped.set(entry.discord_id, {
+        id: entry.discord_id,
+        portalActions: 0,
+        firstSeen: entry.created_at,
+        lastActive: entry.updated_at
+      });
+    }
+  }
+
   const staff = await Promise.all([...grouped.values()].map(async (entry) => {
     const user = client.users.cache.get(entry.id) ?? await client.users.fetch(entry.id).catch(() => null);
     const member = guild.members.cache.get(entry.id) ?? await guild.members.fetch(entry.id).catch(() => null);
     const access = member ? workspaceAccess(member, guild) : null;
     const isCurrent = entry.id === session.id;
+    const saved = savedByDiscord.get(entry.id);
+    const savedWorkspaces = saved ? normalizeStaffWorkspaces(saved.workspaces) : null;
+    const savedRole = saved ? normalizeStaffRole(saved.role) : null;
+    const savedStatus = saved ? normalizeStaffStatus(saved.status) : null;
+    const savedTrust = saved ? normalizeStaffTrust(saved.trust) : null;
+    const role = savedRole ?? access?.role ?? (isCurrent ? session.role : 'Former staff');
+    const workspaces = savedWorkspaces ?? access?.workspaces ?? (isCurrent ? session.workspaces : []);
+    const activity = staffActivityFromEvents(activityByActor.get(entry.id) ?? []);
     return {
       id: entry.id,
+      accessRecordId: saved?.id ?? null,
       name: user?.globalName || user?.username || session.displayName || entry.id,
       discord: user?.username ? `@${user.username}` : `ID ${entry.id}`,
       discordId: entry.id,
       avatarUrl: user?.displayAvatarURL?.({ size: 64 }) ?? null,
-      role: access?.role ?? (isCurrent ? session.role : 'Former staff'),
-      workspaces: access?.workspaces ?? (isCurrent ? session.workspaces : []),
-      permissions: access?.permissions ?? (isCurrent ? session.permissions ?? [] : []),
-      status: statusForAccess(access ?? (isCurrent ? session : null)),
-      trust: trustForAccess(access ?? (isCurrent ? session : null)),
-      source: isCurrent ? 'Current Discord OAuth session' : 'Admin portal audit history',
-      firstSeen: entry.firstSeen,
-      lastActive: entry.lastActive,
-      portalActions: entry.portalActions,
-      notes: access
+      role,
+      workspaces,
+      permissions: saved ? staffPermissionsForRole(role, workspaces) : access?.permissions ?? (isCurrent ? session.permissions ?? [] : []),
+      status: savedStatus ?? statusForAccess(access ?? (isCurrent ? session : null)),
+      trust: savedTrust ?? trustForAccess(access ?? (isCurrent ? session : null)),
+      source: saved ? 'Saved admin access override' : isCurrent ? 'Current Discord OAuth session' : 'Admin portal audit history',
+      firstSeen: saved ? Math.min(entry.firstSeen, saved.created_at) : entry.firstSeen,
+      lastActive: saved ? Math.max(entry.lastActive, saved.updated_at) : entry.lastActive,
+      portalActions: entry.portalActions + (saved ? 1 : 0),
+      notes: saved?.notes || (access
         ? 'This identity has Discord-backed admin portal access and has appeared in portal audit history.'
-        : 'This identity appears in admin portal audit history but no longer resolves to an active staff access role.'
+        : 'This identity appears in admin portal audit history but no longer resolves to an active staff access role.'),
+      activity
     };
   }));
 
+  const drafts = await Promise.all(savedEntries
+    .filter((entry) => !entry.discord_id)
+    .map(async (entry) => serializeStaffRecord(entry, null, [])));
+
   return {
     ok: true,
-    staff: staff.sort((left, right) =>
+    staff: [...staff, ...drafts].sort((left, right) =>
       (right.lastActive ?? 0) - (left.lastActive ?? 0) ||
       left.name.localeCompare(right.name)
     ),
@@ -303,11 +461,18 @@ function auditActivityLabel(event, data) {
     'admin.submission_decided': 'decided a support review',
     'admin.ticket_message_sent': 'messaged a Discord ticket',
     'admin.staff_chat_message_sent': 'sent a staff chat message',
+    'admin.staff_invite_created': 'created a staff invite draft',
+    'admin.staff_access_updated': 'updated staff access',
+    'admin.staff_access_deleted': 'deleted staff access',
     'admin.player_created': 'manually added a player',
     'admin.player_updated': 'updated a player',
     'admin.player_deleted': 'deleted a player',
     'admin.player_application_removed': 'removed an applied player',
     'admin.player_application_status_updated': 'updated an applied player',
+    'admin.lifesteal_event_created': 'created a Lifesteal event',
+    'admin.lifesteal_event_updated': 'updated a Lifesteal event',
+    'admin.lifesteal_event_deleted': 'deleted a Lifesteal event',
+    'admin.lifesteal_event_announcement_sent': 'sent an event announcement',
     'support.application_approved': 'approved a Lifesteal application',
     'support.application_denied': 'denied a Lifesteal application',
     'support.application_submitted': 'received a Lifesteal application',
@@ -319,7 +484,7 @@ function auditActivityLabel(event, data) {
   };
   return {
     action: labels[event.type] || event.type.replaceAll('.', ' '),
-    target: data.submissionCode || data.applicationCode || data.minecraftName || data.project || 'SHD platform'
+    target: data.targetName || data.staffName || data.eventTitle || data.submissionCode || data.applicationCode || data.minecraftName || data.project || 'SHD platform'
   };
 }
 
@@ -327,6 +492,7 @@ function adminAuditType(eventType) {
   if (eventType.startsWith('admin.submission') || eventType.startsWith('support.application_')) return 'Review';
   if (eventType.startsWith('support.')) return 'Submission';
   if (eventType.startsWith('admin.player')) return 'Player';
+  if (eventType.startsWith('admin.staff')) return 'Security';
   if (eventType.startsWith('minecraft.') || eventType.startsWith('gameplay.') || eventType.includes('sync')) return 'Integration';
   if (eventType.includes('security') || eventType.includes('rejected') || eventType.includes('ip_')) return 'Security';
   return 'System';
@@ -1118,6 +1284,108 @@ export function createAdminRouter(client) {
       console.error('Admin staff access lookup failed', error);
       return res.status(500).json({ ok: false, code: 'ADMIN_STAFF_FAILED', error: 'Could not load staff access.' });
     }
+  });
+
+  router.post('/staff', requireAdminSession(client), async (req, res) => {
+    if (requirePermission(req, res, 'staff:manage', 'Staff management permission required.')) return;
+    const payload = normalizeStaffPayload(req.body);
+    if (!payload.ok) return res.status(400).json({ ok: false, code: 'ADMIN_STAFF_INVALID', error: payload.error });
+    const now = Date.now();
+    const record = statements.createAdminStaffAccess.run({
+      ...payload.staff,
+      createdBy: req.adminSession.id,
+      createdAt: now
+    });
+    audit('admin.staff_invite_created', {
+      discordId: req.adminSession.id,
+      data: {
+        staffAccessId: record.id,
+        targetDiscordId: record.discord_id,
+        targetName: record.display_name,
+        staffName: record.display_name,
+        role: record.role,
+        status: record.status,
+        trust: record.trust,
+        workspaces: record.workspaces
+      }
+    });
+    return res.status(201).json(await buildAdminStaffPayload(client, req.adminSession));
+  });
+
+  router.patch('/staff/:staffId', requireAdminSession(client), async (req, res) => {
+    if (requirePermission(req, res, 'staff:manage', 'Staff management permission required.')) return;
+    const target = staffAccessId(req.params.staffId);
+    if (!target.recordId && !target.discordId) {
+      return res.status(400).json({ ok: false, code: 'ADMIN_STAFF_ID_INVALID', error: 'Staff id is invalid.' });
+    }
+    const existing = statements.findAdminStaffAccessById.get(target.recordId ?? target.discordId);
+    const user = target.discordId ? await userForStaffId(client, target.discordId) : null;
+    const fallback = existing ?? {
+      discord_id: target.discordId,
+      display_name: user?.globalName || user?.username || req.body?.displayName,
+      role: req.body?.role,
+      workspaces: req.body?.workspaces,
+      status: req.body?.status,
+      trust: req.body?.trust,
+      notes: req.body?.notes
+    };
+    const payload = normalizeStaffPayload(req.body, fallback);
+    if (!payload.ok) return res.status(400).json({ ok: false, code: 'ADMIN_STAFF_INVALID', error: payload.error });
+    const now = Date.now();
+    const record = statements.updateAdminStaffAccess.run({
+      id: target.recordId ?? existing?.id,
+      discordId: payload.staff.discordId ?? target.discordId,
+      displayName: payload.staff.displayName,
+      role: payload.staff.role,
+      workspaces: payload.staff.workspaces,
+      status: payload.staff.status,
+      trust: payload.staff.trust,
+      notes: payload.staff.notes,
+      updatedBy: req.adminSession.id,
+      updatedAt: now,
+      createIfMissing: true
+    });
+    if (!record) return res.status(404).json({ ok: false, code: 'ADMIN_STAFF_NOT_FOUND', error: 'Staff access record not found.' });
+    audit('admin.staff_access_updated', {
+      discordId: req.adminSession.id,
+      data: {
+        staffAccessId: record.id,
+        targetDiscordId: record.discord_id,
+        targetName: record.display_name,
+        staffName: record.display_name,
+        role: record.role,
+        status: record.status,
+        trust: record.trust,
+        workspaces: record.workspaces
+      }
+    });
+    return res.json(await buildAdminStaffPayload(client, req.adminSession));
+  });
+
+  router.delete('/staff/:staffId', requireAdminSession(client), async (req, res) => {
+    if (requirePermission(req, res, 'staff:manage', 'Staff management permission required.')) return;
+    const target = staffAccessId(req.params.staffId);
+    if (!target.recordId && !target.discordId) {
+      return res.status(400).json({ ok: false, code: 'ADMIN_STAFF_ID_INVALID', error: 'Staff id is invalid.' });
+    }
+    const removed = statements.deleteAdminStaffAccess.run({
+      id: target.recordId ?? target.discordId,
+      deletedAt: Date.now(),
+      deletedBy: req.adminSession.id
+    });
+    if (!removed) return res.status(404).json({ ok: false, code: 'ADMIN_STAFF_NOT_FOUND', error: 'Staff access record not found.' });
+    audit('admin.staff_access_deleted', {
+      discordId: req.adminSession.id,
+      data: {
+        staffAccessId: removed.id,
+        targetDiscordId: removed.discord_id,
+        targetName: removed.display_name,
+        staffName: removed.display_name,
+        role: removed.role,
+        workspaces: removed.workspaces
+      }
+    });
+    return res.json(await buildAdminStaffPayload(client, req.adminSession));
   });
 
   router.get('/audit', requireAdminSession(client), async (req, res) => {

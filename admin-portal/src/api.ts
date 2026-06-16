@@ -13,6 +13,7 @@ export type AdminUser = {
 
 export type AdminStaffMember = {
   id: string
+  accessRecordId: number | null
   name: string
   discord: string
   discordId: string
@@ -27,11 +28,29 @@ export type AdminStaffMember = {
   lastActive: number
   portalActions: number
   notes: string
+  activity: Array<{
+    id: number
+    action: string
+    target: string
+    eventType: string
+    createdAt: number
+    data: Record<string, unknown>
+  }>
 }
 
 export type AdminStaffAccessPayload = {
   staff: AdminStaffMember[]
   updatedAt: number
+}
+
+export type AdminStaffAccessMutation = {
+  discordId?: string | null
+  displayName: string
+  role: string
+  workspaces: AdminWorkspaceId[]
+  status: AdminStaffMember['status']
+  trust: AdminStaffMember['trust']
+  notes?: string
 }
 
 export type AdminApiSubmission = {
@@ -354,6 +373,38 @@ export async function getAdminAudit(limit = 100): Promise<AdminAuditPayload> {
 export async function getAdminStaffAccess(): Promise<AdminStaffAccessPayload> {
   if (adminDemoMode) return { staff: [], updatedAt: Date.now() }
   const response = await adminRequest<AdminStaffAccessPayload & { ok: boolean }>('/staff')
+  return response
+}
+
+export async function createAdminStaffAccess(payload: AdminStaffAccessMutation): Promise<AdminStaffAccessPayload> {
+  const response = await adminRequest<AdminStaffAccessPayload & { ok: boolean }>(
+    '/staff',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    },
+  )
+  return response
+}
+
+export async function updateAdminStaffAccess(id: string, payload: AdminStaffAccessMutation): Promise<AdminStaffAccessPayload> {
+  const response = await adminRequest<AdminStaffAccessPayload & { ok: boolean }>(
+    `/staff/${encodeURIComponent(id)}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    },
+  )
+  return response
+}
+
+export async function deleteAdminStaffAccess(id: string): Promise<AdminStaffAccessPayload> {
+  const response = await adminRequest<AdminStaffAccessPayload & { ok: boolean }>(
+    `/staff/${encodeURIComponent(id)}`,
+    { method: 'DELETE' },
+  )
   return response
 }
 

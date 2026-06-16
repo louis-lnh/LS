@@ -13,6 +13,7 @@ import {
   CircleUserRound,
   Clock3,
   Crosshair,
+  Eye,
   ExternalLink,
   FileWarning,
   Gamepad2,
@@ -53,11 +54,13 @@ import {
   addAdminSubmissionNote,
   beginDiscordLogin,
   claimAdminSubmission,
+  createAdminStaffAccess,
   createAdminLifestealEvent,
   createAdminPlayer,
   decideAdminSubmission,
   demoAdminUser,
   endAdminSession,
+  deleteAdminStaffAccess,
   deleteAdminLifestealEvent,
   deleteAdminPlayer,
   getAdminAudit,
@@ -74,6 +77,7 @@ import {
   sendLifestealStaffChatMessage,
   updateAdminLifestealEvent,
   updateAdminPlayer,
+  updateAdminStaffAccess,
   type AdminApiSubmission,
   type AdminAuditPayload,
   type AdminLifestealEvent,
@@ -82,6 +86,7 @@ import {
   type AdminPlayerBadge,
   type AdminPlayerStatus,
   type AdminStaffMember,
+  type AdminStaffAccessMutation,
   type AdminWorkspaceId,
   type CreateAdminPlayerPayload,
   type UpsertAdminLifestealEventPayload,
@@ -93,6 +98,7 @@ import {
 type SubmissionType = 'Application' | 'Appeal' | 'Player Report' | 'Support'
 type SubmissionStatus = 'New' | 'In review' | 'Waiting on player' | 'Approved' | 'Denied'
 type WorkspaceId = 'global' | 'lifesteal' | 'general' | 'valorant'
+type RolePreviewMode = 'real' | 'Owner' | 'Administrator' | 'Moderator' | 'Staff' | 'SHD Team'
 type AdminView =
   | 'global-overview'
   | 'global-inbox'
@@ -226,6 +232,35 @@ function workspaceFromView(view: AdminView): WorkspaceId {
   if (view.startsWith('general-')) return 'general'
   if (view.startsWith('valorant-')) return 'valorant'
   return 'global'
+}
+
+function previewAccessForRole(role: RolePreviewMode, user: AdminUser): AdminUser {
+  if (role === 'real') return user
+  const global = role === 'Owner' || role === 'Administrator'
+  const permissions = global
+    ? [
+        'global:audit',
+        'integrations:read',
+        'staff:read',
+        ...(role === 'Owner' ? ['staff:manage'] : []),
+        'lifesteal:read',
+        'lifesteal:review',
+        'lifesteal:ticket',
+        'lifesteal:players',
+        'lifesteal:events',
+        'lifesteal:staff-chat',
+      ]
+    : role === 'Moderator'
+      ? ['lifesteal:read', 'lifesteal:review', 'lifesteal:ticket', 'lifesteal:events', 'lifesteal:staff-chat']
+      : role === 'Staff'
+        ? ['lifesteal:read', 'lifesteal:review', 'lifesteal:ticket', 'lifesteal:events', 'lifesteal:staff-chat']
+        : ['lifesteal:read', 'lifesteal:staff-chat']
+  return {
+    ...user,
+    role,
+    workspaces: global ? ['global', 'lifesteal', 'general', 'valorant'] : ['lifesteal'],
+    permissions,
+  }
 }
 
 const seedSubmissions: Submission[] = [
@@ -433,6 +468,9 @@ function LoginScreen({ authError, onSignIn }: { authError: string | null; onSign
 }
 
 function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: AdminUser }) {
+  const [rolePreview, setRolePreview] = useState<RolePreviewMode>('real')
+  const authenticatedUser = user
+  user = useMemo(() => previewAccessForRole(rolePreview, authenticatedUser), [authenticatedUser, rolePreview])
   const [submissions, setSubmissions] = useState<Submission[]>(adminDemoMode ? seedSubmissions : [])
   const [submissionState, setSubmissionState] = useState<'loading' | 'ready' | 'error'>(adminDemoMode ? 'ready' : 'loading')
   const [claimState, setClaimState] = useState<'idle' | 'loading'>('idle')
@@ -794,7 +832,7 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
 
   return (
     <div className={`admin-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-      <Sidebar active={view} collapsed={sidebarCollapsed} openSubmissionCount={openSubmissionCount} workspace={workspace} user={user} mobileOpen={mobileNav} onClose={() => setMobileNav(false)} onNavigate={navigate} onSignOut={onSignOut} onToggleCollapse={toggleSidebar} />
+      <Sidebar active={view} authenticatedUser={authenticatedUser} collapsed={sidebarCollapsed} openSubmissionCount={openSubmissionCount} previewRole={rolePreview} workspace={workspace} user={user} mobileOpen={mobileNav} onClose={() => setMobileNav(false)} onNavigate={navigate} onPreviewRoleChange={setRolePreview} onSignOut={onSignOut} onToggleCollapse={toggleSidebar} />
       <header className="mobile-header">
         <button aria-label="Open navigation" onClick={() => setMobileNav(true)} type="button"><Menu /></button>
         <span>{workspace === 'global' ? 'SHD Admin' : workspace}</span>
@@ -932,15 +970,18 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
   )
 }
 
-function Sidebar({ active, collapsed, openSubmissionCount, workspace, user, mobileOpen, onClose, onNavigate, onSignOut, onToggleCollapse }: {
+function Sidebar({ active, authenticatedUser, collapsed, openSubmissionCount, previewRole, workspace, user, mobileOpen, onClose, onNavigate, onPreviewRoleChange, onSignOut, onToggleCollapse }: {
   active: AdminView
+  authenticatedUser: AdminUser
   collapsed: boolean
   openSubmissionCount: number
+  previewRole: RolePreviewMode
   workspace: WorkspaceId
   user: AdminUser
   mobileOpen: boolean
   onClose: () => void
   onNavigate: (view: AdminView) => void
+  onPreviewRoleChange: (role: RolePreviewMode) => void
   onSignOut: () => void
   onToggleCollapse: () => void
 }) {
@@ -953,6 +994,7 @@ function Sidebar({ active, collapsed, openSubmissionCount, workspace, user, mobi
   ]
   const availableWorkspaces = workspaces.filter((item) => user.workspaces.includes(item.id))
   const currentWorkspace = availableWorkspaces.find((item) => item.id === workspace) ?? availableWorkspaces[0]
+  const canPreviewRoles = authenticatedUser.role === 'Owner'
 
   const switchWorkspace = (target: AdminView) => {
     setWorkspaceMenu(false)
@@ -1027,6 +1069,21 @@ function Sidebar({ active, collapsed, openSubmissionCount, workspace, user, mobi
           <NavButton active={active === 'valorant-overview'} icon={<LayoutDashboard size={18} />} label="Overview" onClick={() => onNavigate('valorant-overview')} />
           <NavButton active={active === 'valorant-inbox'} icon={<Inbox size={18} />} label="Support Inbox" onClick={() => onNavigate('valorant-inbox')} />
         </nav>}
+        {canPreviewRoles && <div className="role-preview-panel">
+          <span>Preview access</span>
+          <label>
+            <Eye size={15} />
+            <select value={previewRole} onChange={(event) => onPreviewRoleChange(event.target.value as RolePreviewMode)}>
+              <option value="real">Real access</option>
+              <option value="Owner">Owner</option>
+              <option value="Administrator">Administrator</option>
+              <option value="Moderator">Moderator</option>
+              <option value="Staff">Staff</option>
+              <option value="SHD Team">SHD Team</option>
+            </select>
+          </label>
+          {previewRole !== 'real' && <small>View-only role preview. Your real session stays {authenticatedUser.role}.</small>}
+        </div>}
         <footer>
           <div className="staff-profile">
             <div className="avatar">{user.displayName.slice(0, 2).toUpperCase()}</div>
@@ -1223,7 +1280,7 @@ type StaffWorkspaceId = AdminWorkspaceId
 type StaffDirectoryMember = AdminStaffMember
 type StaffAccessPanel = 'directory' | 'policy' | 'workspaces' | 'activity'
 type StaffActionLogEntry = {
-  id: string
+  id: string | number
   actor: string
   action: string
   target: string
@@ -1300,6 +1357,7 @@ function staffMemberFromUser(user: AdminUser): StaffDirectoryMember {
   const workspaces = user.workspaces.filter((workspace): workspace is StaffWorkspaceId => workspace in workspaceMeta)
   return {
     id: user.id,
+    accessRecordId: null,
     name: user.displayName,
     discord: `@${user.username}`,
     discordId: user.id,
@@ -1314,6 +1372,7 @@ function staffMemberFromUser(user: AdminUser): StaffDirectoryMember {
     lastActive: Date.now(),
     portalActions: 0,
     notes: 'Current signed-in staff identity. Full staff history is loaded from admin audit data when the bot API is connected.',
+    activity: [],
   }
 }
 
@@ -1332,6 +1391,7 @@ function StaffAccessPage({ user }: { user: AdminUser }) {
   const [editOpen, setEditOpen] = useState(false)
   const [editDraft, setEditDraft] = useState<StaffEditDraft>({ role: user.role, status: 'Active', trust: 'Scoped', workspaces: ['lifesteal'], notes: '' })
   const [inviteMessage, setInviteMessage] = useState('')
+  const [staffMutationState, setStaffMutationState] = useState<'idle' | 'saving' | 'deleting'>('idle')
   const [actionLog, setActionLog] = useState<StaffActionLogEntry[]>([])
   const [timeNow, setTimeNow] = useState(Date.now())
 
@@ -1406,6 +1466,18 @@ function StaffAccessPage({ user }: { user: AdminUser }) {
     const members = staff.filter((member) => member.workspaces.includes(workspace))
     return { workspace, meta, members }
   })
+  const auditActionLog: StaffActionLogEntry[] = staff
+    .flatMap((member) => (member.activity ?? []).map((item) => ({
+      id: item.id,
+      actor: member.name,
+      action: item.action,
+      target: item.target,
+      detail: item.eventType,
+      time: item.createdAt,
+    })))
+    .sort((left, right) => right.time - left.time)
+    .slice(0, 50)
+  const visibleActionLog = auditActionLog.length ? auditActionLog : actionLog
   const recordAction = (action: string, target: string, detail: string) => {
     setActionLog((current) => [{
       id: `${Date.now()}-${current.length}`,
@@ -1442,11 +1514,41 @@ function StaffAccessPage({ user }: { user: AdminUser }) {
         : [...current.workspaces, workspace],
     }))
   }
-  const createInviteDraft = () => {
+  const createInviteDraft = async () => {
     const label = inviteDraft.displayName.trim() || inviteDraft.discordId.trim() || 'New staff member'
     const workspaces: StaffWorkspaceId[] = inviteDraft.workspaces.length ? inviteDraft.workspaces : ['lifesteal']
+    const payload: AdminStaffAccessMutation = {
+      discordId: inviteDraft.discordId.trim() || null,
+      displayName: label,
+      role: inviteDraft.role,
+      workspaces,
+      status: 'Invite pending',
+      trust: 'Pending',
+      notes: 'Invite draft created in Staff & Access. Discord role sync is still a future backend step.',
+    }
+    if (!adminDemoMode) {
+      setStaffMutationState('saving')
+      setStaffError('')
+      try {
+        const next = await createAdminStaffAccess(payload)
+        setStaff(next.staff)
+        const created = next.staff.find((member) => member.discordId === payload.discordId || member.name === label) ?? next.staff[0]
+        setSelectedId(created?.id ?? user.id)
+        setActivePanel('directory')
+        setInviteMessage(`${label} invite draft saved for ${workspaceLabels(workspaces)}.`)
+        setInviteDraft({ discordId: '', displayName: '', role: 'SHD Team', workspaces: ['lifesteal'] })
+        setInviteOpen(false)
+      } catch (error) {
+        setStaffError(error instanceof AdminApiError ? error.message : 'Could not save this staff invite.')
+        setStaffState('error')
+      } finally {
+        setStaffMutationState('idle')
+      }
+      return
+    }
     const draft: StaffDirectoryMember = {
       id: `draft-${Date.now()}`,
+      accessRecordId: null,
       name: inviteDraft.displayName.trim() || `Staff ${inviteDraft.discordId.slice(-4) || 'draft'}`,
       discord: inviteDraft.discordId.trim() ? `ID ${inviteDraft.discordId.trim()}` : '@pending',
       discordId: inviteDraft.discordId.trim() || 'pending',
@@ -1461,6 +1563,7 @@ function StaffAccessPage({ user }: { user: AdminUser }) {
       lastActive: Date.now(),
       portalActions: 0,
       notes: 'Invite draft staged in the admin portal. This is waiting for a backend route before it can create real Discord access.',
+      activity: [],
     }
     setStaff((current) => [draft, ...current])
     setSelectedId(draft.id)
@@ -1495,8 +1598,34 @@ function StaffAccessPage({ user }: { user: AdminUser }) {
     })
     setEditOpen(true)
   }
-  const saveEditDraft = () => {
+  const saveEditDraft = async () => {
     const workspaces = editDraft.workspaces.length ? editDraft.workspaces : []
+    const payload: AdminStaffAccessMutation = {
+      discordId: selected.discordId !== 'pending' ? selected.discordId : null,
+      displayName: selected.name,
+      role: editDraft.role,
+      status: editDraft.status,
+      trust: editDraft.trust,
+      workspaces,
+      notes: editDraft.notes.trim() || selected.notes,
+    }
+    if (!adminDemoMode) {
+      setStaffMutationState('saving')
+      setStaffError('')
+      try {
+        const next = await updateAdminStaffAccess(selected.id, payload)
+        setStaff(next.staff)
+        setSelectedId((current) => next.staff.some((member) => member.id === current) ? current : selected.id)
+        setInviteMessage(`${selected.name}'s access edit was saved and audited.`)
+        setEditOpen(false)
+      } catch (error) {
+        setStaffError(error instanceof AdminApiError ? error.message : 'Could not save this staff access edit.')
+        setStaffState('error')
+      } finally {
+        setStaffMutationState('idle')
+      }
+      return
+    }
     setStaff((current) => current.map((member) => member.id === selected.id
       ? {
           ...member,
@@ -1512,6 +1641,33 @@ function StaffAccessPage({ user }: { user: AdminUser }) {
     setInviteMessage(`${selected.name}'s access edit is staged locally.`)
     recordAction('staged access edit', selected.name, `${editDraft.role} / ${editDraft.status} / ${workspaceLabels(workspaces)}`)
     setEditOpen(false)
+  }
+  const removeSelectedAccess = async () => {
+    if (!canManageStaff || staffMutationState !== 'idle') return
+    if (!selected.accessRecordId && !selected.id.startsWith('draft:')) {
+      setInviteMessage(`${selected.name} is Discord-derived. Stage an edit first before deleting an admin override.`)
+      return
+    }
+    if (adminDemoMode) {
+      setStaff((current) => current.filter((member) => member.id !== selected.id))
+      setSelectedId(user.id)
+      setInviteMessage(`${selected.name} removed from demo staff access.`)
+      recordAction('removed demo staff access', selected.name, 'Frontend-only demo entry removed.')
+      return
+    }
+    setStaffMutationState('deleting')
+    setStaffError('')
+    try {
+      const next = await deleteAdminStaffAccess(selected.id)
+      setStaff(next.staff.length ? next.staff : fallbackStaff)
+      setSelectedId(next.staff[0]?.id ?? user.id)
+      setInviteMessage(`${selected.name} access entry was deleted and audited.`)
+    } catch (error) {
+      setStaffError(error instanceof AdminApiError ? error.message : 'Could not delete this staff access entry.')
+      setStaffState('error')
+    } finally {
+      setStaffMutationState('idle')
+    }
   }
   const openWorkspace = (workspace: StaffWorkspaceId) => {
     setWorkspaceFilter(workspace)
@@ -1573,7 +1729,8 @@ function StaffAccessPage({ user }: { user: AdminUser }) {
           <div className="staff-detail-actions">
             <button onClick={() => void copySelectedId()} type="button"><KeyRound size={15} />Copy ID</button>
             <button onClick={() => setActivePanel('activity')} type="button"><Activity size={15} />Activity</button>
-            <button disabled={!canManageStaff} onClick={openEditDraft} type="button"><Settings2 size={15} />Stage edit</button>
+            <button disabled={!canManageStaff || staffMutationState !== 'idle'} onClick={openEditDraft} type="button"><Settings2 size={15} />Edit</button>
+            <button disabled={!canManageStaff || staffMutationState !== 'idle'} onClick={() => void removeSelectedAccess()} type="button"><Trash2 size={15} />Delete</button>
           </div>
           <div className="staff-detail-facts">
             <div><span>Status</span><strong>{selected.status}</strong></div>
@@ -1595,6 +1752,13 @@ function StaffAccessPage({ user }: { user: AdminUser }) {
             <div className="scope-list">{selected.permissions.map((permission) => <small key={permission}>{permissionLabel(permission)}</small>)}{selected.permissions.length === 0 && <small>No active permissions</small>}</div>
           </section>
           <section className="staff-note-card"><span className="eyebrow">Access note</span><p>{selected.notes}</p></section>
+          <section>
+            <span className="eyebrow">Staff activity</span>
+            <div className="staff-mini-activity">
+              {(selected.activity ?? []).slice(0, 4).map((item) => <p key={item.id}><strong>{item.action}</strong><span>{item.target}</span><time>{relativeTime(item.createdAt, timeNow)}</time></p>)}
+              {(selected.activity ?? []).length === 0 && <p><strong>No recent audited action</strong><span>This staff member has no admin activity in the current audit window.</span></p>}
+            </div>
+          </section>
         </aside>
       </section>}
       {activePanel === 'policy' && <section className="staff-management-panel">
@@ -1627,22 +1791,22 @@ function StaffAccessPage({ user }: { user: AdminUser }) {
       </section>}
       {activePanel === 'activity' && <section className="staff-activity-panel">
         <article className="staff-panel-card">
-          <header><div><span className="eyebrow">Local Action Trail</span><h2>Staged access activity</h2></div><button className="page-action secondary" disabled={actionLog.length === 0} onClick={() => setActionLog([])} type="button"><Trash2 size={15} />Clear</button></header>
+          <header><div><span className="eyebrow">Audit-backed activity</span><h2>Staff activity</h2></div><button className="page-action secondary" disabled={auditActionLog.length > 0 || actionLog.length === 0} onClick={() => setActionLog([])} type="button"><Trash2 size={15} />Clear local</button></header>
           <div className="staff-action-list">
-            {actionLog.map((item) => (
+            {visibleActionLog.map((item) => (
               <article key={item.id}>
                 <span className="activity-icon"><Activity size={14} /></span>
                 <div><strong>{item.actor}</strong><p>{item.action} <b>{item.target}</b></p><small>{item.detail}</small></div>
                 <time>{relativeTime(item.time, timeNow)}</time>
               </article>
             ))}
-            {actionLog.length === 0 && <div className="panel-empty"><Activity size={17} /><span>No staged staff actions in this browser session.</span></div>}
+            {visibleActionLog.length === 0 && <div className="panel-empty"><Activity size={17} /><span>No staff actions in the current audit window.</span></div>}
           </div>
         </article>
       </section>}
       {inviteOpen && <div className="modal-layer">
         <section className="admin-modal staff-invite-modal">
-          <header><div><span className="eyebrow">Access Draft</span><h2>Invite staff</h2><p>Draft the intended role and workspace scope before the backend creates Discord-backed access.</p></div><button aria-label="Close invite modal" onClick={() => setInviteOpen(false)} type="button"><X size={17} /></button></header>
+          <header><div><span className="eyebrow">Access Draft</span><h2>Invite staff</h2><p>Save an admin-side staff draft. Discord role syncing is still a separate future backend step.</p></div><button aria-label="Close invite modal" onClick={() => setInviteOpen(false)} type="button"><X size={17} /></button></header>
           <div className="manual-player-grid">
             <label><span>Discord ID</span><input value={inviteDraft.discordId} onChange={(event) => setInviteDraft((current) => ({ ...current, discordId: event.target.value }))} placeholder="1224..." /></label>
             <label><span>Display name</span><input value={inviteDraft.displayName} onChange={(event) => setInviteDraft((current) => ({ ...current, displayName: event.target.value }))} placeholder="Staff name" /></label>
@@ -1654,12 +1818,12 @@ function StaffAccessPage({ user }: { user: AdminUser }) {
               return <label key={workspace}><input checked={inviteDraft.workspaces.includes(workspace)} onChange={() => toggleInviteWorkspace(workspace)} type="checkbox" /><span>{meta.icon}<strong>{meta.label}</strong><small>{meta.detail}</small></span></label>
             })}
           </div>
-          <footer><button className="page-action secondary" onClick={() => setInviteOpen(false)} type="button">Cancel</button><button className="page-action" disabled={!inviteDraft.discordId.trim() && !inviteDraft.displayName.trim()} onClick={createInviteDraft} type="button"><UserPlus size={16} />Create draft</button></footer>
+          <footer><button className="page-action secondary" onClick={() => setInviteOpen(false)} type="button">Cancel</button><button className="page-action" disabled={staffMutationState !== 'idle' || (!inviteDraft.discordId.trim() && !inviteDraft.displayName.trim())} onClick={() => void createInviteDraft()} type="button"><UserPlus size={16} />{staffMutationState === 'saving' ? 'Saving...' : 'Save draft'}</button></footer>
         </section>
       </div>}
       {editOpen && <div className="modal-layer">
         <section className="admin-modal staff-edit-modal">
-          <header><div><span className="eyebrow">Staged access edit</span><h2>{selected.name}</h2><p>These changes are local until the real staff management API is connected.</p></div><button aria-label="Close edit modal" onClick={() => setEditOpen(false)} type="button"><X size={17} /></button></header>
+          <header><div><span className="eyebrow">Staff access edit</span><h2>{selected.name}</h2><p>Live mode saves this admin-side access record and writes it to the audit log.</p></div><button aria-label="Close edit modal" onClick={() => setEditOpen(false)} type="button"><X size={17} /></button></header>
           <div className="manual-player-grid">
             <label><span>Portal role</span><select value={editDraft.role} onChange={(event) => setEditDraft((current) => ({ ...current, role: event.target.value }))}>{staffRoleOptions.map((role) => <option key={role}>{role}</option>)}</select></label>
             <label><span>Status</span><select value={editDraft.status} onChange={(event) => setEditDraft((current) => ({ ...current, status: event.target.value as StaffDirectoryMember['status'] }))}>{staffStatusOptions.map((status) => <option key={status}>{status}</option>)}</select></label>
@@ -1672,7 +1836,7 @@ function StaffAccessPage({ user }: { user: AdminUser }) {
             })}
           </div>
           <label className="staff-edit-note"><span>Access note</span><textarea value={editDraft.notes} onChange={(event) => setEditDraft((current) => ({ ...current, notes: event.target.value }))} /></label>
-          <footer><button className="page-action secondary" onClick={() => setEditOpen(false)} type="button">Cancel</button><button className="page-action" onClick={saveEditDraft} type="button"><Check size={16} />Stage edit</button></footer>
+          <footer><button className="page-action secondary" onClick={() => setEditOpen(false)} type="button">Cancel</button><button className="page-action" disabled={staffMutationState !== 'idle'} onClick={() => void saveEditDraft()} type="button"><Check size={16} />{staffMutationState === 'saving' ? 'Saving...' : 'Save edit'}</button></footer>
         </section>
       </div>}
     </main>
