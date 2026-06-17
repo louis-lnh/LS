@@ -4,7 +4,9 @@ import com.shd.lifesteal.api.GracePeriodSnapshot;
 import com.shd.lifesteal.impl.combat.CombatTagService;
 import com.shd.lifesteal.impl.event.EventTimerService;
 import com.shd.lifesteal.impl.grace.GracePeriodService;
+import com.shd.lifesteal.impl.restriction.ElytraCombatCooldownService;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -21,6 +23,7 @@ public final class LifestealActionbar {
 
     private final GracePeriodService gracePeriodService;
     private final CombatTagService combatTagService;
+    private final ElytraCombatCooldownService elytraCombatCooldownService;
     private final EventTimerService eventTimerService;
     private final LifestealUiSettings uiSettings;
     private long ticks;
@@ -28,11 +31,13 @@ public final class LifestealActionbar {
     public LifestealActionbar(
             GracePeriodService gracePeriodService,
             CombatTagService combatTagService,
+            ElytraCombatCooldownService elytraCombatCooldownService,
             EventTimerService eventTimerService,
             LifestealUiSettings uiSettings
     ) {
         this.gracePeriodService = gracePeriodService;
         this.combatTagService = combatTagService;
+        this.elytraCombatCooldownService = elytraCombatCooldownService;
         this.eventTimerService = eventTimerService;
         this.uiSettings = uiSettings;
     }
@@ -82,19 +87,24 @@ public final class LifestealActionbar {
     }
 
     private Text timerText(ServerPlayerEntity player, GracePeriodSnapshot grace, Instant now) {
-        return combatTagService.snapshot(player.getUuid(), now)
-                .map(tag -> Text.literal("Combat: " + formatSeconds(tag.remainingSeconds())).formatted(Formatting.RED))
-                .orElseGet(() -> {
-                    EventTimerService.Snapshot event = eventTimerService.snapshot(now);
-                    if (event.active()) {
-                        return Text.literal((event.paused() ? event.name() + " paused: " : event.name() + ": ") + TimeText.compact(event.remaining()))
-                                .formatted(Formatting.GOLD);
-                    }
-                    if (grace.active()) {
-                        return Text.literal((grace.paused() ? "Grace paused: " : "Grace: ") + TimeText.compact(grace.remaining())).formatted(Formatting.AQUA);
-                    }
-                    return null;
-                });
+        Optional<com.shd.lifesteal.impl.combat.CombatTagSnapshot> combat = combatTagService.snapshot(player.getUuid(), now);
+        Optional<ElytraCombatCooldownService.Snapshot> escape = elytraCombatCooldownService.snapshot(player.getUuid(), now);
+        if (combat.isPresent() || escape.isPresent()) {
+            String combatText = combat.map(tag -> "Combat: " + formatSeconds(tag.remainingSeconds())).orElse("");
+            String escapeText = escape.map(snapshot -> "Escape: " + formatSeconds(snapshot.remainingSeconds())).orElse("");
+            String separator = combat.isPresent() && escape.isPresent() ? " | " : "";
+            return Text.literal(combatText + separator + escapeText).formatted(combat.isPresent() ? Formatting.RED : Formatting.YELLOW);
+        }
+
+        EventTimerService.Snapshot event = eventTimerService.snapshot(now);
+        if (event.active()) {
+            return Text.literal((event.paused() ? event.name() + " paused: " : event.name() + ": ") + TimeText.compact(event.remaining()))
+                    .formatted(Formatting.GOLD);
+        }
+        if (grace.active()) {
+            return Text.literal((grace.paused() ? "Grace paused: " : "Grace: ") + TimeText.compact(grace.remaining())).formatted(Formatting.AQUA);
+        }
+        return null;
     }
 
     private static void send(ServerPlayerEntity player, Text text) {

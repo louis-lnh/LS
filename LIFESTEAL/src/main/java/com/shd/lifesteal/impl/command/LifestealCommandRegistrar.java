@@ -12,6 +12,7 @@ import com.shd.lifesteal.api.PlayerHeartState;
 import com.shd.lifesteal.impl.audit.LifestealAuditLog;
 import com.shd.lifesteal.impl.combat.CombatTagService;
 import com.shd.lifesteal.impl.combat.CombatTagSnapshot;
+import com.shd.lifesteal.impl.config.LifestealRuleSettings;
 import com.shd.lifesteal.impl.event.EventTimerService;
 import com.shd.lifesteal.impl.grace.GracePeriodService;
 import com.shd.lifesteal.impl.heart.HeartService;
@@ -43,6 +44,7 @@ public final class LifestealCommandRegistrar {
     private final CombatTagService combatTagService;
     private final GracePeriodService gracePeriodService;
     private final EventTimerService eventTimerService;
+    private final LifestealRuleSettings ruleSettings;
     private final LifestealUiSettings uiSettings;
     private final LifestealSoundService soundService;
     private final LifestealAuditLog auditLog;
@@ -56,6 +58,7 @@ public final class LifestealCommandRegistrar {
             CombatTagService combatTagService,
             GracePeriodService gracePeriodService,
             EventTimerService eventTimerService,
+            LifestealRuleSettings ruleSettings,
             LifestealUiSettings uiSettings,
             LifestealSoundService soundService,
             LifestealAuditLog auditLog
@@ -67,6 +70,7 @@ public final class LifestealCommandRegistrar {
         this.combatTagService = combatTagService;
         this.gracePeriodService = gracePeriodService;
         this.eventTimerService = eventTimerService;
+        this.ruleSettings = ruleSettings;
         this.uiSettings = uiSettings;
         this.soundService = soundService;
         this.auditLog = auditLog;
@@ -175,6 +179,17 @@ public final class LifestealCommandRegistrar {
                         .requires(CommandManager.requirePermissionLevel(CommandManager.OWNERS_CHECK))
                         .then(maceCommand(MaceLimitRules.MACE_ONE))
                         .then(maceCommand(MaceLimitRules.MACE_TWO)))
+                .then(CommandManager.literal("rules")
+                        .then(CommandManager.literal("status")
+                                .executes(context -> rulesStatus(context.getSource())))
+                        .then(CommandManager.literal("spearcombat")
+                                .requires(CommandManager.requirePermissionLevel(CommandManager.GAMEMASTERS_CHECK))
+                                .then(CommandManager.literal("status")
+                                        .executes(context -> spearCombatStatus(context.getSource())))
+                                .then(CommandManager.literal("on")
+                                        .executes(context -> setSpearCombatBan(context.getSource(), true)))
+                                .then(CommandManager.literal("off")
+                                        .executes(context -> setSpearCombatBan(context.getSource(), false)))))
                 .then(CommandManager.literal("kit")
                         .requires(CommandManager.requirePermissionLevel(CommandManager.OWNERS_CHECK))
                         .then(CommandManager.literal("Wemmbu")
@@ -559,6 +574,22 @@ public final class LifestealCommandRegistrar {
                 ? "Event timer resumed: %s remaining".formatted(TimeText.compact(snapshot.remaining()))
                 : "No paused event timer."), true);
         return snapshot.active() ? 1 : 0;
+    }
+
+    private int rulesStatus(ServerCommandSource source) {
+        source.sendFeedback(() -> Text.literal("Lifesteal rules: " + ruleSettings.statusText()), false);
+        return 1;
+    }
+
+    private int spearCombatStatus(ServerCommandSource source) {
+        source.sendFeedback(() -> Text.literal("Spear combat ban: " + (ruleSettings.spearCombatBan() ? "on" : "off")), false);
+        return 1;
+    }
+
+    private int setSpearCombatBan(ServerCommandSource source, boolean enabled) {
+        ruleSettings.setSpearCombatBan(enabled);
+        source.sendFeedback(() -> Text.literal("Spear combat ban is now " + (enabled ? "on" : "off")), true);
+        return 1;
     }
 
     private int uiStatus(ServerCommandSource source) {

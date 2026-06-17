@@ -14,6 +14,7 @@ import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
+import net.minecraft.registry.Registries;
 import net.minecraft.potion.Potions;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.entry.RegistryEntry;
@@ -28,6 +29,7 @@ public final class DisabledFeatureRules {
             Items.TNT_MINECART,
             Items.NETHERITE_SWORD,
             Items.NETHERITE_AXE,
+            Items.NETHERITE_SPEAR,
             Items.NETHERITE_HELMET,
             Items.NETHERITE_CHESTPLATE,
             Items.NETHERITE_LEGGINGS,
@@ -38,6 +40,10 @@ public final class DisabledFeatureRules {
     }
 
     public static boolean isUseBlocked(ItemStack stack, boolean inCombat) {
+        return isUseBlocked(stack, inCombat, false);
+    }
+
+    public static boolean isUseBlocked(ItemStack stack, boolean inCombat, boolean spearCombatBan) {
         if (stack.isEmpty()) {
             return false;
         }
@@ -55,6 +61,10 @@ public final class DisabledFeatureRules {
         }
 
         if (inCombat && isRiptideTrident(stack)) {
+            return true;
+        }
+
+        if (inCombat && spearCombatBan && isSpear(stack)) {
             return true;
         }
 
@@ -94,6 +104,9 @@ public final class DisabledFeatureRules {
         }
         if (inCombat && isRiptideTrident(stack)) {
             return Optional.of("Riptide tridents are disabled while combat tagged.");
+        }
+        if (inCombat && isSpear(stack)) {
+            return Optional.of("Spears are disabled while combat tagged.");
         }
         if (inCombat && stack.isOf(Items.ENDER_PEARL)) {
             return Optional.of("Ender pearls are disabled while combat tagged.");
@@ -227,6 +240,10 @@ public final class DisabledFeatureRules {
 
         ItemEnchantmentsComponent enchantments = stack.get(DataComponentTypes.ENCHANTMENTS);
         return enchantments != null && enchantments.getEnchantments().stream().anyMatch(enchantment -> matches(enchantment, Enchantments.RIPTIDE));
+    }
+
+    public static boolean isSpear(ItemStack stack) {
+        return !stack.isEmpty() && Registries.ITEM.getId(stack.getItem()).getPath().endsWith("_spear");
     }
 
     private static boolean clampEnchantments(ItemStack stack, net.minecraft.component.ComponentType<ItemEnchantmentsComponent> componentType) {

@@ -1786,7 +1786,7 @@ tbody tr:hover {
   }
 
   .timeline-date,
-  .timeline-event > div:last-child {
+  .timeline-event>div:last-child {
     grid-column: 2;
   }
 

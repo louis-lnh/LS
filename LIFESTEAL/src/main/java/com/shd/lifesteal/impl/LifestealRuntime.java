@@ -7,6 +7,7 @@ import com.shd.lifesteal.impl.combat.CombatLogoutHandler;
 import com.shd.lifesteal.impl.combat.CombatTagService;
 import com.shd.lifesteal.impl.command.LifestealCommandRegistrar;
 import com.shd.lifesteal.impl.config.LifestealConfig;
+import com.shd.lifesteal.impl.config.LifestealRuleSettings;
 import com.shd.lifesteal.impl.connection.JoinLeaveMessageHandler;
 import com.shd.lifesteal.impl.data.SqliteLifestealRepository;
 import com.shd.lifesteal.impl.death.DeathResolutionService;
@@ -51,6 +52,7 @@ public final class LifestealRuntime {
             .resolve("shd-lifesteal")
             .resolve("lifesteal.sqlite");
     private final LifestealUiSettings uiSettings = new LifestealUiSettings(configDirectory.resolve("ui.properties"));
+    private final LifestealRuleSettings ruleSettings = new LifestealRuleSettings(configDirectory.resolve("rules.properties"));
     private final LifestealSoundService soundService = new LifestealSoundService(uiSettings);
     private final LifestealAuditLog auditLog = new LifestealAuditLog(configDirectory.resolve("lifesteal-audit.log"));
     private final SqliteLifestealRepository repository = new SqliteLifestealRepository(databasePath);
@@ -63,7 +65,7 @@ public final class LifestealRuntime {
     private final PlayerHeartApplier playerHeartApplier = new PlayerHeartApplier(heartService);
     private final CombatTagService combatTagService = new CombatTagService(config, uiBridgeManager);
     private final ElytraCombatCooldownService elytraCombatCooldownService = new ElytraCombatCooldownService();
-    private final CombatEventHandler combatEventHandler = new CombatEventHandler(combatTagService, gracePeriodService, elytraCombatCooldownService);
+    private final CombatEventHandler combatEventHandler = new CombatEventHandler(combatTagService, gracePeriodService, ruleSettings, elytraCombatCooldownService, uiBridgeManager);
     private final RestrictedItemPolicy restrictedItemPolicy = new RestrictedItemPolicy();
     private final ModItems modItems = new ModItems(heartService, playerHeartApplier);
     private final DragonEggTracker dragonEggTracker = new DragonEggTracker(restrictedItemPolicy);
@@ -76,6 +78,7 @@ public final class LifestealRuntime {
             combatTagService,
             gracePeriodService,
             eventTimerService,
+            ruleSettings,
             uiSettings,
             soundService,
             auditLog
@@ -92,7 +95,7 @@ public final class LifestealRuntime {
     );
     private final PlayerDeathHandler playerDeathHandler = new PlayerDeathHandler(playerHeartApplier, deathResolutionService, soundService);
     private final CombatLogoutHandler combatLogoutHandler = new CombatLogoutHandler(combatTagService, deathResolutionService, uiBridgeManager);
-    private final DisabledFeatureHandler disabledFeatureHandler = new DisabledFeatureHandler(combatTagService, uiBridgeManager);
+    private final DisabledFeatureHandler disabledFeatureHandler = new DisabledFeatureHandler(combatTagService, ruleSettings, elytraCombatCooldownService, uiBridgeManager);
     private final RestrictedStorageHandler restrictedStorageHandler = new RestrictedStorageHandler(modItems);
     private final DragonEggGlowHandler dragonEggGlowHandler = new DragonEggGlowHandler(config);
     private final DiscordRoleSyncService discordRoleSyncService = new DiscordRoleSyncService(config, heartService, dragonEggGlowHandler);
@@ -102,12 +105,13 @@ public final class LifestealRuntime {
     );
     private final GameplayRoleUiPublisher gameplayRoleUiPublisher = new GameplayRoleUiPublisher(heartService, uiBridgeManager);
     private final GraceWarningPublisher graceWarningPublisher = new GraceWarningPublisher(gracePeriodService, uiBridgeManager);
-    private final LifestealActionbar lifestealActionbar = new LifestealActionbar(gracePeriodService, combatTagService, eventTimerService, uiSettings);
+    private final LifestealActionbar lifestealActionbar = new LifestealActionbar(gracePeriodService, combatTagService, elytraCombatCooldownService, eventTimerService, uiSettings);
     private final LifestealTabListService lifestealTabListService = new LifestealTabListService(heartService, gracePeriodService, eventTimerService, dragonEggBeaconEffectHandler, uiSettings);
     private final LifestealBossbarService lifestealBossbarService = new LifestealBossbarService(gracePeriodService, eventTimerService, dragonEggBeaconEffectHandler, uiSettings);
 
     public void initialize() {
         uiSettings.load();
+        ruleSettings.load();
         eventTimerService.load();
         repository.initialize();
         uiBridgeManager.loadEntrypoints();

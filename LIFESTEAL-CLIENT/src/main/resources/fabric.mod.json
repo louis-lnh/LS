@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "shd-lifesteal-client",
+  "version": "${version}",
+  "name": "SHD Lifesteal Client",
+  "description": "Client-only item registration and assets for SHD Lifesteal hearts.",
+  "authors": [
+    "SHD"
+  ],
+  "contact": {},
+  "license": "All-Rights-Reserved",
+  "environment": "client",
+  "entrypoints": {
+    "main": [
+      "com.shd.lifesteal.client.ShdLifestealClientMod"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "minecraft": "${minecraft_version}",
+    "java": ">=21"
+  }
+}

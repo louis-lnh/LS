@@ -1,6 +1,7 @@
 package com.shd.lifesteal.impl.restriction;
 
 import com.shd.lifesteal.impl.combat.CombatTagService;
+import com.shd.lifesteal.impl.config.LifestealRuleSettings;
 import com.shd.lifesteal.impl.ui.UiBridgeManager;
 import com.shd.lifesteal.impl.ui.UiNotifier;
 import com.shd.lifesteal.mixin.ZombieVillagerEntityInvoker;
@@ -22,10 +23,19 @@ public final class DisabledFeatureHandler {
     private static final int MAX_ZOMBIE_VILLAGER_CONVERSION_TICKS = 6000;
 
     private final CombatTagService combatTagService;
+    private final LifestealRuleSettings ruleSettings;
+    private final ElytraCombatCooldownService elytraCombatCooldownService;
     private final UiBridgeManager uiBridgeManager;
 
-    public DisabledFeatureHandler(CombatTagService combatTagService, UiBridgeManager uiBridgeManager) {
+    public DisabledFeatureHandler(
+            CombatTagService combatTagService,
+            LifestealRuleSettings ruleSettings,
+            ElytraCombatCooldownService elytraCombatCooldownService,
+            UiBridgeManager uiBridgeManager
+    ) {
         this.combatTagService = combatTagService;
+        this.ruleSettings = ruleSettings;
+        this.elytraCombatCooldownService = elytraCombatCooldownService;
         this.uiBridgeManager = uiBridgeManager;
     }
 
@@ -36,8 +46,10 @@ public final class DisabledFeatureHandler {
             }
 
             ItemStack stack = player.getStackInHand(hand);
-            if (DisabledFeatureRules.isUseBlocked(stack, inCombat(serverPlayer))) {
-                warn(serverPlayer, DisabledFeatureRules.blockedReason(stack, inCombat(serverPlayer)).orElse("This feature is disabled."));
+            boolean inCombat = inCombat(serverPlayer);
+            boolean escapeLocked = escapeLocked(serverPlayer);
+            if (DisabledFeatureRules.isUseBlocked(stack, inCombat || escapeLocked, ruleSettings.spearCombatBan() && escapeLocked)) {
+                warn(serverPlayer, DisabledFeatureRules.blockedReason(stack, inCombat || escapeLocked).orElse("This feature is disabled."));
                 return ActionResult.FAIL;
             }
 
@@ -50,8 +62,10 @@ public final class DisabledFeatureHandler {
             }
 
             ItemStack stack = player.getStackInHand(hand);
-            if (DisabledFeatureRules.isUseBlocked(stack, inCombat(serverPlayer))) {
-                warn(serverPlayer, DisabledFeatureRules.blockedReason(stack, inCombat(serverPlayer)).orElse("This feature is disabled."));
+            boolean inCombat = inCombat(serverPlayer);
+            boolean escapeLocked = escapeLocked(serverPlayer);
+            if (DisabledFeatureRules.isUseBlocked(stack, inCombat || escapeLocked, ruleSettings.spearCombatBan() && escapeLocked)) {
+                warn(serverPlayer, DisabledFeatureRules.blockedReason(stack, inCombat || escapeLocked).orElse("This feature is disabled."));
                 return ActionResult.FAIL;
             }
 
@@ -157,6 +171,10 @@ public final class DisabledFeatureHandler {
 
     private boolean inCombat(ServerPlayerEntity player) {
         return combatTagService.isTagged(player.getUuid(), Instant.now());
+    }
+
+    private boolean escapeLocked(ServerPlayerEntity player) {
+        return elytraCombatCooldownService.isActive(player.getUuid(), Instant.now());
     }
 
     private void warn(ServerPlayerEntity player, String message) {

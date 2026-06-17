@@ -179,8 +179,7 @@ main {
   height: auto;
   margin-bottom: 1.5rem;
   filter:
-    drop-shadow(0 0 12px rgba(241, 214, 154, 0.25))
-    drop-shadow(0 0 40px rgba(241, 214, 154, 0.12));
+    drop-shadow(0 0 12px rgba(241, 214, 154, 0.25)) drop-shadow(0 0 40px rgba(241, 214, 154, 0.12));
   user-select: none;
   pointer-events: none;
 }
@@ -956,7 +955,7 @@ main {
     rgba(14, 14, 16, 0.72);
 }
 
-.legal-document section > span {
+.legal-document section>span {
   display: inline-flex;
   align-items: center;
   justify-content: center;

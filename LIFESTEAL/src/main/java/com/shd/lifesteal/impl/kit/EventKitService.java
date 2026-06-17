@@ -148,7 +148,7 @@ public final class EventKitService {
                 enchant(Enchantments.SILK_TOUCH, 1),
                 enchant(Enchantments.EFFICIENCY, 5)
         ));
-        ItemStack spear = tool(context, Items.NETHERITE_SPEAR, unbreakable, List.of(
+        ItemStack spear = tool(context, Items.DIAMOND_SPEAR, unbreakable, List.of(
                 enchant(Enchantments.UNBREAKING, 3),
                 enchant(Enchantments.MENDING, 1),
                 enchant(Enchantments.SHARPNESS, 4),
