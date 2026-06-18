@@ -182,8 +182,7 @@ Current enforcement:
 
 - Death at 1 heart marks the player eliminated and disconnects them
 - `/lifesteal player eliminate <player>` marks a player eliminated and disconnects them if online
-- Eliminated players are disconnected immediately during the Fabric play-join event
-- Server operators bypass the join restriction for administration/testing
+- Eliminated players are disconnected immediately during the Fabric play-join and after-respawn events
 - `/lifesteal player revive <player>` clears eliminated state and restores 3 hearts
 - `/lifesteal player reset <player>` clears eliminated state and restores 10 starting hearts
 

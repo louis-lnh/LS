@@ -675,6 +675,11 @@ function normalizeManualMinecraftUuid(value, minecraftName) {
   return `manual:${minecraftName.toLowerCase()}`;
 }
 
+function publicMinecraftUuid(value) {
+  const uuid = String(value ?? '').trim();
+  return !uuid || uuid.startsWith('manual:') ? null : uuid;
+}
+
 function playerStatusLabel(linked) {
   const status = String(linked.status ?? '').toLowerCase();
   if (status === 'banned') return 'Banned';
@@ -725,12 +730,13 @@ function playerSnapshotByLinked(publicSnapshot, linked) {
 function serializeLinkedPlayer(linked, applications, publicSnapshot) {
   const application = latestApplicationForPlayer(applications, linked);
   const gameplay = playerSnapshotByLinked(publicSnapshot, linked);
+  const minecraftUuid = publicMinecraftUuid(linked.minecraft_uuid);
   return {
     id: `linked:${linked.discord_id}`,
     source: 'linked',
     discordId: linked.discord_id,
     discord: linked.discord_username || linked.discord_id,
-    minecraftUuid: linked.minecraft_uuid,
+    minecraftUuid,
     minecraft: linked.minecraft_name || 'Unknown',
     badge: playerBadgeLabel(linked.role),
     badgeValue: String(linked.role ?? 'player').trim().toLowerCase().replaceAll('_', '-').replaceAll(' ', '-'),
@@ -924,6 +930,18 @@ async function adminMinecraftSideEffect({ type, action, run }) {
   } catch (error) {
     return { ok: false, result: null, error: error.message || `${action} failed`, type };
   }
+}
+
+function shouldWhitelistPlayer(status) {
+  return status?.status === 'active';
+}
+
+async function adminWhitelistAdd(minecraftName) {
+  return adminMinecraftSideEffect({
+    type: 'minecraft.whitelist_add',
+    action: 'Add Minecraft whitelist entry',
+    run: () => whitelistAdd(minecraftName)
+  });
 }
 
 function normalizeEventText(value, max = 240) {
@@ -1441,6 +1459,7 @@ export function createAdminRouter(client) {
 
     const now = Date.now();
     const minecraftUuid = normalizeManualMinecraftUuid(req.body?.minecraftUuid, minecraftName);
+    let whitelistResult = { ok: true, error: null };
     try {
       statements.upsertLinked.run({
         discordId,
@@ -1465,19 +1484,30 @@ export function createAdminRouter(client) {
     } catch (error) {
       return res.status(409).json({ ok: false, code: 'ADMIN_PLAYER_LINK_CONFLICT', error: error.message || 'Could not create manual player link.' });
     }
+    if (shouldWhitelistPlayer(nextStatus)) {
+      whitelistResult = await adminWhitelistAdd(minecraftName);
+      statements.upsertRulesAcceptance.run({
+        discordId,
+        minecraftUuid,
+        rulesVersion: currentRulesVersion(),
+        acceptedAt: now,
+        source: 'admin_player_manager'
+      });
+    }
 
     audit('admin.player_created', {
       discordId: req.adminSession.id,
       minecraftUuid,
-      data: { targetDiscordId: discordId, minecraftName, status: nextStatus.label, badge: nextBadge, manual: true }
+      data: { targetDiscordId: discordId, minecraftName, status: nextStatus.label, badge: nextBadge, manual: true, whitelistOk: whitelistResult.ok }
     });
     await staffAuditLog(client, 'Admin Player Manually Added', [
       { name: 'Player', value: minecraftName, inline: true },
       { name: 'Discord ID', value: discordId, inline: true },
       { name: 'Status', value: nextStatus.label, inline: true },
       { name: 'Badge', value: playerBadgeLabel(nextBadge), inline: true },
+      whitelistResult.ok ? null : { name: 'Whitelist Warning', value: whitelistResult.error },
       { name: 'Staff', value: `${req.adminSession.displayName} (${req.adminSession.id})`, inline: true }
-    ]);
+    ].filter(Boolean));
     return res.status(201).json({ ok: true, players: buildAdminPlayers(), player: findAdminPlayer(`linked:${discordId}`), updatedAt: Date.now() });
   });
 
@@ -1536,6 +1566,7 @@ export function createAdminRouter(client) {
       return res.status(400).json({ ok: false, code: 'ADMIN_PLAYER_BADGE_INVALID', error: 'Player badge is invalid.' });
     }
 
+    let whitelistResult = { ok: true, error: null };
     statements.updateLinkedAdminProfile.run({
       discordId: rawId,
       status: nextStatus?.status,
@@ -1545,15 +1576,26 @@ export function createAdminRouter(client) {
       reason: 'Updated from the admin player manager.',
       updatedAt: now
     });
+    if (shouldWhitelistPlayer(nextStatus)) {
+      whitelistResult = await adminWhitelistAdd(linked.minecraft_name);
+      statements.upsertRulesAcceptance.run({
+        discordId: rawId,
+        minecraftUuid: linked.minecraft_uuid,
+        rulesVersion: currentRulesVersion(),
+        acceptedAt: now,
+        source: 'admin_player_manager'
+      });
+    }
     audit('admin.player_updated', {
       discordId: req.adminSession.id,
       minecraftUuid: linked.minecraft_uuid,
-      data: { playerId, status: nextStatus?.label ?? null, badge: nextBadge ?? null }
+      data: { playerId, status: nextStatus?.label ?? null, badge: nextBadge ?? null, whitelistOk: whitelistResult.ok }
     });
     await staffAuditLog(client, 'Admin Player Updated', [
       { name: 'Player', value: linked.minecraft_name || rawId, inline: true },
       nextStatus ? { name: 'Status', value: nextStatus.label, inline: true } : null,
       nextBadge ? { name: 'Badge', value: playerBadgeLabel(nextBadge), inline: true } : null,
+      whitelistResult.ok ? null : { name: 'Whitelist Warning', value: whitelistResult.error },
       { name: 'Staff', value: `${req.adminSession.displayName} (${req.adminSession.id})`, inline: true }
     ].filter(Boolean));
 
@@ -2086,6 +2128,13 @@ export function createAdminRouter(client) {
           rosterStatusUpdatedAt: now
         });
         linked = statements.findLinkedByDiscord.get(application.discord_id_verified);
+        statements.upsertRulesAcceptance.run({
+          discordId: application.discord_id_verified,
+          minecraftUuid: profile.uuid,
+          rulesVersion: currentRulesVersion(),
+          acceptedAt: now,
+          source: 'admin_application_approval'
+        });
         whitelistResult = await adminMinecraftSideEffect({
           type: 'minecraft.whitelist_add',
           action: 'Add approved applicant to Minecraft whitelist',

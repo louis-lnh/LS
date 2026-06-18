@@ -237,7 +237,7 @@ export const statements = {
   upsertLinked: {
     run(row) {
       const existingMinecraft = state.linked_accounts.find(
-        (item) => item.minecraft_uuid === row.minecraftUuid && item.discord_id !== row.discordId
+        (item) => sameMinecraftUuid(item.minecraft_uuid, row.minecraftUuid) && item.discord_id !== row.discordId
       );
       if (existingMinecraft) throw new Error('Minecraft account is already linked to another Discord account.');
       const existingLinked = state.linked_accounts.find((item) => item.discord_id === row.discordId);
@@ -285,6 +285,34 @@ export const statements = {
         linked_at: row.verifiedAt
       });
       persist();
+    }
+  },
+  updateLinkedMinecraftIdentity: {
+    run(row) {
+      const linked = state.linked_accounts.find((item) => item.discord_id === row.discordId);
+      if (!linked) return null;
+      const existingMinecraft = state.linked_accounts.find(
+        (item) => sameMinecraftUuid(item.minecraft_uuid, row.minecraftUuid) && item.discord_id !== row.discordId
+      );
+      if (existingMinecraft) throw new Error('Minecraft account is already linked to another Discord account.');
+
+      linked.minecraft_uuid = row.minecraftUuid;
+      linked.minecraft_name = row.minecraftName ?? linked.minecraft_name;
+      linked.last_seen_at = row.seenAt ?? Date.now();
+      upsertHistory('minecraft_name_history', ['minecraft_uuid', 'username'], {
+        minecraft_uuid: linked.minecraft_uuid,
+        username: linked.minecraft_name,
+        first_seen_at: linked.last_seen_at,
+        last_seen_at: linked.last_seen_at
+      });
+      state.minecraft_link_history.push({
+        discord_id: linked.discord_id,
+        minecraft_uuid: linked.minecraft_uuid,
+        minecraft_name: linked.minecraft_name,
+        linked_at: linked.last_seen_at
+      });
+      persist();
+      return linked;
     }
   },
   setLinkedStatus: {
@@ -1148,4 +1176,9 @@ function upsertHistory(table, keys, row) {
     state[table].push(row);
   }
   persist();
+}
+
+function sameMinecraftUuid(left, right) {
+  if (!left || !right) return false;
+  return String(left).toLowerCase().replaceAll('-', '') === String(right).toLowerCase().replaceAll('-', '');
 }

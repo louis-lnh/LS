@@ -575,6 +575,8 @@ Server access should be tied to the application/join-ticket approval flow.
 
 When a join ticket or application is approved, regardless of whether approval happens through Discord, the admin portal, or another staff surface, the player's Minecraft UUID or username should be added to the server whitelist automatically. Players should not be able to join the event server before they are approved and whitelisted.
 
+The Discord bot/admin API owns that whitelist automation through RCON. Discord application approval and admin-portal application approval resolve the Mojang profile, mark the account active, record current rules acceptance, and run `whitelist add <name>`. Manual player creation or status changes in the admin portal also run `whitelist add <name>` for active players. If staff leave the Minecraft UUID blank for a manual player, the bot stores a `manual:<name>` placeholder and replaces it with the real UUID the first time that exact Minecraft name reaches the join check.
+
 This whitelist automation must not change the public/player-page registration state. Approved applicants can remain shown as registered even if the final event roster is smaller than the total approved applicant pool.
 
 ## Open Decisions
@@ -588,7 +590,6 @@ This whitelist automation must not change the public/player-page registration st
 - ban duration presets for temporary bans
 - appeal ID format and where appeal records live
 - final player-facing disconnect message copy
-- exact whitelist write path for approved join tickets/applications
 - persistence format for anti-cheat history
 - admin UI scope for reviewing alerts
 - thresholds for noisy movement/combat checks

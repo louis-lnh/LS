@@ -197,6 +197,8 @@ Responses:
 
 - `allowed: true` when the account is linked and active.
 - `allowed: false` when unlinked, banned, under review, high risk, missing current rules acceptance, or IP lock mismatches.
+- Admin-created active players are whitelisted through RCON immediately. If a manual admin entry has no UUID yet, the first matching Minecraft join replaces the `manual:<name>` placeholder with the real UUID before normal join checks continue.
+- On startup, the bot reconciles the Minecraft whitelist by running `whitelist add` for every active linked player. This is idempotent and catches existing admin-portal players after a deploy/restart.
 
 ## Security Workflow Commands
 

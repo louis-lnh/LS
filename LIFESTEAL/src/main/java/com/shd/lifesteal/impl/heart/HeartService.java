@@ -87,7 +87,7 @@ public final class HeartService implements LifestealService {
 
     public PlayerHeartState eliminate(UUID playerId) {
         PlayerData current = getOrCreate(playerId);
-        PlayerData saved = repository.savePlayer(current.withEliminated(true).withHearts(Math.max(1, current.hearts())));
+        PlayerData saved = repository.savePlayer(current.withEliminated(true).withHearts(0));
         PlayerHeartState state = toApiState(saved);
         uiBridgeManager.onPlayerHeartStateChanged(state);
         return state;
@@ -127,7 +127,7 @@ public final class HeartService implements LifestealService {
         }
 
         if (current.hearts() <= 1) {
-            PlayerData saved = repository.savePlayer(current.withDeathAdded().withEliminated(true).withHearts(1));
+            PlayerData saved = repository.savePlayer(current.withDeathAdded().withEliminated(true).withHearts(0));
             PlayerHeartState state = toApiState(saved);
             uiBridgeManager.onPlayerHeartStateChanged(state);
             return new DeathResolutionResult(
@@ -197,9 +197,10 @@ public final class HeartService implements LifestealService {
     public List<GameplayRoleSnapshot> gameplayRoles(MinecraftServer server) {
         Map<UUID, GameplayRoleSnapshot> snapshots = new LinkedHashMap<>();
         for (PlayerData playerData : repository.findPlayers()) {
+            int displayHearts = displayHearts(playerData);
             snapshots.put(playerData.playerId(), new GameplayRoleSnapshot(
                     playerData.playerId(),
-                    playerData.hearts(),
+                    displayHearts,
                     playerData.eliminated(),
                     playerData.kills(),
                     playerData.deaths(),
@@ -213,7 +214,7 @@ public final class HeartService implements LifestealService {
                     playerData.maceOneKills(),
                     playerData.maceTwoKills(),
                     playerData.playtimeSeconds(),
-                    playerData.hearts() >= config.maxHearts(),
+                    displayHearts >= config.maxHearts(),
                     false,
                     false,
                     ""
@@ -222,10 +223,11 @@ public final class HeartService implements LifestealService {
 
         for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
             PlayerData playerData = getOrCreate(player.getUuid());
+            int displayHearts = displayHearts(playerData);
             Optional<String> maceIdentity = MaceLimitRules.carriedTrackedMaceKey(player);
             snapshots.put(player.getUuid(), new GameplayRoleSnapshot(
                     player.getUuid(),
-                    playerData.hearts(),
+                    displayHearts,
                     playerData.eliminated(),
                     playerData.kills(),
                     playerData.deaths(),
@@ -239,7 +241,7 @@ public final class HeartService implements LifestealService {
                     playerData.maceOneKills(),
                     playerData.maceTwoKills(),
                     playerData.playtimeSeconds(),
-                    playerData.hearts() >= config.maxHearts(),
+                    displayHearts >= config.maxHearts(),
                     PlayerObjectiveInventoryScanner.carries(player, Items.DRAGON_EGG),
                     maceIdentity.isPresent(),
                     maceIdentity.orElse("")
@@ -282,6 +284,10 @@ public final class HeartService implements LifestealService {
     }
 
     private PlayerHeartState toApiState(PlayerData playerData) {
-        return new PlayerHeartState(playerData.playerId(), playerData.hearts(), playerData.eliminated());
+        return new PlayerHeartState(playerData.playerId(), displayHearts(playerData), playerData.eliminated());
+    }
+
+    private int displayHearts(PlayerData playerData) {
+        return playerData.eliminated() ? 0 : playerData.hearts();
     }
 }

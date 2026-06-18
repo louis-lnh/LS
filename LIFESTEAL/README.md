@@ -27,7 +27,7 @@ The current build bundles Xerial SQLite JDBC. Fabric Loom may print a warning th
 - Admin commands: `/lifesteal hearts set|add|remove <player> <amount>`
 - Admin player arguments resolve online players first, then offline players from server `whitelist.json`
 - Death handling subtracts one heart outside grace, eliminates players who die at 1 heart, and plays the global wither-spawn sound
-- Eliminated players are kicked on elimination and rejected immediately on join unless they are server operators
+- Eliminated players are kicked on elimination and rejected immediately on join/respawn
 - Admin commands: `/lifesteal player eliminate|revive|reset <player>`
 - PvP damage outside grace combat-tags both players for 30 seconds and tracks the most recent attacker
 - `/lifesteal status <player>` shows active combat tag state when present

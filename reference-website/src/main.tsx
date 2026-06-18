@@ -388,7 +388,7 @@ function publicPlayerToPlayer(player: PublicPlayer, index: number, rankMoves: Ra
   const previousRank = rankMoves[playerRankKey(player)]?.previousRank ?? rank
   const move: Move = previousRank > rank ? 'up' : previousRank < rank ? 'down' : 'same'
   const rawHearts = player.hearts_current ?? player.hearts ?? null
-  const hearts = player.eliminated ? Math.max(0, rawHearts ?? 0) : rawHearts ?? 10
+  const hearts = player.eliminated ? 0 : rawHearts ?? 10
   const prestige = [...new Set([...(player.prestige ?? []).filter(isPrestigeBadgeId), ...builtInPrestigeBadges(player)])]
   const status = player.status ?? (player.eliminated ? 'Eliminated' : hearts === 1 ? 'On Last Heart' : undefined)
   const updatedAt = player.source_updated_at ?? player.updated_at

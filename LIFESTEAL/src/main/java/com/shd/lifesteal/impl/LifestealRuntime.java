@@ -21,6 +21,7 @@ import com.shd.lifesteal.impl.discord.DiscordRoleSyncService;
 import com.shd.lifesteal.impl.dragon.DragonEggBeaconEffectHandler;
 import com.shd.lifesteal.impl.dragon.DragonEggGlowHandler;
 import com.shd.lifesteal.impl.dragon.DragonEggTracker;
+import com.shd.lifesteal.impl.elimination.EliminatedPlayerAccess;
 import com.shd.lifesteal.impl.elimination.EliminationService;
 import com.shd.lifesteal.impl.event.EventTimerService;
 import com.shd.lifesteal.impl.grace.GraceProtectionHandler;
@@ -76,6 +77,7 @@ public final class LifestealRuntime {
     private final GraceProtectionHandler graceProtectionHandler = new GraceProtectionHandler(gracePeriodService);
     private final EliminationService eliminationService = new EliminationService(repository);
     private final HeartService heartService = new HeartService(config, repository, eliminationService, gracePeriodService, uiBridgeManager);
+    private final EliminatedPlayerAccess eliminatedPlayerAccess = new EliminatedPlayerAccess(heartService);
     private final PlayerHeartApplier playerHeartApplier = new PlayerHeartApplier(heartService);
     private final CombatTagService combatTagService = new CombatTagService(config, uiBridgeManager);
     private final ElytraCombatCooldownService elytraCombatCooldownService = new ElytraCombatCooldownService();
@@ -99,7 +101,7 @@ public final class LifestealRuntime {
             auditLog,
             antiCheatService
     );
-    private final PlayerConnectionHooks playerConnectionHooks = new PlayerConnectionHooks(heartService, playerHeartApplier);
+    private final PlayerConnectionHooks playerConnectionHooks = new PlayerConnectionHooks(heartService, playerHeartApplier, eliminatedPlayerAccess);
     private final JoinLeaveMessageHandler joinLeaveMessageHandler = new JoinLeaveMessageHandler(uiBridgeManager);
     private final DeathResolutionService deathResolutionService = new DeathResolutionService(
             heartService,
@@ -109,7 +111,7 @@ public final class LifestealRuntime {
             uiBridgeManager,
             soundService
     );
-    private final PlayerDeathHandler playerDeathHandler = new PlayerDeathHandler(playerHeartApplier, deathResolutionService, soundService);
+    private final PlayerDeathHandler playerDeathHandler = new PlayerDeathHandler(playerHeartApplier, deathResolutionService, soundService, eliminatedPlayerAccess);
     private final CombatLogoutHandler combatLogoutHandler = new CombatLogoutHandler(combatTagService, deathResolutionService, uiBridgeManager);
     private final DisabledFeatureHandler disabledFeatureHandler = new DisabledFeatureHandler(combatTagService, ruleSettings, elytraCombatCooldownService, uiBridgeManager);
     private final RestrictedStorageHandler restrictedStorageHandler = new RestrictedStorageHandler(modItems);

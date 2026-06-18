@@ -28,8 +28,8 @@ const minecraftLinkSchema = z.object({
 const gameplayRoleSnapshotSchema = z.object({
   minecraftUuid: z.string().min(32).max(36).optional(),
   playerId: z.string().min(32).max(36).optional(),
-  heartsCurrent: z.number().int().min(1).max(20).nullable().optional(),
-  hearts: z.number().int().min(1).max(20).optional(),
+  heartsCurrent: z.number().int().min(0).max(20).nullable().optional(),
+  hearts: z.number().int().min(0).max(20).optional(),
   killsTotal: z.number().int().min(0).optional(),
   kills: z.number().int().min(0).optional(),
   deathsTotal: z.number().int().min(0).optional(),
@@ -511,6 +511,21 @@ function findLinkedMinecraftAccount(minecraftUuid) {
   return null;
 }
 
+function findPendingManualMinecraftAccount(minecraftName) {
+  const normalizedName = String(minecraftName ?? '').trim().toLowerCase();
+  if (!normalizedName) return null;
+  return (statements.snapshot.get().linked_accounts ?? []).find((linked) =>
+    linked.status === 'active' &&
+    String(linked.minecraft_uuid ?? '').startsWith('manual:') &&
+    String(linked.minecraft_name ?? '').trim().toLowerCase() === normalizedName
+  ) ?? null;
+}
+
+function publicMinecraftUuid(value) {
+  const uuid = String(value ?? '').trim();
+  return !uuid || uuid.startsWith('manual:') ? null : uuid;
+}
+
 function sameMinecraftUuid(left, right) {
   if (!left || !right) return false;
   const wanted = new Set(minecraftUuidVariants(left));
@@ -573,7 +588,7 @@ function publicPlayersFromSnapshots(snapshots, updatedAt) {
     const maceIdentity = normalizeMaceIdentity(snapshot.maceIdentity);
     if (snapshot.maceWielder) prestige.push(maceIdentity === 'M2' ? 'mace-2' : 'mace-1');
 
-    const hearts = snapshot.heartsCurrent ?? snapshot.hearts ?? null;
+    const hearts = snapshot.eliminated ? 0 : snapshot.heartsCurrent ?? snapshot.hearts ?? null;
     const heartGains = snapshot.heartGains ?? null;
     const heartLosses = snapshot.heartLosses ?? null;
     const kills = snapshot.killsTotal ?? snapshot.kills ?? 0;
@@ -683,7 +698,7 @@ function publicPlayersWithApplications(snapshot) {
       minecraftUuidVariants(linked.minecraft_uuid).forEach((uuid) => existingUuids.add(uuid));
 
       return {
-        minecraft_uuid: linked.minecraft_uuid,
+        minecraft_uuid: publicMinecraftUuid(linked.minecraft_uuid),
         name: linked.minecraft_name ?? 'Unknown',
         hearts_current: null,
         heart_gains: null,
@@ -1160,7 +1175,7 @@ function saveOverlayLifestealPlayer(snapshots) {
   statements.upsertOverlayLifestealPlayer.run({
     minecraftUuid,
     minecraftName: linked?.minecraft_name ?? null,
-    hearts: snapshot.hearts ?? null,
+    hearts: snapshot.eliminated ? 0 : snapshot.heartsCurrent ?? snapshot.hearts ?? null,
     eliminated: snapshot.eliminated,
     twentyHearts: snapshot.twentyHearts,
     dragonEggHolder: snapshot.dragonEggHolder,
@@ -1755,7 +1770,46 @@ export function startWebServer(client) {
       username: body.minecraftName,
       seenAt: Date.now()
     });
-    const linked = findLinkedMinecraftAccount(body.minecraftUuid);
+    let linked = findLinkedMinecraftAccount(body.minecraftUuid);
+    if (!linked) {
+      const pendingManual = findPendingManualMinecraftAccount(body.minecraftName);
+      if (pendingManual) {
+        try {
+          linked = statements.updateLinkedMinecraftIdentity.run({
+            discordId: pendingManual.discord_id,
+            minecraftUuid: body.minecraftUuid,
+            minecraftName: body.minecraftName,
+            seenAt: Date.now()
+          });
+          statements.upsertRulesAcceptance.run({
+            discordId: pendingManual.discord_id,
+            minecraftUuid: body.minecraftUuid,
+            rulesVersion: currentRulesVersion(),
+            acceptedAt: Date.now(),
+            source: 'admin_player_first_join'
+          });
+          audit('minecraft.manual_uuid_claimed', {
+            discordId: pendingManual.discord_id,
+            minecraftUuid: body.minecraftUuid,
+            data: {
+              previousMinecraftUuid: pendingManual.minecraft_uuid,
+              minecraftName: body.minecraftName
+            }
+          });
+        } catch (error) {
+          audit('minecraft.manual_uuid_claim_failed', {
+            discordId: pendingManual.discord_id,
+            minecraftUuid: body.minecraftUuid,
+            data: {
+              previousMinecraftUuid: pendingManual.minecraft_uuid,
+              minecraftName: body.minecraftName,
+              error: error.message
+            }
+          });
+          return res.status(409).json({ allowed: false, reason: error.message || 'Minecraft account is already linked.' });
+        }
+      }
+    }
     if (!linked) return res.status(404).json({ allowed: false, reason: 'Minecraft account is not linked.' });
     if (linked.status !== 'active') return res.status(403).json({ allowed: false, reason: `Link status is ${linked.status}.` });
 
