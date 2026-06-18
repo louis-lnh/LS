@@ -2,6 +2,8 @@ package com.shd.lifesteal.impl;
 
 import com.shd.lifesteal.api.LifestealApi;
 import com.shd.lifesteal.impl.anticheat.AntiCheatCheckRunner;
+import com.shd.lifesteal.impl.anticheat.AntiCheatIdentityStore;
+import com.shd.lifesteal.impl.anticheat.AntiCheatPersistence;
 import com.shd.lifesteal.impl.anticheat.AntiCheatService;
 import com.shd.lifesteal.impl.anticheat.AntiCheatSettings;
 import com.shd.lifesteal.impl.audit.LifestealAuditLog;
@@ -60,8 +62,13 @@ public final class LifestealRuntime {
     private final AntiCheatSettings antiCheatSettings = new AntiCheatSettings(configDirectory.resolve("anticheat.properties"));
     private final LifestealSoundService soundService = new LifestealSoundService(uiSettings);
     private final LifestealAuditLog auditLog = new LifestealAuditLog(configDirectory.resolve("lifesteal-audit.log"));
-    private final AntiCheatService antiCheatService = new AntiCheatService(antiCheatSettings, auditLog);
-    private final AntiCheatCheckRunner antiCheatCheckRunner = new AntiCheatCheckRunner(antiCheatService, antiCheatSettings);
+    private final AntiCheatPersistence antiCheatPersistence = new AntiCheatPersistence(
+            configDirectory.resolve("anticheat-history.jsonl"),
+            configDirectory.resolve("anticheat-reviews.jsonl")
+    );
+    private final AntiCheatIdentityStore antiCheatIdentityStore = new AntiCheatIdentityStore(configDirectory.resolve("anticheat-accounts.json"));
+    private final AntiCheatService antiCheatService = new AntiCheatService(antiCheatSettings, auditLog, antiCheatPersistence);
+    private final AntiCheatCheckRunner antiCheatCheckRunner = new AntiCheatCheckRunner(antiCheatService, antiCheatSettings, antiCheatIdentityStore);
     private final SqliteLifestealRepository repository = new SqliteLifestealRepository(databasePath);
     private final UiBridgeManager uiBridgeManager = new UiBridgeManager();
     private final GracePeriodService gracePeriodService = new GracePeriodService(config, uiBridgeManager);
@@ -122,6 +129,8 @@ public final class LifestealRuntime {
         uiSettings.load();
         ruleSettings.load();
         antiCheatSettings.load();
+        antiCheatService.load();
+        antiCheatIdentityStore.load();
         eventTimerService.load();
         repository.initialize();
         uiBridgeManager.loadEntrypoints();

@@ -7,8 +7,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.EnumMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 
 public final class AntiCheatSettings {
     private static final String ENABLED = "enabled";
@@ -50,7 +52,35 @@ public final class AntiCheatSettings {
     private static final String COMBAT_ALERT_COOLDOWN_TICKS = "combat.alertCooldownTicks";
     private static final String INVENTORY_CHECKS_ENABLED = "inventory.enabled";
     private static final String INVENTORY_SCAN_INTERVAL_TICKS = "inventory.scanIntervalTicks";
+    private static final String INVENTORY_MAX_ALLOWED_STACK_SIZE = "inventory.maxAllowedStackSize";
+    private static final String INVENTORY_MAX_ALLOWED_DAMAGE = "inventory.maxAllowedDamage";
+    private static final String INVENTORY_MAX_ITEM_NAME_LENGTH = "inventory.maxItemNameLength";
+    private static final String INVENTORY_ENCHANTMENT_LEVEL_TOLERANCE = "inventory.enchantmentLevelTolerance";
+    private static final String INVENTORY_TRACK_ITEM_DELTAS = "inventory.trackItemDeltas";
+    private static final String INVENTORY_MAX_SINGLE_SCAN_ITEM_GAIN = "inventory.maxSingleScanItemGain";
     private static final String INVENTORY_ALERT_COOLDOWN_TICKS = "inventory.alertCooldownTicks";
+    private static final String INTERACTION_CHECKS_ENABLED = "interaction.enabled";
+    private static final String INTERACTION_MAX_BLOCK_REACH = "interaction.maxBlockReach";
+    private static final String INTERACTION_MAX_ENTITY_REACH = "interaction.maxEntityReach";
+    private static final String INTERACTION_MIN_INTERVAL_TICKS = "interaction.minIntervalTicks";
+    private static final String INTERACTION_RAPID_BUFFER = "interaction.rapidBuffer";
+    private static final String INTERACTION_MENU_BUFFER = "interaction.menuBuffer";
+    private static final String INTERACTION_SPECTATOR_BUFFER = "interaction.spectatorBuffer";
+    private static final String INTERACTION_ALERT_COOLDOWN_TICKS = "interaction.alertCooldownTicks";
+    private static final String ACCOUNT_CHECKS_ENABLED = "account.enabled";
+    private static final String ACCOUNT_ALERT_NAME_CHANGES = "account.alertNameChanges";
+    private static final String ACCOUNT_ALERT_NAME_REUSE = "account.alertNameReuse";
+    private static final String ACCOUNT_ALERT_IP_CLUSTERS = "account.alertIpClusters";
+    private static final String ACCOUNT_MAX_ACCOUNTS_PER_IP_HASH = "account.maxAccountsPerIpHash";
+    private static final String ACCOUNT_ALERT_STAFF_LOGIN = "account.alertStaffLogin";
+    private static final String CLIENT_CHECKS_ENABLED = "client.enabled";
+    private static final String CLIENT_REQUIRE_BRAND = "client.requireBrand";
+    private static final String CLIENT_BRAND_GRACE_TICKS = "client.brandGraceTicks";
+    private static final String CLIENT_TRACK_BRAND_CHANGES = "client.trackBrandChanges";
+    private static final String CLIENT_ALLOWED_BRANDS = "client.allowedBrands";
+    private static final String CLIENT_BLOCKED_BRANDS = "client.blockedBrands";
+    private static final String CLIENT_REQUIRED_CHANNELS = "client.requiredChannels";
+    private static final String CLIENT_DISALLOWED_CHANNELS = "client.disallowedChannels";
     private static final String CATEGORY_PREFIX = "category.";
 
     private final Path path;
@@ -94,7 +124,35 @@ public final class AntiCheatSettings {
     private int combatAlertCooldownTicks = 100;
     private boolean inventoryChecksEnabled = true;
     private int inventoryScanIntervalTicks = 20;
+    private int inventoryMaxAllowedStackSize = 99;
+    private int inventoryMaxAllowedDamage = 4096;
+    private int inventoryMaxItemNameLength = 96;
+    private int inventoryEnchantmentLevelTolerance = 0;
+    private boolean inventoryTrackItemDeltas = true;
+    private int inventoryMaxSingleScanItemGain = 256;
     private int inventoryAlertCooldownTicks = 200;
+    private boolean interactionChecksEnabled = true;
+    private double interactionMaxBlockReach = 6.5D;
+    private double interactionMaxEntityReach = 6.5D;
+    private int interactionMinIntervalTicks = 1;
+    private int interactionRapidBuffer = 8;
+    private int interactionMenuBuffer = 2;
+    private int interactionSpectatorBuffer = 1;
+    private int interactionAlertCooldownTicks = 100;
+    private boolean accountChecksEnabled = true;
+    private boolean accountAlertNameChanges = true;
+    private boolean accountAlertNameReuse = true;
+    private boolean accountAlertIpClusters = true;
+    private int accountMaxAccountsPerIpHash = 3;
+    private boolean accountAlertStaffLogin = true;
+    private boolean clientChecksEnabled = true;
+    private boolean clientRequireBrand = true;
+    private int clientBrandGraceTicks = 100;
+    private boolean clientTrackBrandChanges = true;
+    private Set<String> clientAllowedBrands = Set.of();
+    private Set<String> clientBlockedBrands = Set.of();
+    private Set<String> clientRequiredChannels = Set.of();
+    private Set<String> clientDisallowedChannels = Set.of();
 
     public AntiCheatSettings(Path path) {
         this.path = path;
@@ -150,7 +208,35 @@ public final class AntiCheatSettings {
         combatAlertCooldownTicks = intProperty(properties, COMBAT_ALERT_COOLDOWN_TICKS, combatAlertCooldownTicks);
         inventoryChecksEnabled = booleanProperty(properties, INVENTORY_CHECKS_ENABLED, inventoryChecksEnabled);
         inventoryScanIntervalTicks = intProperty(properties, INVENTORY_SCAN_INTERVAL_TICKS, inventoryScanIntervalTicks);
+        inventoryMaxAllowedStackSize = intProperty(properties, INVENTORY_MAX_ALLOWED_STACK_SIZE, inventoryMaxAllowedStackSize);
+        inventoryMaxAllowedDamage = intProperty(properties, INVENTORY_MAX_ALLOWED_DAMAGE, inventoryMaxAllowedDamage);
+        inventoryMaxItemNameLength = intProperty(properties, INVENTORY_MAX_ITEM_NAME_LENGTH, inventoryMaxItemNameLength);
+        inventoryEnchantmentLevelTolerance = nonNegativeIntProperty(properties, INVENTORY_ENCHANTMENT_LEVEL_TOLERANCE, inventoryEnchantmentLevelTolerance);
+        inventoryTrackItemDeltas = booleanProperty(properties, INVENTORY_TRACK_ITEM_DELTAS, inventoryTrackItemDeltas);
+        inventoryMaxSingleScanItemGain = intProperty(properties, INVENTORY_MAX_SINGLE_SCAN_ITEM_GAIN, inventoryMaxSingleScanItemGain);
         inventoryAlertCooldownTicks = intProperty(properties, INVENTORY_ALERT_COOLDOWN_TICKS, inventoryAlertCooldownTicks);
+        interactionChecksEnabled = booleanProperty(properties, INTERACTION_CHECKS_ENABLED, interactionChecksEnabled);
+        interactionMaxBlockReach = doubleProperty(properties, INTERACTION_MAX_BLOCK_REACH, interactionMaxBlockReach);
+        interactionMaxEntityReach = doubleProperty(properties, INTERACTION_MAX_ENTITY_REACH, interactionMaxEntityReach);
+        interactionMinIntervalTicks = intProperty(properties, INTERACTION_MIN_INTERVAL_TICKS, interactionMinIntervalTicks);
+        interactionRapidBuffer = intProperty(properties, INTERACTION_RAPID_BUFFER, interactionRapidBuffer);
+        interactionMenuBuffer = intProperty(properties, INTERACTION_MENU_BUFFER, interactionMenuBuffer);
+        interactionSpectatorBuffer = intProperty(properties, INTERACTION_SPECTATOR_BUFFER, interactionSpectatorBuffer);
+        interactionAlertCooldownTicks = intProperty(properties, INTERACTION_ALERT_COOLDOWN_TICKS, interactionAlertCooldownTicks);
+        accountChecksEnabled = booleanProperty(properties, ACCOUNT_CHECKS_ENABLED, accountChecksEnabled);
+        accountAlertNameChanges = booleanProperty(properties, ACCOUNT_ALERT_NAME_CHANGES, accountAlertNameChanges);
+        accountAlertNameReuse = booleanProperty(properties, ACCOUNT_ALERT_NAME_REUSE, accountAlertNameReuse);
+        accountAlertIpClusters = booleanProperty(properties, ACCOUNT_ALERT_IP_CLUSTERS, accountAlertIpClusters);
+        accountMaxAccountsPerIpHash = intProperty(properties, ACCOUNT_MAX_ACCOUNTS_PER_IP_HASH, accountMaxAccountsPerIpHash);
+        accountAlertStaffLogin = booleanProperty(properties, ACCOUNT_ALERT_STAFF_LOGIN, accountAlertStaffLogin);
+        clientChecksEnabled = booleanProperty(properties, CLIENT_CHECKS_ENABLED, clientChecksEnabled);
+        clientRequireBrand = booleanProperty(properties, CLIENT_REQUIRE_BRAND, clientRequireBrand);
+        clientBrandGraceTicks = intProperty(properties, CLIENT_BRAND_GRACE_TICKS, clientBrandGraceTicks);
+        clientTrackBrandChanges = booleanProperty(properties, CLIENT_TRACK_BRAND_CHANGES, clientTrackBrandChanges);
+        clientAllowedBrands = setProperty(properties, CLIENT_ALLOWED_BRANDS, clientAllowedBrands);
+        clientBlockedBrands = setProperty(properties, CLIENT_BLOCKED_BRANDS, clientBlockedBrands);
+        clientRequiredChannels = setProperty(properties, CLIENT_REQUIRED_CHANNELS, clientRequiredChannels);
+        clientDisallowedChannels = setProperty(properties, CLIENT_DISALLOWED_CHANNELS, clientDisallowedChannels);
 
         categoryActions.clear();
         for (AntiCheatCategory category : AntiCheatCategory.values()) {
@@ -327,12 +413,124 @@ public final class AntiCheatSettings {
         return inventoryScanIntervalTicks;
     }
 
+    public int inventoryMaxAllowedStackSize() {
+        return inventoryMaxAllowedStackSize;
+    }
+
+    public int inventoryMaxAllowedDamage() {
+        return inventoryMaxAllowedDamage;
+    }
+
+    public int inventoryMaxItemNameLength() {
+        return inventoryMaxItemNameLength;
+    }
+
+    public int inventoryEnchantmentLevelTolerance() {
+        return inventoryEnchantmentLevelTolerance;
+    }
+
+    public boolean inventoryTrackItemDeltas() {
+        return inventoryTrackItemDeltas;
+    }
+
+    public int inventoryMaxSingleScanItemGain() {
+        return inventoryMaxSingleScanItemGain;
+    }
+
     public int inventoryAlertCooldownTicks() {
         return inventoryAlertCooldownTicks;
     }
 
+    public boolean interactionChecksEnabled() {
+        return interactionChecksEnabled;
+    }
+
+    public double interactionMaxBlockReach() {
+        return interactionMaxBlockReach;
+    }
+
+    public double interactionMaxEntityReach() {
+        return interactionMaxEntityReach;
+    }
+
+    public int interactionMinIntervalTicks() {
+        return interactionMinIntervalTicks;
+    }
+
+    public int interactionRapidBuffer() {
+        return interactionRapidBuffer;
+    }
+
+    public int interactionMenuBuffer() {
+        return interactionMenuBuffer;
+    }
+
+    public int interactionSpectatorBuffer() {
+        return interactionSpectatorBuffer;
+    }
+
+    public int interactionAlertCooldownTicks() {
+        return interactionAlertCooldownTicks;
+    }
+
+    public boolean accountChecksEnabled() {
+        return accountChecksEnabled;
+    }
+
+    public boolean accountAlertNameChanges() {
+        return accountAlertNameChanges;
+    }
+
+    public boolean accountAlertNameReuse() {
+        return accountAlertNameReuse;
+    }
+
+    public boolean accountAlertIpClusters() {
+        return accountAlertIpClusters;
+    }
+
+    public int accountMaxAccountsPerIpHash() {
+        return accountMaxAccountsPerIpHash;
+    }
+
+    public boolean accountAlertStaffLogin() {
+        return accountAlertStaffLogin;
+    }
+
+    public boolean clientChecksEnabled() {
+        return clientChecksEnabled;
+    }
+
+    public boolean clientRequireBrand() {
+        return clientRequireBrand;
+    }
+
+    public int clientBrandGraceTicks() {
+        return clientBrandGraceTicks;
+    }
+
+    public boolean clientTrackBrandChanges() {
+        return clientTrackBrandChanges;
+    }
+
+    public Set<String> clientAllowedBrands() {
+        return clientAllowedBrands;
+    }
+
+    public Set<String> clientBlockedBrands() {
+        return clientBlockedBrands;
+    }
+
+    public Set<String> clientRequiredChannels() {
+        return clientRequiredChannels;
+    }
+
+    public Set<String> clientDisallowedChannels() {
+        return clientDisallowedChannels;
+    }
+
     public String statusText() {
-        return "enabled=%s defaultAction=%s tempBanMinutes=%d appealUrl=%s history=%d checks[movement=%s combat=%s inventory=%s] movement=burst%.1f/%.1f sustained%.2f air%.2f hover%d nofall%.1f combat=reach%.1f/y%.1f/min%d/cd%.2f/multi%d:%d inventory=scan%d overrides=%d".formatted(
+        return "enabled=%s defaultAction=%s tempBanMinutes=%d appealUrl=%s history=%d checks[movement=%s combat=%s inventory=%s interaction=%s account=%s client=%s] movement=burst%.1f/%.1f sustained%.2f air%.2f hover%d nofall%.1f combat=reach%.1f/y%.1f/min%d/cd%.2f/multi%d:%d inventory=scan%d/maxStack%d/gain%d interaction=block%.1f/entity%.1f/min%d account=maxIp%d client=brand%s/requiredChannels%d overrides=%d".formatted(
                 enabled,
                 defaultAction,
                 tempBanDuration.toMinutes(),
@@ -341,6 +539,9 @@ public final class AntiCheatSettings {
                 movementChecksEnabled,
                 combatChecksEnabled,
                 inventoryChecksEnabled,
+                interactionChecksEnabled,
+                accountChecksEnabled,
+                clientChecksEnabled,
                 movementMaxHorizontalPerTick,
                 movementMaxVerticalPerTick,
                 movementMaxSustainedHorizontalPerTick,
@@ -354,6 +555,14 @@ public final class AntiCheatSettings {
                 combatMaxTargetsPerWindow,
                 combatMultiTargetWindowTicks,
                 inventoryScanIntervalTicks,
+                inventoryMaxAllowedStackSize,
+                inventoryMaxSingleScanItemGain,
+                interactionMaxBlockReach,
+                interactionMaxEntityReach,
+                interactionMinIntervalTicks,
+                accountMaxAccountsPerIpHash,
+                clientRequireBrand ? "required" : "optional",
+                clientRequiredChannels.size(),
                 categoryActions.size()
         );
     }
@@ -399,7 +608,35 @@ public final class AntiCheatSettings {
         properties.setProperty(COMBAT_ALERT_COOLDOWN_TICKS, Integer.toString(combatAlertCooldownTicks));
         properties.setProperty(INVENTORY_CHECKS_ENABLED, Boolean.toString(inventoryChecksEnabled));
         properties.setProperty(INVENTORY_SCAN_INTERVAL_TICKS, Integer.toString(inventoryScanIntervalTicks));
+        properties.setProperty(INVENTORY_MAX_ALLOWED_STACK_SIZE, Integer.toString(inventoryMaxAllowedStackSize));
+        properties.setProperty(INVENTORY_MAX_ALLOWED_DAMAGE, Integer.toString(inventoryMaxAllowedDamage));
+        properties.setProperty(INVENTORY_MAX_ITEM_NAME_LENGTH, Integer.toString(inventoryMaxItemNameLength));
+        properties.setProperty(INVENTORY_ENCHANTMENT_LEVEL_TOLERANCE, Integer.toString(inventoryEnchantmentLevelTolerance));
+        properties.setProperty(INVENTORY_TRACK_ITEM_DELTAS, Boolean.toString(inventoryTrackItemDeltas));
+        properties.setProperty(INVENTORY_MAX_SINGLE_SCAN_ITEM_GAIN, Integer.toString(inventoryMaxSingleScanItemGain));
         properties.setProperty(INVENTORY_ALERT_COOLDOWN_TICKS, Integer.toString(inventoryAlertCooldownTicks));
+        properties.setProperty(INTERACTION_CHECKS_ENABLED, Boolean.toString(interactionChecksEnabled));
+        properties.setProperty(INTERACTION_MAX_BLOCK_REACH, Double.toString(interactionMaxBlockReach));
+        properties.setProperty(INTERACTION_MAX_ENTITY_REACH, Double.toString(interactionMaxEntityReach));
+        properties.setProperty(INTERACTION_MIN_INTERVAL_TICKS, Integer.toString(interactionMinIntervalTicks));
+        properties.setProperty(INTERACTION_RAPID_BUFFER, Integer.toString(interactionRapidBuffer));
+        properties.setProperty(INTERACTION_MENU_BUFFER, Integer.toString(interactionMenuBuffer));
+        properties.setProperty(INTERACTION_SPECTATOR_BUFFER, Integer.toString(interactionSpectatorBuffer));
+        properties.setProperty(INTERACTION_ALERT_COOLDOWN_TICKS, Integer.toString(interactionAlertCooldownTicks));
+        properties.setProperty(ACCOUNT_CHECKS_ENABLED, Boolean.toString(accountChecksEnabled));
+        properties.setProperty(ACCOUNT_ALERT_NAME_CHANGES, Boolean.toString(accountAlertNameChanges));
+        properties.setProperty(ACCOUNT_ALERT_NAME_REUSE, Boolean.toString(accountAlertNameReuse));
+        properties.setProperty(ACCOUNT_ALERT_IP_CLUSTERS, Boolean.toString(accountAlertIpClusters));
+        properties.setProperty(ACCOUNT_MAX_ACCOUNTS_PER_IP_HASH, Integer.toString(accountMaxAccountsPerIpHash));
+        properties.setProperty(ACCOUNT_ALERT_STAFF_LOGIN, Boolean.toString(accountAlertStaffLogin));
+        properties.setProperty(CLIENT_CHECKS_ENABLED, Boolean.toString(clientChecksEnabled));
+        properties.setProperty(CLIENT_REQUIRE_BRAND, Boolean.toString(clientRequireBrand));
+        properties.setProperty(CLIENT_BRAND_GRACE_TICKS, Integer.toString(clientBrandGraceTicks));
+        properties.setProperty(CLIENT_TRACK_BRAND_CHANGES, Boolean.toString(clientTrackBrandChanges));
+        properties.setProperty(CLIENT_ALLOWED_BRANDS, joinSet(clientAllowedBrands));
+        properties.setProperty(CLIENT_BLOCKED_BRANDS, joinSet(clientBlockedBrands));
+        properties.setProperty(CLIENT_REQUIRED_CHANNELS, joinSet(clientRequiredChannels));
+        properties.setProperty(CLIENT_DISALLOWED_CHANNELS, joinSet(clientDisallowedChannels));
         for (Map.Entry<AntiCheatCategory, AntiCheatAction> entry : categoryActions.entrySet()) {
             properties.setProperty(CATEGORY_PREFIX + entry.getKey().name().toLowerCase(), entry.getValue().name());
         }
@@ -443,6 +680,18 @@ public final class AntiCheatSettings {
         }
     }
 
+    private static int nonNegativeIntProperty(Properties properties, String key, int fallback) {
+        String value = properties.getProperty(key);
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+        try {
+            return Math.max(0, Integer.parseInt(value));
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
+    }
+
     private static double doubleProperty(Properties properties, String key, double fallback) {
         String value = properties.getProperty(key);
         if (value == null || value.isBlank()) {
@@ -458,5 +707,28 @@ public final class AntiCheatSettings {
     private static String stringProperty(Properties properties, String key, String fallback) {
         String value = properties.getProperty(key);
         return value == null || value.isBlank() ? fallback : value.trim();
+    }
+
+    private static Set<String> setProperty(Properties properties, String key, Set<String> fallback) {
+        String value = properties.getProperty(key);
+        if (value == null) {
+            return fallback;
+        }
+        if (value.isBlank()) {
+            return Set.of();
+        }
+
+        Set<String> values = new LinkedHashSet<>();
+        for (String entry : value.split(",")) {
+            String normalized = entry.trim().toLowerCase(java.util.Locale.ROOT);
+            if (!normalized.isBlank()) {
+                values.add(normalized);
+            }
+        }
+        return Set.copyOf(values);
+    }
+
+    private static String joinSet(Set<String> values) {
+        return String.join(",", values);
     }
 }

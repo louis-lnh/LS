@@ -102,6 +102,13 @@ Owns:
 
 May depend on stable `shd-lifesteal.api` interfaces. It should avoid reaching into Lifesteal implementation internals unless we intentionally add a small API for missing state.
 
+Current source skeleton:
+
+- `com.shd.lifesteal.impl.anticheat.lifesteal.LifestealAntiCheatModule`
+- `com.shd.lifesteal.impl.anticheat.lifesteal.LifestealAntiCheatCheckDefinition`
+
+The skeleton is intentionally inactive and is not registered by `LifestealRuntime` yet. It only maps the future Lifesteal-specific check families so the next implementation pass has a clear home without mixing Season 1 logic into the reusable generic checks.
+
 ### `shd-lifesteal`
 
 Remains authoritative for gameplay outcomes:
@@ -179,13 +186,33 @@ Initial implementation status:
 - The first service scaffold writes detections into `lifesteal-audit.log` and generates evidence/appeal IDs.
 - Kick actions produce the correct disconnect screen.
 - Temporary and permanent ban actions write to the real server user ban list, include appeal/evidence IDs in the ban reason, then disconnect the player with the same appeal details.
-- The service keeps a bounded in-memory recent-alert history for staff review.
-- Staff can inspect and operate the foundation with `/lifesteal anticheat status`, `/lifesteal anticheat reload`, `/lifesteal anticheat clear`, `/lifesteal anticheat lookup <evidenceId|appealId>`, `/lifesteal anticheat recent [limit]`, and `/lifesteal anticheat player <player> [limit]`.
+- The service keeps a bounded loaded recent-alert history for staff review and reloads it from persistent JSONL evidence on startup.
+- Staff can inspect and operate the foundation with `/lifesteal anticheat status`, `/lifesteal anticheat reload`, `/lifesteal anticheat clear`, `/lifesteal anticheat lookup <evidenceId|appealId>`, `/lifesteal anticheat recent [limit]`, `/lifesteal anticheat player <player> [limit]`, `/lifesteal anticheat open [limit]`, `/lifesteal anticheat mark <evidenceId|appealId> <status> [note]`, and `/lifesteal anticheat note <evidenceId|appealId> <note>`.
 - A generic check runner executes reusable server anti-cheat checks once per server tick.
 - The first generic check is `movement_anomaly`, a conservative audit-first movement signal controlled by `movement.maxHorizontalPerTick` and `movement.maxVerticalPerTick`.
 - Generic combat signals now cover unusual reach, rapid attack timing, multi-target hit bursts, and impossible spectator attacks.
-- Generic inventory signals now cover oversized stacks and impossible durability values.
-- Generic checks can be toggled with `movement.enabled`, `combat.enabled`, and `inventory.enabled`.
+- Generic inventory/item integrity signals now cover impossible stacks, stack/damage component overrides, impossible durability, long item names, illegal enchantment levels, and unusually large item-count gains between scans.
+- Generic interaction signals now cover unusual block/entity reach, rapid interaction bursts, interactions while a non-player menu is open, and spectator interactions.
+- Generic account access signals now cover account name changes, name reuse across UUIDs, network-hash account clusters, and staff/operator logins.
+- Generic client integrity signals now cover client brand metadata, client brand changes, configured allowed/blocked brands, and configured required/disallowed networking channels.
+- Generic checks can be toggled with `movement.enabled`, `combat.enabled`, `inventory.enabled`, `interaction.enabled`, `account.enabled`, and `client.enabled`.
+
+Persistent anti-cheat files:
+
+- `config/shd-lifesteal/anticheat-history.jsonl`: append-only detection evidence history
+- `config/shd-lifesteal/anticheat-reviews.jsonl`: append-only staff review/status events
+- `config/shd-lifesteal/anticheat-accounts.json`: local account/client identity observations with hashed IP values, not raw IP addresses
+
+Current staff workflow:
+
+- `OPEN`: new case, not reviewed yet
+- `WATCHING`: staff has seen it and wants more evidence
+- `REVIEWED`: reviewed without further action
+- `FALSE_POSITIVE`: reviewed and considered noise
+- `ESCALATED`: needs owner/admin decision
+- `ACTIONED`: staff took the intended action
+
+`/lifesteal anticheat open [limit]` lists unresolved `OPEN`, `WATCHING`, and `ESCALATED` cases. Staff notes and marks are persisted separately from the original detection line so evidence remains append-only.
 
 Current generic movement coverage:
 
@@ -264,6 +291,91 @@ Combat config keys:
 - `combat.criticalBuffer`
 - `combat.criticalMinFallDistance`
 - `combat.alertCooldownTicks`
+
+Current generic inventory/item integrity coverage:
+
+- item count above the stack's actual max count
+- item count above the configured generic stack cap
+- item `MAX_STACK_SIZE` component above the configured generic stack cap
+- damageable item damage below zero or above max damage
+- item `MAX_DAMAGE` component above the configured generic damage cap
+- item display name longer than the configured name length
+- enchantment or stored-enchantment levels below 1 or above vanilla max plus configured tolerance
+- unusually large per-item count gains between inventory scans
+
+The item-count delta check is intentionally broad and audit-first. It is useful for catching obvious duplication signatures, but normal gameplay, staff grants, kits, or container movement can still create noisy evidence.
+
+The default stack cap is intentionally set high enough for server-issued kit potion stacks. Future non-Lifesteal events can lower `inventory.maxAllowedStackSize` if they want stricter vanilla-style inventory integrity.
+
+Inventory config keys:
+
+- `inventory.enabled`
+- `inventory.scanIntervalTicks`
+- `inventory.maxAllowedStackSize`
+- `inventory.maxAllowedDamage`
+- `inventory.maxItemNameLength`
+- `inventory.enchantmentLevelTolerance`
+- `inventory.trackItemDeltas`
+- `inventory.maxSingleScanItemGain`
+- `inventory.alertCooldownTicks`
+
+Current generic interaction coverage:
+
+- block interaction reach
+- entity interaction reach
+- block attack reach
+- entity attack reach before damage resolution
+- rapid repeated interaction samples
+- use/attack interactions while a non-player menu is open
+- spectator use/attack interactions
+
+Interaction config keys:
+
+- `interaction.enabled`
+- `interaction.maxBlockReach`
+- `interaction.maxEntityReach`
+- `interaction.minIntervalTicks`
+- `interaction.rapidBuffer`
+- `interaction.menuBuffer`
+- `interaction.spectatorBuffer`
+- `interaction.alertCooldownTicks`
+
+Current generic account access coverage:
+
+- Minecraft UUID observed with a changed account name
+- the same Minecraft name observed on another UUID
+- more than the configured number of UUIDs observed on the same hashed network value
+- operator/staff account login audit events
+
+Account access config keys:
+
+- `account.enabled`
+- `account.alertNameChanges`
+- `account.alertNameReuse`
+- `account.alertIpClusters`
+- `account.maxAccountsPerIpHash`
+- `account.alertStaffLogin`
+
+Current generic client integrity coverage:
+
+- client brand payload missing after a grace period, when brand receiver registration is available
+- blank or unusually long client brand payloads
+- client brand changed compared to the local account history
+- client brand is in `client.blockedBrands`
+- `client.allowedBrands` is non-empty and the observed brand is not in the allow list
+- required client networking channels are missing
+- disallowed client networking channels are declared
+
+Client integrity config keys:
+
+- `client.enabled`
+- `client.requireBrand`
+- `client.brandGraceTicks`
+- `client.trackBrandChanges`
+- `client.allowedBrands`
+- `client.blockedBrands`
+- `client.requiredChannels`
+- `client.disallowedChannels`
 
 ### Disconnect And Appeal UX
 

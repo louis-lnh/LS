@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import express from 'express';
+import { PermissionFlagsBits } from 'discord.js';
 import { z } from 'zod';
 import { config } from './config.js';
 import { statements } from './db.js';
@@ -11,7 +12,7 @@ const publicStatusSchema = z.object({
 });
 
 const supportSubmissionSchema = z.object({
-  workspace: z.enum(['general', 'support', 'partnerships', 'appeals', 'reports', 'other']).default('support'),
+  workspace: z.enum(['general', 'support', 'valorant', 'partnerships', 'appeals', 'reports', 'other']).default('support'),
   formType: z.enum(['contact', 'application', 'appeal', 'report', 'support']).default('support'),
   category: z.string().min(2).max(80).default('general'),
   priority: z.enum(['low', 'normal', 'high', 'urgent']).default('normal'),
@@ -45,6 +46,11 @@ const publicCodePrefix = {
   report: 'RPT',
   support: 'SUP'
 };
+const sessionCookieName = 'shd_admin_session';
+const oauthStateCookieName = 'shd_admin_oauth_state';
+const sessionLifetimeMs = 8 * 60 * 60 * 1000;
+const oauthStateLifetimeMs = 10 * 60 * 1000;
+const rateLimitBuckets = new Map();
 
 function safeEqual(a, b) {
   const left = Buffer.from(a ?? '');
@@ -58,33 +64,242 @@ function authToken(req) {
   return match?.[1] ?? '';
 }
 
-function requireApiAuth(req, res, next) {
-  if (!config.apiSharedSecret) {
-    res.status(503).json({ ok: false, error: 'admin_api_not_configured' });
-    return;
-  }
+function encode(value) {
+  return Buffer.from(JSON.stringify(value)).toString('base64url');
+}
 
-  if (!safeEqual(authToken(req), config.apiSharedSecret)) {
-    res.status(401).json({ ok: false, error: 'unauthorized' });
-    return;
-  }
+function sign(value) {
+  return crypto.createHmac('sha256', config.admin.sessionSecret).update(value).digest('base64url');
+}
 
-  next();
+function signedValue(payload) {
+  const encoded = encode(payload);
+  return `${encoded}.${sign(encoded)}`;
+}
+
+function parseSignedValue(value) {
+  if (!config.admin.sessionSecret || !value) return null;
+  const [encoded, signature] = String(value).split('.');
+  if (!encoded || !signature) return null;
+  const expected = sign(encoded);
+  if (!safeEqual(signature, expected)) return null;
+
+  try {
+    const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
+    if (!payload?.exp || Date.now() >= payload.exp) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+function cookies(req) {
+  return Object.fromEntries(String(req.headers.cookie ?? '')
+    .split(';')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const separator = entry.indexOf('=');
+      if (separator === -1) return [entry, ''];
+      return [entry.slice(0, separator), decodeURIComponent(entry.slice(separator + 1))];
+    }));
+}
+
+function cookieOptions(maxAgeSeconds) {
+  const secure = config.publicBaseUrl.startsWith('https://');
+  return [
+    'Path=/api/v1/admin',
+    'HttpOnly',
+    'SameSite=Lax',
+    secure ? 'Secure' : '',
+    `Max-Age=${maxAgeSeconds}`
+  ].filter(Boolean).join('; ');
+}
+
+function setCookie(res, name, value, maxAgeSeconds) {
+  res.append('Set-Cookie', `${name}=${encodeURIComponent(value)}; ${cookieOptions(maxAgeSeconds)}`);
+}
+
+function clearCookie(res, name) {
+  setCookie(res, name, '', 0);
+}
+
+function safePortalUrl(path = '/') {
+  const portal = new URL(config.admin.portalUrl || 'http://localhost:5178');
+  const target = new URL(path, portal);
+  if (target.origin !== portal.origin) return portal.toString();
+  return target.toString();
+}
+
+function safeReturnPath(value) {
+  const path = String(value ?? '/');
+  return path.startsWith('/') && !path.startsWith('//') ? path : '/';
+}
+
+function sessionCookie(req) {
+  return parseSignedValue(cookies(req)[sessionCookieName]);
+}
+
+async function validatedSession(client, req) {
+  const cookie = sessionCookie(req);
+  if (!cookie?.sid) return null;
+
+  const stored = statements.adminSessions.get(cookie.sid);
+  if (!stored) return null;
+  const guild = await client.guilds.fetch(config.guildId);
+  const member = await guild.members.fetch(stored.discord_id).catch(() => null);
+  if (!member) return null;
+  const access = workspaceAccess(member, guild);
+  if (!access) return null;
+
+  return {
+    id: stored.discord_id,
+    username: stored.username,
+    displayName: stored.display_name,
+    avatarUrl: stored.avatar_url,
+    role: access.role,
+    workspaces: access.workspaces,
+    permissions: access.permissions,
+    exp: stored.expires_at,
+    sid: stored.id
+  };
+}
+
+function bearerAuthorized(req) {
+  return Boolean(config.apiSharedSecret) && safeEqual(authToken(req), config.apiSharedSecret);
+}
+
+function requireAdminAccess(client) {
+  return async (req, res, next) => {
+    if (bearerAuthorized(req)) {
+      req.adminSession = {
+        id: req.header('x-shd-staff-id') || 'api',
+        displayName: req.header('x-shd-staff-id') || 'API',
+        role: 'Service',
+        workspaces: ['global', 'general', 'valorant'],
+        permissions: ['global:audit', 'staff:read', 'support:review', 'support:write']
+      };
+      return next();
+    }
+
+    try {
+      const session = await validatedSession(client, req);
+      if (!session) {
+        res.status(401).json({ ok: false, code: 'ADMIN_AUTH_REQUIRED', error: 'Authentication required.' });
+        return;
+      }
+      req.adminSession = session;
+      return next();
+    } catch (error) {
+      console.error('Admin session validation failed', error);
+      res.status(503).json({ ok: false, code: 'ADMIN_AUTH_UNAVAILABLE', error: 'Could not validate admin session.' });
+    }
+  };
+}
+
+function workspaceAccess(member, guild) {
+  const owner = guild.ownerId === member.id || config.owners.discordIds.includes(member.id);
+  const administrator = member.permissions.has(PermissionFlagsBits.Administrator);
+  const manager = member.permissions.has(PermissionFlagsBits.ManageGuild);
+  const staff = [
+    ...config.roles.staff,
+    ...config.roles.admins,
+    ...config.roles.moderators,
+    ...config.roles.support,
+    ...config.roles.developers
+  ].some((roleId) => member.roles.cache.has(roleId));
+  if (!owner && !administrator && !manager && !staff) return null;
+
+  const global = owner || administrator || manager || config.roles.admins.some((roleId) => member.roles.cache.has(roleId));
+  return {
+    role: owner ? 'Owner' : administrator || manager ? 'Administrator' : 'SHD Team',
+    workspaces: global ? ['global', 'general', 'valorant'] : ['general'],
+    permissions: global
+      ? ['global:audit', 'integrations:read', 'staff:read', 'staff:manage', 'support:review', 'support:write']
+      : ['support:review']
+  };
+}
+
+async function exchangeCode(code) {
+  const body = new URLSearchParams({
+    client_id: config.clientId,
+    client_secret: config.admin.clientSecret,
+    grant_type: 'authorization_code',
+    code,
+    redirect_uri: config.admin.redirectUrl
+  });
+  const response = await fetch('https://discord.com/api/v10/oauth2/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body
+  });
+  if (!response.ok) throw new Error(`Discord token exchange failed with HTTP ${response.status}`);
+  return response.json();
+}
+
+async function fetchDiscordUser(accessToken) {
+  const response = await fetch('https://discord.com/api/v10/users/@me', {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  if (!response.ok) throw new Error(`Discord user lookup failed with HTTP ${response.status}`);
+  return response.json();
+}
+
+function publicSession(session) {
+  return {
+    id: session.id,
+    username: session.username,
+    displayName: session.displayName,
+    avatarUrl: session.avatarUrl,
+    role: session.role,
+    workspaces: session.workspaces,
+    permissions: session.permissions ?? [],
+    expiresAt: session.exp
+  };
 }
 
 function applyCors(req, res, next) {
   const origin = req.header('origin');
   if (origin && config.websites.allowedOrigins.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Vary', 'Origin');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-SHD-Staff-Id');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
   }
   if (req.method === 'OPTIONS') {
     res.status(204).end();
     return;
   }
   next();
+}
+
+function clientIp(req) {
+  const forwarded = req.header('x-forwarded-for')?.split(',')[0]?.trim();
+  return forwarded || req.socket.remoteAddress || 'unknown';
+}
+
+function rateLimit({ windowMs, max, keyPrefix }) {
+  return (req, res, next) => {
+    if (!windowMs || !max || max < 1) {
+      next();
+      return;
+    }
+
+    const now = Date.now();
+    const key = `${keyPrefix}:${clientIp(req)}`;
+    const bucket = (rateLimitBuckets.get(key) ?? []).filter((time) => now - time < windowMs);
+    if (bucket.length >= max) {
+      const retryAfterMs = windowMs - (now - bucket[0]);
+      res.setHeader('Retry-After', String(Math.max(1, Math.ceil(retryAfterMs / 1000))));
+      res.status(429).json({ ok: false, error: 'rate_limited' });
+      return;
+    }
+
+    bucket.push(now);
+    rateLimitBuckets.set(key, bucket);
+    next();
+  };
 }
 
 function publicSubmission(submission) {
@@ -335,7 +550,41 @@ function issueCode(formType) {
 }
 
 function adminActor(req) {
-  return req.header('x-shd-staff-id') || 'api';
+  return req.header('x-shd-staff-id') || req.adminSession?.id || 'api';
+}
+
+async function createSupportSubmission(req, res, client, defaults = {}) {
+  const parsed = supportSubmissionSchema.safeParse({ ...defaults, ...req.body });
+  if (!parsed.success) {
+    res.status(400).json({ ok: false, error: 'invalid_support_submission', issues: parsed.error.issues });
+    return;
+  }
+
+  const submission = statements.createSupportSubmission.run({
+    ...parsed.data,
+    code: issueCode(parsed.data.formType),
+    createdAt: Date.now()
+  });
+
+  audit('support.submission_created', {
+    actorId: submission.discord_id ?? 'public',
+    targetId: submission.code,
+    data: {
+      workspace: submission.workspace,
+      formType: submission.form_type,
+      category: submission.category,
+      priority: submission.priority
+    }
+  });
+
+  await logToChannel(client, config.channels.supportLog, 'New SHD support submission', [
+    { name: 'Code', value: submission.code, inline: true },
+    { name: 'Type', value: submission.form_type, inline: true },
+    { name: 'Priority', value: submission.priority, inline: true },
+    { name: 'Subject', value: submission.subject }
+  ]);
+
+  res.status(201).json({ ok: true, submission: publicSubmission(submission) });
 }
 
 export function startWeb(client) {
@@ -343,6 +592,11 @@ export function startWeb(client) {
   app.disable('x-powered-by');
   app.use(express.json({ limit: '256kb' }));
   app.use(applyCors);
+  const publicWriteRateLimit = rateLimit({
+    windowMs: config.rateLimits.publicWrite.windowMs,
+    max: config.rateLimits.publicWrite.max,
+    keyPrefix: 'public-write'
+  });
 
   app.get('/api/v1/health', (_req, res) => {
     const snapshot = statements.snapshot.get();
@@ -366,38 +620,42 @@ export function startWeb(client) {
     });
   });
 
-  app.post('/api/v1/public/support/submissions', async (req, res) => {
-    const parsed = supportSubmissionSchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ ok: false, error: 'invalid_support_submission', issues: parsed.error.issues });
-      return;
-    }
+  app.post('/api/v1/public/support/submissions', publicWriteRateLimit, async (req, res) => {
+    await createSupportSubmission(req, res, client);
+  });
 
-    const submission = statements.createSupportSubmission.run({
-      ...parsed.data,
-      code: issueCode(parsed.data.formType),
-      createdAt: Date.now()
+  app.post('/api/v1/public/support/contact', publicWriteRateLimit, async (req, res) => {
+    await createSupportSubmission(req, res, client, {
+      workspace: 'support',
+      formType: 'contact',
+      category: 'general'
     });
+  });
 
-    audit('support.submission_created', {
-      actorId: submission.discord_id ?? 'public',
-      targetId: submission.code,
-      data: {
-        workspace: submission.workspace,
-        formType: submission.form_type,
-        category: submission.category,
-        priority: submission.priority
-      }
+  app.post('/api/v1/public/support/application', publicWriteRateLimit, async (req, res) => {
+    await createSupportSubmission(req, res, client, {
+      workspace: 'general',
+      formType: 'application',
+      category: 'application'
     });
+  });
 
-    await logToChannel(client, config.channels.supportLog, 'New SHD support submission', [
-      { name: 'Code', value: submission.code, inline: true },
-      { name: 'Type', value: submission.form_type, inline: true },
-      { name: 'Priority', value: submission.priority, inline: true },
-      { name: 'Subject', value: submission.subject }
-    ]);
+  app.post('/api/v1/public/support/appeal', publicWriteRateLimit, async (req, res) => {
+    await createSupportSubmission(req, res, client, {
+      workspace: 'appeals',
+      formType: 'appeal',
+      category: 'appeal',
+      priority: 'high'
+    });
+  });
 
-    res.status(201).json({ ok: true, submission: publicSubmission(submission) });
+  app.post('/api/v1/public/support/report', publicWriteRateLimit, async (req, res) => {
+    await createSupportSubmission(req, res, client, {
+      workspace: 'reports',
+      formType: 'report',
+      category: 'report',
+      priority: 'high'
+    });
   });
 
   app.get('/api/v1/public/support/submissions/:code', (req, res) => {
@@ -409,11 +667,111 @@ export function startWeb(client) {
     res.json({ ok: true, submission: publicSubmission(submission) });
   });
 
-  app.get('/api/v1/admin/bootstrap', requireApiAuth, (_req, res) => {
+  app.get('/api/v1/admin/auth/login', (req, res) => {
+    if (!config.admin.enabled) {
+      res.status(503).json({ ok: false, code: 'ADMIN_OAUTH_DISABLED', error: 'Admin OAuth is not configured.' });
+      return;
+    }
+
+    const state = {
+      nonce: crypto.randomBytes(18).toString('base64url'),
+      returnTo: safeReturnPath(req.query.returnTo)
+    };
+    setCookie(res, oauthStateCookieName, signedValue({ ...state, exp: Date.now() + oauthStateLifetimeMs }), oauthStateLifetimeMs / 1000);
+    const url = new URL('https://discord.com/oauth2/authorize');
+    url.searchParams.set('client_id', config.clientId);
+    url.searchParams.set('redirect_uri', config.admin.redirectUrl);
+    url.searchParams.set('response_type', 'code');
+    url.searchParams.set('scope', 'identify');
+    url.searchParams.set('state', state.nonce);
+    res.redirect(url.toString());
+  });
+
+  app.get('/api/v1/admin/auth/callback', async (req, res) => {
+    const state = parseSignedValue(cookies(req)[oauthStateCookieName]);
+    clearCookie(res, oauthStateCookieName);
+    if (!state?.nonce || state.nonce !== req.query.state || !req.query.code) {
+      res.redirect(safePortalUrl('/login?error=oauth_state'));
+      return;
+    }
+
+    try {
+      const token = await exchangeCode(String(req.query.code));
+      const user = await fetchDiscordUser(token.access_token);
+      const guild = await client.guilds.fetch(config.guildId);
+      const member = await guild.members.fetch(user.id).catch(() => null);
+      if (!member) {
+        res.redirect(safePortalUrl('/login?error=not_in_guild'));
+        return;
+      }
+      const access = workspaceAccess(member, guild);
+      if (!access) {
+        res.redirect(safePortalUrl('/login?error=no_staff_access'));
+        return;
+      }
+
+      const sid = crypto.randomBytes(32).toString('base64url');
+      const expiresAt = Date.now() + sessionLifetimeMs;
+      statements.adminSessions.create({
+        id: sid,
+        discordId: user.id,
+        username: user.username,
+        displayName: user.global_name || user.username,
+        avatarUrl: user.avatar ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png` : null,
+        expiresAt
+      });
+      setCookie(res, sessionCookieName, signedValue({ sid, exp: expiresAt }), sessionLifetimeMs / 1000);
+      audit('admin.session_started', {
+        actorId: user.id,
+        data: { role: access.role, workspaces: access.workspaces }
+      });
+      res.redirect(safePortalUrl(state.returnTo));
+    } catch (error) {
+      console.error('Admin OAuth callback failed', error);
+      res.redirect(safePortalUrl('/login?error=oauth_failed'));
+    }
+  });
+
+  app.get('/api/v1/admin/auth/session', async (req, res) => {
+    if (bearerAuthorized(req)) {
+      res.json({
+        ok: true,
+        user: {
+          id: req.header('x-shd-staff-id') || 'api',
+          username: 'api',
+          displayName: req.header('x-shd-staff-id') || 'API',
+          avatarUrl: null,
+          role: 'Service',
+          workspaces: ['global', 'general', 'valorant'],
+          permissions: ['global:audit', 'integrations:read', 'staff:read', 'support:review', 'support:write'],
+          expiresAt: Date.now() + sessionLifetimeMs
+        }
+      });
+      return;
+    }
+
+    const session = await validatedSession(client, req);
+    if (!session) {
+      res.status(401).json({ ok: false, user: null });
+      return;
+    }
+    res.json({ ok: true, user: publicSession(session) });
+  });
+
+  app.post('/api/v1/admin/auth/logout', async (req, res) => {
+    const cookie = sessionCookie(req);
+    if (cookie?.sid) statements.adminSessions.delete(cookie.sid);
+    clearCookie(res, sessionCookieName);
+    res.json({ ok: true });
+  });
+
+  const requireAdmin = requireAdminAccess(client);
+
+  app.get('/api/v1/admin/bootstrap', requireAdmin, (_req, res) => {
     res.json(adminOverview());
   });
 
-  app.get('/api/v1/admin/system/bootstrap', requireApiAuth, (_req, res) => {
+  app.get('/api/v1/admin/system/bootstrap', requireAdmin, (_req, res) => {
     const snapshot = statements.snapshot.get();
     res.json({
       ok: true,
@@ -429,7 +787,7 @@ export function startWeb(client) {
     });
   });
 
-  app.get('/api/v1/admin/audit', requireApiAuth, (req, res) => {
+  app.get('/api/v1/admin/audit', requireAdmin, (req, res) => {
     const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 200);
     const events = statements.recentAudit.all(limit).map(adminAuditEvent);
     const todayStart = new Date();
@@ -447,11 +805,11 @@ export function startWeb(client) {
     });
   });
 
-  app.get('/api/v1/admin/staff', requireApiAuth, (_req, res) => {
+  app.get('/api/v1/admin/staff', requireAdmin, (_req, res) => {
     res.json(staffPayload());
   });
 
-  app.post('/api/v1/admin/status', requireApiAuth, (req, res) => {
+  app.post('/api/v1/admin/status', requireAdmin, (req, res) => {
     const parsed = publicStatusSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ ok: false, error: 'invalid_status_payload' });
@@ -466,7 +824,7 @@ export function startWeb(client) {
     res.json({ ok: true, status });
   });
 
-  app.get('/api/v1/admin/submissions', requireApiAuth, (req, res) => {
+  app.get('/api/v1/admin/submissions', requireAdmin, (req, res) => {
     const submissions = statements.supportSubmissions.all({
       status: req.query.status,
       workspace: req.query.workspace,
@@ -476,7 +834,7 @@ export function startWeb(client) {
     res.json({ ok: true, submissions });
   });
 
-  app.get('/api/v1/admin/submissions/:code', requireApiAuth, (req, res) => {
+  app.get('/api/v1/admin/submissions/:code', requireAdmin, (req, res) => {
     const submission = statements.supportSubmissions.get(req.params.code);
     if (!submission) {
       res.status(404).json({ ok: false, error: 'submission_not_found' });
@@ -485,7 +843,7 @@ export function startWeb(client) {
     res.json({ ok: true, submission: adminSubmission(submission) });
   });
 
-  app.post('/api/v1/admin/submissions/:code/claim', requireApiAuth, (req, res) => {
+  app.post('/api/v1/admin/submissions/:code/claim', requireAdmin, (req, res) => {
     const parsed = claimSchema.safeParse({ staffId: req.body?.staffId ?? adminActor(req) });
     if (!parsed.success) {
       res.status(400).json({ ok: false, error: 'invalid_claim_payload' });
@@ -507,7 +865,7 @@ export function startWeb(client) {
     res.json({ ok: true, changed: result.changed, submission: adminSubmission(result.submission) });
   });
 
-  app.post('/api/v1/admin/submissions/:code/notes', requireApiAuth, (req, res) => {
+  app.post('/api/v1/admin/submissions/:code/notes', requireAdmin, (req, res) => {
     const parsed = noteSchema.safeParse({ ...req.body, staffId: req.body?.staffId ?? adminActor(req) });
     if (!parsed.success) {
       res.status(400).json({ ok: false, error: 'invalid_note_payload' });
@@ -528,7 +886,7 @@ export function startWeb(client) {
     res.status(201).json({ ok: true, note, submission: adminSubmission(submission) });
   });
 
-  app.post('/api/v1/admin/submissions/:code/decision', requireApiAuth, (req, res) => {
+  app.post('/api/v1/admin/submissions/:code/decision', requireAdmin, (req, res) => {
     const parsed = decisionSchema.safeParse({ ...req.body, staffId: req.body?.staffId ?? adminActor(req) });
     if (!parsed.success) {
       res.status(400).json({ ok: false, error: 'invalid_decision_payload', issues: parsed.error.issues });

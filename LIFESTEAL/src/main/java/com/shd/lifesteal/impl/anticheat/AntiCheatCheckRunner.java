@@ -12,18 +12,22 @@ import net.minecraft.server.network.ServerPlayerEntity;
 public final class AntiCheatCheckRunner {
     private final AntiCheatService antiCheatService;
     private final AntiCheatSettings settings;
+    private final AntiCheatIdentityStore identityStore;
     private final List<AntiCheatCheck> checks = new ArrayList<>();
     private long tick;
 
-    public AntiCheatCheckRunner(AntiCheatService antiCheatService, AntiCheatSettings settings) {
+    public AntiCheatCheckRunner(AntiCheatService antiCheatService, AntiCheatSettings settings, AntiCheatIdentityStore identityStore) {
         this.antiCheatService = antiCheatService;
         this.settings = settings;
+        this.identityStore = identityStore;
     }
 
     public void register() {
+        registerCheck(new AccountAccessCheck(antiCheatService, settings, identityStore));
         registerCheck(new MovementAnomalyCheck());
         registerCheck(new CombatAnomalyCheck());
         registerCheck(new InventoryAnomalyCheck());
+        registerCheck(new InteractionAnomalyCheck());
         ServerTickEvents.END_SERVER_TICK.register(this::tick);
     }
 

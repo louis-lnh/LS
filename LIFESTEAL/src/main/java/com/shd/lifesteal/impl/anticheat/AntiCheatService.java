@@ -5,7 +5,9 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.time.Instant;
 import java.util.Locale;
@@ -20,11 +22,23 @@ import net.minecraft.util.Formatting;
 public final class AntiCheatService {
     private final AntiCheatSettings settings;
     private final LifestealAuditLog auditLog;
+    private final AntiCheatPersistence persistence;
     private final Deque<AntiCheatRecord> history = new ArrayDeque<>();
+    private final Map<String, AntiCheatReview> reviews = new HashMap<>();
 
-    public AntiCheatService(AntiCheatSettings settings, LifestealAuditLog auditLog) {
+    public AntiCheatService(AntiCheatSettings settings, LifestealAuditLog auditLog, AntiCheatPersistence persistence) {
         this.settings = settings;
         this.auditLog = auditLog;
+        this.persistence = persistence;
+    }
+
+    public void load() {
+        reviews.clear();
+        reviews.putAll(persistence.loadReviews());
+        history.clear();
+        for (AntiCheatRecord record : persistence.loadRecentRecords(settings.maxHistoryEntries(), reviews)) {
+            history.addLast(record);
+        }
     }
 
     public AntiCheatEnforcement handle(MinecraftServer server, ServerPlayerEntity player, AntiCheatDetection detection) {
@@ -41,7 +55,7 @@ public final class AntiCheatService {
                 detection.publicReason(),
                 expiresAt
         );
-        remember(new AntiCheatRecord(
+        AntiCheatRecord record = new AntiCheatRecord(
                 evidence,
                 detection.category(),
                 detection.severity(),
@@ -50,7 +64,9 @@ public final class AntiCheatService {
                 detection.publicReason(),
                 appealId,
                 expiresAt
-        ));
+        );
+        remember(record);
+        persistence.appendRecord(record);
 
         auditLog.log("anticheat", "%s category=%s severity=%s action=%s reason=%s appealId=%s %s".formatted(
                 settings.enabled() ? "detection" : "detection-disabled",
@@ -74,14 +90,12 @@ public final class AntiCheatService {
     }
 
     public String statusText() {
-        return settings.statusText() + " recentAlerts=" + history.size();
+        return settings.statusText() + " loadedAlerts=" + history.size() + " openCases=" + openRecords(settings.maxHistoryEntries()).size();
     }
 
     public void reload() {
         settings.load();
-        while (history.size() > settings.maxHistoryEntries()) {
-            history.removeLast();
-        }
+        load();
     }
 
     public void clearHistory() {
@@ -117,6 +131,22 @@ public final class AntiCheatService {
         return records;
     }
 
+    public List<AntiCheatRecord> openRecords(int limit) {
+        List<AntiCheatRecord> records = new ArrayList<>();
+        int remaining = Math.max(1, limit);
+        for (AntiCheatRecord record : history) {
+            if (!record.review().status().unresolved()) {
+                continue;
+            }
+            records.add(record);
+            remaining--;
+            if (remaining <= 0) {
+                break;
+            }
+        }
+        return records;
+    }
+
     public Optional<AntiCheatRecord> findRecord(String id) {
         if (id == null || id.isBlank()) {
             return Optional.empty();
@@ -128,11 +158,55 @@ public final class AntiCheatService {
                 .findFirst();
     }
 
+    public Optional<AntiCheatRecord> updateCase(String id, AntiCheatCaseStatus status, String staffName, String note) {
+        Optional<AntiCheatRecord> record = findRecord(id);
+        if (record.isEmpty()) {
+            return Optional.empty();
+        }
+
+        AntiCheatReview review = new AntiCheatReview(
+                record.get().evidence().evidenceId(),
+                status,
+                staffName,
+                Instant.now(),
+                note
+        );
+        persistence.appendReview(review);
+        reviews.put(review.evidenceId(), review);
+        AntiCheatRecord updated = replaceReview(record.get(), review);
+        auditLog.log("anticheat-review", "%s marked %s as %s note=\"%s\"".formatted(
+                staffName,
+                updated.evidence().evidenceId(),
+                status,
+                review.note()
+        ));
+        return Optional.of(updated);
+    }
+
+    public Optional<AntiCheatRecord> annotateCase(String id, String staffName, String note) {
+        Optional<AntiCheatRecord> record = findRecord(id);
+        if (record.isEmpty()) {
+            return Optional.empty();
+        }
+        return updateCase(id, record.get().review().status(), staffName, note);
+    }
+
     private void remember(AntiCheatRecord record) {
         history.addFirst(record);
         while (history.size() > settings.maxHistoryEntries()) {
             history.removeLast();
         }
+    }
+
+    private AntiCheatRecord replaceReview(AntiCheatRecord record, AntiCheatReview review) {
+        AntiCheatRecord updated = record.withReview(review);
+        ArrayList<AntiCheatRecord> records = new ArrayList<>(history.size());
+        for (AntiCheatRecord candidate : history) {
+            records.add(candidate.evidence().evidenceId().equals(record.evidence().evidenceId()) ? updated : candidate);
+        }
+        history.clear();
+        history.addAll(records);
+        return updated;
     }
 
     private void banPlayer(MinecraftServer server, ServerPlayerEntity player, AntiCheatEnforcement enforcement) {

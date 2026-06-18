@@ -120,6 +120,7 @@ type AdminView =
   | 'valorant-inbox'
 type Submission = {
   id: string
+  workspace: AdminWorkspaceId
   type: SubmissionType
   status: SubmissionStatus
   title: string
@@ -170,6 +171,7 @@ function ChatAvatar({ name, src }: { name: string; src?: string | null }) {
 function submissionFromApi(submission: AdminApiSubmission): Submission {
   return {
     id: submission.id,
+    workspace: submission.workspace,
     type: submission.type,
     status: submission.status,
     title: submission.title,
@@ -266,6 +268,7 @@ function previewAccessForRole(role: RolePreviewMode, user: AdminUser): AdminUser
 const seedSubmissions: Submission[] = [
   {
     id: 'SHD-APP-K8F2QZ',
+    workspace: 'lifesteal',
     type: 'Application',
     status: 'New',
     title: 'Lifesteal Season 1 application',
@@ -290,6 +293,7 @@ const seedSubmissions: Submission[] = [
   },
   {
     id: 'SHD-APL-3JD91P',
+    workspace: 'lifesteal',
     type: 'Appeal',
     status: 'In review',
     title: 'Combat logging ban appeal',
@@ -317,6 +321,7 @@ const seedSubmissions: Submission[] = [
   },
   {
     id: 'SHD-RPT-M4Q7VN',
+    workspace: 'lifesteal',
     type: 'Player Report',
     status: 'New',
     title: 'Suspected minimap use',
@@ -339,6 +344,7 @@ const seedSubmissions: Submission[] = [
   },
   {
     id: 'SHD-SUP-T2PX6A',
+    workspace: 'lifesteal',
     type: 'Support',
     status: 'Waiting on player',
     title: 'Whitelist access not updating',
@@ -365,6 +371,7 @@ const seedSubmissions: Submission[] = [
   },
   {
     id: 'SHD-APP-7UZ5CY',
+    workspace: 'lifesteal',
     type: 'Application',
     status: 'Approved',
     title: 'Lifesteal Season 1 application',
@@ -631,9 +638,14 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
     window.addEventListener('pointercancel', stop)
   }
 
-  const selected = submissions.find((submission) => submission.id === selectedId) ?? submissions[0]
-  const canReview = adminDemoMode || user.permissions.includes('lifesteal:review')
-  const canTicket = adminDemoMode || user.permissions.includes('lifesteal:ticket')
+  const workspaceSubmissions = useMemo(() => (
+    workspace === 'global' ? submissions : submissions.filter((submission) => submission.workspace === workspace)
+  ), [submissions, workspace])
+  const selected = workspaceSubmissions.find((submission) => submission.id === selectedId) ?? workspaceSubmissions[0]
+  const canReview = adminDemoMode || (selected?.workspace === 'lifesteal'
+    ? user.permissions.includes('lifesteal:review')
+    : user.permissions.includes('support:review') || user.permissions.includes('global:audit'))
+  const canTicket = adminDemoMode || (selected?.workspace === 'lifesteal' && user.permissions.includes('lifesteal:ticket'))
   const selectedDecided = selected ? ['Approved', 'Denied'].includes(selected.status) : false
   const selectedOwned = selected ? (selected.claimedById ? selected.claimedById === user.id : selected.claimedBy === reviewerName) : false
   const selectedSupportsAdminActions = Boolean(selected)
@@ -671,13 +683,13 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
     'Player Report': 'Player Reports',
     Support: 'Support Requests',
   }
-  const visible = useMemo(() => submissions.filter((submission) => {
+  const visible = useMemo(() => workspaceSubmissions.filter((submission) => {
     const matchesFilter = activeType ? submission.type === activeType : filter === 'All' || submission.type === filter
     const query = search.trim().toLowerCase()
     const matchesSearch = !query || [submission.id, submission.title, submission.discord, submission.minecraft]
       .some((value) => value.toLowerCase().includes(query))
     return matchesFilter && matchesSearch
-  }), [submissions, activeType, filter, search])
+  }), [workspaceSubmissions, activeType, filter, search])
 
   useEffect(() => {
     const timer = window.setInterval(() => setTimeNow(Date.now()), 30_000)
@@ -843,14 +855,14 @@ function AdminWorkspace({ onSignOut, user }: { onSignOut: () => void; user: Admi
       {view === 'global-staff' && <StaffAccessPage user={user} />}
       {view === 'global-integrations' && <IntegrationsPage />}
       {view === 'global-audit' && <AuditPage audit={auditPayload} state={auditState} submissions={submissions} />}
-      {view === 'lifesteal-overview' && <LifestealOverviewPage submissions={submissions} onNavigate={navigate} />}
+      {view === 'lifesteal-overview' && <LifestealOverviewPage submissions={submissions.filter((item) => item.workspace === 'lifesteal')} onNavigate={navigate} />}
       {view === 'lifesteal-players' && <PlayersPage />}
       {view === 'lifesteal-events' && <LifestealEventsPage user={user} />}
       {view === 'lifesteal-staff-chat' && <LifestealStaffChatPage user={user} />}
-      {view === 'general-overview' && <ProjectOverviewPage project="General Support" onOpenInbox={() => navigate('general-inbox')} />}
-      {view === 'general-inbox' && <WorkspaceInboxPage project="General Support" />}
-      {view === 'valorant-overview' && <ProjectOverviewPage project="Valorant" onOpenInbox={() => navigate('valorant-inbox')} />}
-      {view === 'valorant-inbox' && <WorkspaceInboxPage project="Valorant" />}
+      {view === 'general-overview' && <ProjectOverviewPage project="General Support" submissions={submissions.filter((item) => item.workspace === 'general' || item.workspace === 'global')} onOpenInbox={() => navigate('general-inbox')} />}
+      {view === 'general-inbox' && <WorkspaceInboxPage project="General Support" submissions={submissions.filter((item) => item.workspace === 'general' || item.workspace === 'global')} />}
+      {view === 'valorant-overview' && <ProjectOverviewPage project="Valorant" submissions={submissions.filter((item) => item.workspace === 'valorant')} onOpenInbox={() => navigate('valorant-inbox')} />}
+      {view === 'valorant-inbox' && <WorkspaceInboxPage project="Valorant" submissions={submissions.filter((item) => item.workspace === 'valorant')} />}
       {['lifesteal-queue', 'lifesteal-applications', 'lifesteal-appeals', 'lifesteal-reports', 'lifesteal-support'].includes(view) && <main className={`workspace ${mobileDetail ? 'show-detail' : ''} ${activityVisible ? '' : 'activity-hidden'}`} style={workspaceStyle}>
         <section className="queue-pane">
           <header className="queue-header">
@@ -1234,21 +1246,42 @@ function formatServiceDetail(detail: string) {
   return match ? `Last gameplay sync ${relativeTime(Number(match[1]))}` : detail
 }
 
+function workspaceRoute(workspace: AdminWorkspaceId): AdminView {
+  if (workspace === 'general' || workspace === 'global') return 'general-inbox'
+  if (workspace === 'valorant') return 'valorant-inbox'
+  return 'lifesteal-queue'
+}
+
+function workspaceIcon(workspace: AdminWorkspaceId) {
+  if (workspace === 'general' || workspace === 'global') return <Headphones size={14} />
+  if (workspace === 'valorant') return <Crosshair size={14} />
+  return <Gamepad2 size={14} />
+}
+
+function workspaceLabel(workspace: AdminWorkspaceId) {
+  if (workspace === 'general' || workspace === 'global') return 'General Support'
+  if (workspace === 'valorant') return 'Valorant'
+  return 'Lifesteal'
+}
+
 function UnifiedInboxPage({ submissions, onNavigate }: { submissions: Submission[]; onNavigate: (view: AdminView) => void }) {
   const active = submissions.filter((item) => !['Approved', 'Denied'].includes(item.status))
+  const lifestealOpen = active.filter((item) => item.workspace === 'lifesteal').length
+  const generalOpen = active.filter((item) => item.workspace === 'general' || item.workspace === 'global').length
+  const valorantOpen = active.filter((item) => item.workspace === 'valorant').length
   return (
     <main className="page-workspace">
       <PageHeader eyebrow="Cross-project Work" title="Unified Inbox" detail="A single triage view for new work. Opening an item moves staff into the owning project workspace." />
       <section className="inbox-sources">
-        <button onClick={() => onNavigate('lifesteal-queue')} type="button"><span className="project-icon green"><Gamepad2 size={18} /></span><span><strong>Lifesteal</strong><small>{active.length} open</small></span></button>
-        <button onClick={() => onNavigate('general-inbox')} type="button"><span className="project-icon blue"><Headphones size={18} /></span><span><strong>General Support</strong><small>Backend pending</small></span></button>
-        <button onClick={() => onNavigate('valorant-inbox')} type="button"><span className="project-icon red"><Crosshair size={18} /></span><span><strong>Valorant</strong><small>Workflows staged</small></span></button>
+        <button onClick={() => onNavigate('lifesteal-queue')} type="button"><span className="project-icon green"><Gamepad2 size={18} /></span><span><strong>Lifesteal</strong><small>{lifestealOpen} open</small></span></button>
+        <button onClick={() => onNavigate('general-inbox')} type="button"><span className="project-icon blue"><Headphones size={18} /></span><span><strong>General Support</strong><small>{generalOpen} open</small></span></button>
+        <button onClick={() => onNavigate('valorant-inbox')} type="button"><span className="project-icon red"><Crosshair size={18} /></span><span><strong>Valorant</strong><small>{valorantOpen} open</small></span></button>
       </section>
       <section className="unified-list">
         <header><span>Workspace</span><span>Submission</span><span>Owner</span><span>Status</span><span>Received</span></header>
         {active.map((item) => (
-          <button key={item.id} onClick={() => onNavigate('lifesteal-queue')} type="button">
-            <span className="workspace-tag"><Gamepad2 size={14} />Lifesteal</span>
+          <button key={item.id} onClick={() => onNavigate(workspaceRoute(item.workspace))} type="button">
+            <span className="workspace-tag">{workspaceIcon(item.workspace)}{workspaceLabel(item.workspace)}</span>
             <span><strong>{item.title}</strong><small>{item.minecraft} · {item.id}</small></span>
             <span>{item.claimedBy ?? 'Unclaimed'}</span>
             <StatusPill status={item.status} />
@@ -1877,8 +1910,10 @@ function IntegrationsPage() {
   )
 }
 
-function ProjectOverviewPage({ project, onOpenInbox }: { project: 'General Support' | 'Valorant'; onOpenInbox: () => void }) {
+function ProjectOverviewPage({ project, submissions, onOpenInbox }: { project: 'General Support' | 'Valorant'; submissions: Submission[]; onOpenInbox: () => void }) {
   const general = project === 'General Support'
+  const open = submissions.filter((item) => !['Approved', 'Denied'].includes(item.status)).length
+  const unclaimed = submissions.filter((item) => !item.claimedBy && !['Approved', 'Denied'].includes(item.status)).length
   const Icon = general ? Headphones : Crosshair
   return (
     <main className="page-workspace">
@@ -1895,25 +1930,40 @@ function ProjectOverviewPage({ project, onOpenInbox }: { project: 'General Suppo
         <div><span className="eyebrow">Frontend workspace ready</span><h2>Clear boundary, shared platform.</h2><p>This workspace will use the same login, staff permissions, review state, and audit system without coupling its Discord bot to Lifesteal.</p></div>
       </section>
       <section className="permission-summary">
-        <article><Inbox size={19} /><strong>Intake queue</strong><p>{general ? 'General support requests and account questions.' : 'Reports, appeals, and competitive support.'}</p></article>
+        <article><Inbox size={19} /><strong>{open} open</strong><p>{general ? 'General support requests and account questions.' : 'Reports, appeals, and competitive support.'}</p></article>
+        <article><UserRoundSearch size={19} /><strong>{unclaimed} unclaimed</strong><p>Waiting for a staff owner.</p></article>
         <article><Bot size={19} /><strong>Guild bot</strong><p>Discord ticket updates remain native to the owning community.</p></article>
-        <article><Activity size={19} /><strong>Shared audit</strong><p>Every staff action still appears in the global accountability trail.</p></article>
       </section>
     </main>
   )
 }
 
-function WorkspaceInboxPage({ project }: { project: 'General Support' | 'Valorant' }) {
+function WorkspaceInboxPage({ project, submissions }: { project: 'General Support' | 'Valorant'; submissions: Submission[] }) {
   const general = project === 'General Support'
+  const active = submissions.filter((item) => !['Approved', 'Denied'].includes(item.status))
   return (
     <main className="page-workspace">
-      <PageHeader eyebrow={`${project} Workspace`} title="Support Inbox" detail={`The ${project} review queue is structurally ready for its backend intake and Discord ticket bridge.`} />
-      <section className="empty-workspace">
+      <PageHeader eyebrow={`${project} Workspace`} title="Support Inbox" detail={`The ${project} review queue is connected to the SHD backend intake.`} />
+      {active.length === 0 ? <section className="empty-workspace">
         <span className={`project-icon ${general ? 'blue' : 'red'}`}>{general ? <Headphones size={22} /> : <Crosshair size={22} />}</span>
-        <span className="eyebrow">No live source connected</span>
-        <h2>Queue ready for real submissions.</h2>
-        <p>The frontend intentionally stays empty until the shared admin API and the second guild bot are connected.</p>
-      </section>
+        <span className="eyebrow">Queue clear</span>
+        <h2>No open submissions.</h2>
+        <p>New support-site submissions for this workspace will appear here.</p>
+      </section> : <section className="unified-list">
+        <header><span>Type</span><span>Submission</span><span>Owner</span><span>Status</span><span>Received</span></header>
+        {active.map((item) => {
+          const Icon = typeIcons[item.type]
+          return (
+            <button key={item.id} type="button">
+              <span className="workspace-tag"><Icon size={14} />{item.type}</span>
+              <span><strong>{item.title}</strong><small>{item.id}</small></span>
+              <span>{item.claimedBy ?? 'Unclaimed'}</span>
+              <StatusPill status={item.status} />
+              <time>{item.submitted}</time>
+            </button>
+          )
+        })}
+      </section>}
     </main>
   )
 }

@@ -4,6 +4,7 @@ public enum AntiCheatCategory {
     MOVEMENT,
     COMBAT,
     INVENTORY,
+    INTERACTION,
     RESTRICTED_ITEM,
     HEART_INTEGRITY,
     ELIMINATION,

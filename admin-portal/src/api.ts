@@ -55,7 +55,7 @@ export type AdminStaffAccessMutation = {
 
 export type AdminApiSubmission = {
   id: string
-  workspace: 'lifesteal'
+  workspace: AdminWorkspaceId
   type: 'Application' | 'Appeal' | 'Player Report' | 'Support'
   status: 'New' | 'In review' | 'Waiting on player' | 'Approved' | 'Denied'
   sourceStatus: string
@@ -269,7 +269,17 @@ export class AdminApiError extends Error {
 }
 
 const configuredBaseUrl = import.meta.env.VITE_ADMIN_API_BASE_URL?.replace(/\/+$/, '') ?? ''
-export const adminDemoMode = import.meta.env.VITE_ADMIN_DEMO_MODE === 'true' || !configuredBaseUrl
+const configuredShdBaseUrl = import.meta.env.VITE_SHD_ADMIN_API_BASE_URL?.replace(/\/+$/, '') ?? ''
+type AdminBackend = 'lifesteal' | 'shd'
+const requestedAuthBackend = import.meta.env.VITE_ADMIN_AUTH_BACKEND
+const configuredAuthBackend = (
+  requestedAuthBackend === 'shd' || requestedAuthBackend === 'lifesteal'
+    ? requestedAuthBackend
+    : configuredShdBaseUrl ? 'shd' : 'lifesteal'
+) as AdminBackend
+const authBaseUrl = configuredAuthBackend === 'shd' ? configuredShdBaseUrl : configuredBaseUrl
+export const adminDemoMode = import.meta.env.VITE_ADMIN_DEMO_MODE === 'true' || !authBaseUrl
+const submissionBackends = new Map<string, 'lifesteal' | 'shd'>()
 
 export const demoAdminUser: AdminUser = {
   id: 'demo-owner',
@@ -298,10 +308,36 @@ async function adminRequest<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>
 }
 
+async function shdAdminRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  if (!configuredShdBaseUrl) throw new AdminApiError(503, { code: 'SHD_ADMIN_API_NOT_CONFIGURED', error: 'SHD admin API is not configured.' })
+  const response = await fetch(`${configuredShdBaseUrl}${path}`, {
+    ...init,
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      ...init?.headers,
+    },
+  })
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}))
+    throw new AdminApiError(response.status, payload)
+  }
+  return response.json() as Promise<T>
+}
+
+async function optionalRequest<T>(request: () => Promise<T>): Promise<T | null> {
+  try {
+    return await request()
+  } catch {
+    return null
+  }
+}
+
 export async function getAdminSession(): Promise<AdminUser | null> {
   if (adminDemoMode) return null
   try {
-    const response = await adminRequest<SessionResponse>('/auth/session')
+    const request = configuredAuthBackend === 'shd' ? shdAdminRequest : adminRequest
+    const response = await request<SessionResponse>('/auth/session')
     return response.user
   } catch (error) {
     if ((error as { status?: number }).status === 401) return null
@@ -311,24 +347,41 @@ export async function getAdminSession(): Promise<AdminUser | null> {
 
 export function beginDiscordLogin(returnTo = window.location.pathname) {
   if (adminDemoMode) return
-  const loginUrl = new URL(`${configuredBaseUrl}/auth/login`)
+  const loginUrl = new URL(`${authBaseUrl}/auth/login`)
+  loginUrl.searchParams.set('returnTo', returnTo)
+  window.location.assign(loginUrl.toString())
+}
+
+export function beginShdDiscordLogin(returnTo = window.location.pathname) {
+  if (!configuredShdBaseUrl) return
+  const loginUrl = new URL(`${configuredShdBaseUrl}/auth/login`)
   loginUrl.searchParams.set('returnTo', returnTo)
   window.location.assign(loginUrl.toString())
 }
 
 export async function endAdminSession() {
   if (adminDemoMode) return
-  await adminRequest<{ ok: boolean }>('/auth/logout', { method: 'POST' })
+  const request = configuredAuthBackend === 'shd' ? shdAdminRequest : adminRequest
+  await request<{ ok: boolean }>('/auth/logout', { method: 'POST' })
 }
 
 export async function getAdminSubmissions(): Promise<AdminApiSubmission[]> {
   if (adminDemoMode) return []
-  const response = await adminRequest<{ ok: boolean; submissions: AdminApiSubmission[] }>('/submissions')
-  return response.submissions
+  const [lifesteal, shd] = await Promise.all([
+    optionalRequest(() => adminRequest<{ ok: boolean; submissions: AdminApiSubmission[] }>('/submissions')),
+    optionalRequest(() => shdAdminRequest<{ ok: boolean; submissions: AdminApiSubmission[] }>('/submissions')),
+  ])
+  const lifestealSubmissions = (lifesteal?.submissions ?? []).map((submission) => ({ ...submission, workspace: 'lifesteal' as const }))
+  const shdSubmissions = shd?.submissions ?? []
+  submissionBackends.clear()
+  for (const submission of lifestealSubmissions) submissionBackends.set(submission.id, 'lifesteal')
+  for (const submission of shdSubmissions) submissionBackends.set(submission.id, 'shd')
+  return [...lifestealSubmissions, ...shdSubmissions].sort((a, b) => b.createdAt - a.createdAt)
 }
 
 export async function claimAdminSubmission(code: string): Promise<AdminApiSubmission> {
-  const response = await adminRequest<{ ok: boolean; submission: AdminApiSubmission }>(
+  const request = backendForSubmission(code) === 'shd' ? shdAdminRequest : adminRequest
+  const response = await request<{ ok: boolean; submission: AdminApiSubmission }>(
     `/submissions/${encodeURIComponent(code)}/claim`,
     { method: 'POST' },
   )
@@ -336,7 +389,8 @@ export async function claimAdminSubmission(code: string): Promise<AdminApiSubmis
 }
 
 export async function addAdminSubmissionNote(code: string, text: string): Promise<AdminApiSubmission> {
-  const response = await adminRequest<{ ok: boolean; submission: AdminApiSubmission }>(
+  const request = backendForSubmission(code) === 'shd' ? shdAdminRequest : adminRequest
+  const response = await request<{ ok: boolean; submission: AdminApiSubmission }>(
     `/submissions/${encodeURIComponent(code)}/notes`,
     {
       method: 'POST',
@@ -348,7 +402,8 @@ export async function addAdminSubmissionNote(code: string, text: string): Promis
 }
 
 export async function decideAdminSubmission(code: string, status: 'waiting_on_player' | 'resolved' | 'approved' | 'denied', reason: string): Promise<AdminApiSubmission> {
-  const response = await adminRequest<{ ok: boolean; submission: AdminApiSubmission }>(
+  const request = backendForSubmission(code) === 'shd' ? shdAdminRequest : adminRequest
+  const response = await request<{ ok: boolean; submission: AdminApiSubmission }>(
     `/submissions/${encodeURIComponent(code)}/decision`,
     {
       method: 'POST',
@@ -360,20 +415,89 @@ export async function decideAdminSubmission(code: string, status: 'waiting_on_pl
 }
 
 export async function getAdminOverview(): Promise<AdminOverview> {
-  const response = await adminRequest<AdminOverview & { ok: boolean }>('/bootstrap')
-  return response
+  const [lifesteal, shd] = await Promise.all([
+    optionalRequest(() => adminRequest<AdminOverview & { ok: boolean }>('/bootstrap')),
+    optionalRequest(() => shdAdminRequest<AdminOverview & { ok: boolean }>('/bootstrap')),
+  ])
+  if (!lifesteal && !shd) throw new AdminApiError(503, { error: 'No admin backend could be reached.' })
+  if (!lifesteal) return shd as AdminOverview
+  if (!shd) return lifesteal
+  return mergeOverview(lifesteal, shd)
 }
 
 export async function getAdminAudit(limit = 100): Promise<AdminAuditPayload> {
   if (adminDemoMode) return { events: [], summary: { eventsToday: 0, staffActions: 0, integrationEvents: 0, warnings: 0 }, updatedAt: Date.now() }
-  const response = await adminRequest<AdminAuditPayload & { ok: boolean }>(`/audit?limit=${encodeURIComponent(String(limit))}`)
-  return response
+  const [lifesteal, shd] = await Promise.all([
+    optionalRequest(() => adminRequest<AdminAuditPayload & { ok: boolean }>(`/audit?limit=${encodeURIComponent(String(limit))}`)),
+    optionalRequest(() => shdAdminRequest<AdminAuditPayload & { ok: boolean }>(`/audit?limit=${encodeURIComponent(String(limit))}`)),
+  ])
+  const events = [...(lifesteal?.events ?? []), ...(shd?.events ?? [])]
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .slice(0, limit)
+  return {
+    events,
+    summary: {
+      eventsToday: (lifesteal?.summary.eventsToday ?? 0) + (shd?.summary.eventsToday ?? 0),
+      staffActions: (lifesteal?.summary.staffActions ?? 0) + (shd?.summary.staffActions ?? 0),
+      integrationEvents: (lifesteal?.summary.integrationEvents ?? 0) + (shd?.summary.integrationEvents ?? 0),
+      warnings: (lifesteal?.summary.warnings ?? 0) + (shd?.summary.warnings ?? 0),
+    },
+    updatedAt: Math.max(lifesteal?.updatedAt ?? 0, shd?.updatedAt ?? 0, Date.now()),
+  }
 }
 
 export async function getAdminStaffAccess(): Promise<AdminStaffAccessPayload> {
   if (adminDemoMode) return { staff: [], updatedAt: Date.now() }
-  const response = await adminRequest<AdminStaffAccessPayload & { ok: boolean }>('/staff')
-  return response
+  const [lifesteal, shd] = await Promise.all([
+    optionalRequest(() => adminRequest<AdminStaffAccessPayload & { ok: boolean }>('/staff')),
+    optionalRequest(() => shdAdminRequest<AdminStaffAccessPayload & { ok: boolean }>('/staff')),
+  ])
+  const staffById = new Map<string, AdminStaffMember>()
+  for (const member of [...(lifesteal?.staff ?? []), ...(shd?.staff ?? [])]) {
+    staffById.set(member.id, staffById.has(member.id)
+      ? {
+          ...staffById.get(member.id)!,
+          workspaces: Array.from(new Set([...staffById.get(member.id)!.workspaces, ...member.workspaces])),
+          permissions: Array.from(new Set([...staffById.get(member.id)!.permissions, ...member.permissions])),
+          activity: [...staffById.get(member.id)!.activity, ...member.activity],
+        }
+      : member)
+  }
+  return {
+    staff: Array.from(staffById.values()),
+    updatedAt: Math.max(lifesteal?.updatedAt ?? 0, shd?.updatedAt ?? 0, Date.now()),
+  }
+}
+
+function backendForSubmission(code: string): 'lifesteal' | 'shd' {
+  return submissionBackends.get(code) ?? 'lifesteal'
+}
+
+function mergeOverview(lifesteal: AdminOverview, shd: AdminOverview): AdminOverview {
+  const projectMap = new Map<AdminOverview['projects'][number]['id'], AdminOverview['projects'][number]>()
+  for (const project of lifesteal.projects) projectMap.set(project.id, project)
+  for (const project of shd.projects) projectMap.set(project.id, project)
+  return {
+    metrics: {
+      openWork: lifesteal.metrics.openWork + shd.metrics.openWork,
+      openApplications: lifesteal.metrics.openApplications + shd.metrics.openApplications,
+      openSupport: lifesteal.metrics.openSupport + shd.metrics.openSupport,
+      unclaimed: lifesteal.metrics.unclaimed + shd.metrics.unclaimed,
+      highPriority: lifesteal.metrics.highPriority + shd.metrics.highPriority,
+      linkedPlayers: lifesteal.metrics.linkedPlayers,
+      activeWorkspaces: Math.max(lifesteal.metrics.activeWorkspaces, shd.metrics.activeWorkspaces),
+      totalWorkspaces: Math.max(lifesteal.metrics.totalWorkspaces, shd.metrics.totalWorkspaces),
+      botConnections: lifesteal.metrics.botConnections + shd.metrics.botConnections,
+      totalBotConnections: lifesteal.metrics.totalBotConnections + shd.metrics.totalBotConnections,
+      authorizedStaff: Math.max(lifesteal.metrics.authorizedStaff, shd.metrics.authorizedStaff),
+    },
+    projects: Array.from(projectMap.values()),
+    services: { ...lifesteal.services, ...shd.services },
+    recentActivity: [...lifesteal.recentActivity, ...shd.recentActivity]
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, 12),
+    generatedAt: Math.max(lifesteal.generatedAt, shd.generatedAt),
+  }
 }
 
 export async function createAdminStaffAccess(payload: AdminStaffAccessMutation): Promise<AdminStaffAccessPayload> {

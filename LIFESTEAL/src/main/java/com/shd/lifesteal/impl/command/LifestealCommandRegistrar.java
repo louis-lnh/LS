@@ -9,6 +9,7 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.shd.lifesteal.api.HeartChangeReason;
 import com.shd.lifesteal.api.HeartChangeResult;
 import com.shd.lifesteal.api.PlayerHeartState;
+import com.shd.lifesteal.impl.anticheat.AntiCheatCaseStatus;
 import com.shd.lifesteal.impl.anticheat.AntiCheatRecord;
 import com.shd.lifesteal.impl.anticheat.AntiCheatService;
 import com.shd.lifesteal.impl.audit.LifestealAuditLog;
@@ -203,6 +204,41 @@ public final class LifestealCommandRegistrar {
                                 .executes(context -> antiCheatReload(context.getSource())))
                         .then(CommandManager.literal("clear")
                                 .executes(context -> antiCheatClear(context.getSource())))
+                        .then(CommandManager.literal("open")
+                                .executes(context -> antiCheatOpen(context.getSource(), 10))
+                                .then(CommandManager.argument("limit", IntegerArgumentType.integer(1, 25))
+                                        .executes(context -> antiCheatOpen(
+                                                context.getSource(),
+                                                IntegerArgumentType.getInteger(context, "limit")
+                                        ))))
+                        .then(CommandManager.literal("mark")
+                                .then(CommandManager.argument("id", StringArgumentType.word())
+                                        .then(CommandManager.argument("status", StringArgumentType.word())
+                                                .suggests((context, builder) -> CommandSource.suggestMatching(
+                                                        AntiCheatCaseStatus.suggestions(),
+                                                        builder
+                                                ))
+                                                .executes(context -> antiCheatMark(
+                                                        context.getSource(),
+                                                        StringArgumentType.getString(context, "id"),
+                                                        StringArgumentType.getString(context, "status"),
+                                                        ""
+                                                ))
+                                                .then(CommandManager.argument("note", StringArgumentType.greedyString())
+                                                        .executes(context -> antiCheatMark(
+                                                                context.getSource(),
+                                                                StringArgumentType.getString(context, "id"),
+                                                                StringArgumentType.getString(context, "status"),
+                                                                StringArgumentType.getString(context, "note")
+                                                        ))))))
+                        .then(CommandManager.literal("note")
+                                .then(CommandManager.argument("id", StringArgumentType.word())
+                                        .then(CommandManager.argument("note", StringArgumentType.greedyString())
+                                                .executes(context -> antiCheatNote(
+                                                        context.getSource(),
+                                                        StringArgumentType.getString(context, "id"),
+                                                        StringArgumentType.getString(context, "note")
+                                                )))))
                         .then(CommandManager.literal("lookup")
                                 .then(CommandManager.argument("id", StringArgumentType.word())
                                         .executes(context -> antiCheatLookup(
@@ -633,14 +669,53 @@ public final class LifestealCommandRegistrar {
 
     private int antiCheatClear(ServerCommandSource source) {
         antiCheatService.clearHistory();
-        source.sendFeedback(() -> Text.literal("Cleared in-memory anti-cheat alert history."), true);
+        source.sendFeedback(() -> Text.literal("Cleared loaded anti-cheat alert history. Persisted evidence files were left intact."), true);
+        return 1;
+    }
+
+    private int antiCheatOpen(ServerCommandSource source, int limit) {
+        java.util.List<AntiCheatRecord> records = antiCheatService.openRecords(limit);
+        if (records.isEmpty()) {
+            source.sendFeedback(() -> Text.literal("No unresolved anti-cheat cases."), false);
+            return 0;
+        }
+        source.sendFeedback(() -> Text.literal("Unresolved anti-cheat cases:"), false);
+        for (AntiCheatRecord record : records) {
+            source.sendFeedback(() -> Text.literal(record.compactSummary()), false);
+        }
+        return records.size();
+    }
+
+    private int antiCheatMark(ServerCommandSource source, String id, String status, String note) {
+        AntiCheatCaseStatus parsedStatus = AntiCheatCaseStatus.parse(status, null);
+        if (parsedStatus == null) {
+            source.sendError(Text.literal("Unknown anti-cheat case status: " + status));
+            return 0;
+        }
+
+        java.util.Optional<AntiCheatRecord> record = antiCheatService.updateCase(id, parsedStatus, source.getName(), note);
+        if (record.isEmpty()) {
+            source.sendError(Text.literal("No loaded anti-cheat record found for ID: " + id));
+            return 0;
+        }
+        source.sendFeedback(() -> Text.literal("Updated anti-cheat case: " + record.get().compactSummary()), true);
+        return 1;
+    }
+
+    private int antiCheatNote(ServerCommandSource source, String id, String note) {
+        java.util.Optional<AntiCheatRecord> record = antiCheatService.annotateCase(id, source.getName(), note);
+        if (record.isEmpty()) {
+            source.sendError(Text.literal("No loaded anti-cheat record found for ID: " + id));
+            return 0;
+        }
+        source.sendFeedback(() -> Text.literal("Updated anti-cheat case note: " + record.get().compactSummary()), true);
         return 1;
     }
 
     private int antiCheatLookup(ServerCommandSource source, String id) {
         java.util.Optional<AntiCheatRecord> record = antiCheatService.findRecord(id);
         if (record.isEmpty()) {
-            source.sendError(Text.literal("No in-memory anti-cheat record found for ID: " + id));
+            source.sendError(Text.literal("No loaded anti-cheat record found for ID: " + id));
             return 0;
         }
         source.sendFeedback(() -> Text.literal(record.get().detailedSummary()), false);

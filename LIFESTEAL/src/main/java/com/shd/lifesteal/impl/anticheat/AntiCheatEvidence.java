@@ -23,7 +23,7 @@ public record AntiCheatEvidence(
                 player.getName().getString(),
                 player.getUuid(),
                 Instant.now(),
-                "unknown",
+                player.getEntityWorld().getRegistryKey().getValue().toString(),
                 blockPos.getX(),
                 blockPos.getY(),
                 blockPos.getZ(),

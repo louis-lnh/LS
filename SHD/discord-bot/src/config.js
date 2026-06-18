@@ -68,6 +68,12 @@ export const config = {
       `${url('PUBLIC_BASE_URL', 'http://localhost:3010')}/api/v1/admin/auth/callback`,
     enabled: Boolean(process.env.DISCORD_CLIENT_SECRET && process.env.ADMIN_SESSION_SECRET)
   },
+  rateLimits: {
+    publicWrite: {
+      windowMs: int('PUBLIC_WRITE_RATE_LIMIT_WINDOW_MS', 60_000),
+      max: int('PUBLIC_WRITE_RATE_LIMIT_MAX', 12)
+    }
+  },
   publicStatus: {
     state: process.env.PUBLIC_STATUS_STATE ?? 'setup',
     message: process.env.PUBLIC_STATUS_MESSAGE ?? 'SHD systems are being prepared.'
