@@ -12,7 +12,7 @@ Copy these into a Fabric client/server `mods` folder for testing:
 - `mods/shd-core-0.1.0.jar`
 - `mods/shd-ui-client-0.1.0.jar`
 
-To refresh only the Lifesteal jar across the local test server and both CurseForge client instances, run:
+To refresh only the Lifesteal jar in this integration folder and the local test server, run:
 
 `.\update-lifesteal-jar.ps1`
 

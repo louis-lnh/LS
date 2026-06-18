@@ -55,6 +55,7 @@ playwright-report/
 .archive/
 .notes/
 .lifesteal-website-notes/
+.checklist/
 
 # Editor and OS files
 .vscode/

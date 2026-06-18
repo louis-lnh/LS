@@ -40,6 +40,11 @@ type Player = {
   deaths: number
   revivals?: number
   maceKills: number | null
+  uniqueKills: number | null
+  currentKillstreak: number | null
+  highestKillstreak: number | null
+  maceOneKills: number | null
+  maceTwoKills: number | null
   maceIdentity?: 'M1' | 'M2' | null
   dragonEggGlowExpiresAt?: string | null
   playtime: string
@@ -78,6 +83,11 @@ type PublicPlayer = {
   revivals_total?: number
   revivals?: number
   mace_kills?: number | null
+  unique_kills?: number | null
+  current_killstreak?: number | null
+  highest_killstreak?: number | null
+  mace_1_kills?: number | null
+  mace_2_kills?: number | null
   mace_identity?: string | null
   dragon_egg_glow_expires_at?: string | null
   dragon_egg_glow_remaining_seconds?: number | null
@@ -395,6 +405,11 @@ function publicPlayerToPlayer(player: PublicPlayer, index: number, rankMoves: Ra
     deaths: player.deaths_total ?? player.deaths ?? 0,
     revivals: player.revivals_total ?? player.revivals ?? 0,
     maceKills: player.mace_kills ?? null,
+    uniqueKills: player.unique_kills ?? null,
+    currentKillstreak: player.current_killstreak ?? null,
+    highestKillstreak: player.highest_killstreak ?? null,
+    maceOneKills: player.mace_1_kills ?? null,
+    maceTwoKills: player.mace_2_kills ?? null,
     maceIdentity,
     dragonEggGlowExpiresAt: player.dragon_egg_glow_expires_at ?? null,
     playtime: player.playtime ?? 'Hidden',
@@ -673,9 +688,14 @@ function profileStatsFor(player: Player): ProfileStatGroup[] {
       title: 'Combat',
       stats: [
         { label: 'Kill Count', value: String(player.kills) },
+        { label: 'Unique Kills', value: statValue(player.uniqueKills) },
         { label: 'Death Count', value: String(player.deaths) },
         { label: 'KDR', value: playerKdr(player) },
+        { label: 'Current Killstreak', value: statValue(player.currentKillstreak) },
+        { label: 'Highest Killstreak', value: statValue(player.highestKillstreak) },
         { label: 'Mace Kills', value: statValue(player.maceKills) },
+        { label: 'M1 Kills', value: statValue(player.maceOneKills) },
+        { label: 'M2 Kills', value: statValue(player.maceTwoKills) },
       ],
     },
     {
@@ -685,8 +705,8 @@ function profileStatsFor(player: Player): ProfileStatGroup[] {
         { label: 'Staff Badges', value: listValue(staffBadges) },
         { label: 'Dragon Egg Holder', value: player.prestige.includes('dragon-egg') ? 'Yes' : 'No' },
         { label: 'Mace Wielder', value: player.prestige.includes('mace-1') || player.prestige.includes('mace-2') ? 'Yes' : 'No' },
-        { label: 'Mace One Kills', value: player.prestige.includes('mace-1') ? statValue(player.maceKills) : 'Not holder' },
-        { label: 'Mace Two Kills', value: player.prestige.includes('mace-2') ? statValue(player.maceKills) : 'Not holder' },
+        { label: 'Mace One Kills', value: player.prestige.includes('mace-1') ? statValue(player.maceOneKills) : 'Not holder' },
+        { label: 'Mace Two Kills', value: player.prestige.includes('mace-2') ? statValue(player.maceTwoKills) : 'Not holder' },
       ],
     },
   ]

@@ -39,6 +39,11 @@ const gameplayRoleSnapshotSchema = z.object({
   heartGains: z.number().int().min(0).nullable().optional(),
   heartLosses: z.number().int().min(0).nullable().optional(),
   maceKills: z.number().int().min(0).nullable().optional(),
+  uniqueKills: z.number().int().min(0).nullable().optional(),
+  currentKillstreak: z.number().int().min(0).nullable().optional(),
+  highestKillstreak: z.number().int().min(0).nullable().optional(),
+  maceOneKills: z.number().int().min(0).nullable().optional(),
+  maceTwoKills: z.number().int().min(0).nullable().optional(),
   maceIdentity: z.string().max(20).optional(),
   dragonEggGlowExpiresAt: z.string().max(80).optional(),
   dragonEggGlowRemainingSeconds: z.number().int().min(0).nullable().optional(),
@@ -575,6 +580,11 @@ function publicPlayersFromSnapshots(snapshots, updatedAt) {
     const deaths = snapshot.deathsTotal ?? snapshot.deaths ?? 0;
     const revivals = snapshot.revivalsTotal ?? snapshot.revivals ?? 0;
     const maceKills = snapshot.maceKills ?? null;
+    const uniqueKills = snapshot.uniqueKills ?? null;
+    const currentKillstreak = snapshot.currentKillstreak ?? null;
+    const highestKillstreak = snapshot.highestKillstreak ?? null;
+    const maceOneKills = snapshot.maceOneKills ?? null;
+    const maceTwoKills = snapshot.maceTwoKills ?? null;
     const publicPlayer = {
       minecraft_uuid: linked.minecraft_uuid,
       name: linked.minecraft_name ?? 'Unknown',
@@ -585,7 +595,13 @@ function publicPlayersFromSnapshots(snapshots, updatedAt) {
       deaths_total: deaths,
       revivals_total: revivals,
       mace_kills: maceKills,
+      unique_kills: uniqueKills,
+      current_killstreak: currentKillstreak,
+      highest_killstreak: highestKillstreak,
+      mace_1_kills: maceOneKills,
+      mace_2_kills: maceTwoKills,
       mace_identity: maceIdentity,
+      playtime_seconds: snapshot.playtimeSeconds ?? null,
       playtime: formatPlaytime(snapshot.playtimeSeconds),
       eliminated: snapshot.eliminated,
       twenty_hearts: snapshot.twentyHearts,
@@ -609,6 +625,11 @@ function publicPlayersFromSnapshots(snapshots, updatedAt) {
         deaths_total: fieldStatus(deaths),
         revivals_total: fieldStatus(revivals),
         mace_kills: fieldStatus(maceKills),
+        unique_kills: fieldStatus(uniqueKills),
+        current_killstreak: fieldStatus(currentKillstreak),
+        highest_killstreak: fieldStatus(highestKillstreak),
+        mace_1_kills: fieldStatus(maceOneKills),
+        mace_2_kills: fieldStatus(maceTwoKills),
         playtime: snapshot.playtimeSeconds == null ? 'unavailable' : 'synced',
         objectives: 'synced'
       },
@@ -671,7 +692,13 @@ function publicPlayersWithApplications(snapshot) {
         deaths_total: 0,
         revivals_total: 0,
         mace_kills: null,
+        unique_kills: null,
+        current_killstreak: null,
+        highest_killstreak: null,
+        mace_1_kills: null,
+        mace_2_kills: null,
         mace_identity: null,
+        playtime_seconds: null,
         playtime: 'Hidden',
         eliminated: false,
         twenty_hearts: false,
@@ -689,6 +716,11 @@ function publicPlayersWithApplications(snapshot) {
           deaths_total: 'unavailable',
           revivals_total: 'unavailable',
           mace_kills: 'unavailable',
+          unique_kills: 'unavailable',
+          current_killstreak: 'unavailable',
+          highest_killstreak: 'unavailable',
+          mace_1_kills: 'unavailable',
+          mace_2_kills: 'unavailable',
           playtime: 'unavailable',
           objectives: 'unavailable'
         },
@@ -715,7 +747,13 @@ function publicPlayersWithApplications(snapshot) {
       deaths_total: 0,
       revivals_total: 0,
       mace_kills: null,
+      unique_kills: null,
+      current_killstreak: null,
+      highest_killstreak: null,
+      mace_1_kills: null,
+      mace_2_kills: null,
       mace_identity: null,
+      playtime_seconds: null,
       playtime: 'Hidden',
       eliminated: false,
       twenty_hearts: false,
@@ -733,6 +771,11 @@ function publicPlayersWithApplications(snapshot) {
         deaths_total: 'unavailable',
         revivals_total: 'unavailable',
         mace_kills: 'unavailable',
+        unique_kills: 'unavailable',
+        current_killstreak: 'unavailable',
+        highest_killstreak: 'unavailable',
+        mace_1_kills: 'unavailable',
+        mace_2_kills: 'unavailable',
         playtime: 'unavailable',
         objectives: 'unavailable'
       },
@@ -829,10 +872,12 @@ function publicObjectivesFromPlayers(players, updatedAt) {
         mace_identity: identity,
         mace_identity_status: holder ? 'synced' : 'unavailable',
         mace_kills: holder?.mace_kills ?? null,
+        mace_specific_kills: identity === 'M2' ? holder?.mace_2_kills ?? null : holder?.mace_1_kills ?? null,
         data_status: {
           holder: holder ? 'synced' : 'unavailable',
           mace_identity: holder ? 'synced' : 'unavailable',
-          mace_kills: fieldStatus(holder?.mace_kills)
+          mace_kills: fieldStatus(holder?.mace_kills),
+          mace_specific_kills: fieldStatus(identity === 'M2' ? holder?.mace_2_kills : holder?.mace_1_kills)
         },
         source_updated_at: updatedAt,
         updated_at: updatedAt
@@ -859,7 +904,13 @@ function normalizePublicPlayer(player, fallbackUpdatedAt) {
   const deaths = player.deaths_total ?? player.deaths ?? 0;
   const revivals = player.revivals_total ?? player.revivals ?? 0;
   const maceKills = player.mace_kills ?? null;
+  const uniqueKills = player.unique_kills ?? null;
+  const currentKillstreak = player.current_killstreak ?? null;
+  const highestKillstreak = player.highest_killstreak ?? null;
+  const maceOneKills = player.mace_1_kills ?? null;
+  const maceTwoKills = player.mace_2_kills ?? null;
   const maceIdentity = normalizeMaceIdentity(player.mace_identity);
+  const playtimeSeconds = player.playtime_seconds ?? null;
   const dragonEggGlowExpiresAt = normalizeIsoDate(player.dragon_egg_glow_expires_at);
 
   return {
@@ -871,7 +922,13 @@ function normalizePublicPlayer(player, fallbackUpdatedAt) {
     deaths_total: deaths,
     revivals_total: revivals,
     mace_kills: maceKills,
+    unique_kills: uniqueKills,
+    current_killstreak: currentKillstreak,
+    highest_killstreak: highestKillstreak,
+    mace_1_kills: maceOneKills,
+    mace_2_kills: maceTwoKills,
     mace_identity: maceIdentity,
+    playtime_seconds: playtimeSeconds,
     dragon_egg_glow_expires_at: dragonEggGlowExpiresAt,
     dragon_egg_glow_remaining_seconds: player.dragon_egg_glow_remaining_seconds ?? null,
     data_status: {
@@ -882,7 +939,12 @@ function normalizePublicPlayer(player, fallbackUpdatedAt) {
       deaths_total: fieldStatus(deaths),
       revivals_total: fieldStatus(revivals),
       mace_kills: fieldStatus(maceKills),
-      playtime: player.playtime && player.playtime !== 'Hidden' ? 'synced' : 'unavailable',
+      unique_kills: fieldStatus(uniqueKills),
+      current_killstreak: fieldStatus(currentKillstreak),
+      highest_killstreak: fieldStatus(highestKillstreak),
+      mace_1_kills: fieldStatus(maceOneKills),
+      mace_2_kills: fieldStatus(maceTwoKills),
+      playtime: playtimeSeconds == null && (!player.playtime || player.playtime === 'Hidden') ? 'unavailable' : 'synced',
       objectives: 'synced',
       ...(player.data_status ?? {})
     },
@@ -970,7 +1032,12 @@ function publicLeaderboard(snapshot, sort = 'hearts') {
     hearts: (first, second) => Number(second.hearts_current ?? 0) - Number(first.hearts_current ?? 0),
     kills: (first, second) => Number(second.kills_total ?? 0) - Number(first.kills_total ?? 0),
     deaths: (first, second) => Number(second.deaths_total ?? 0) - Number(first.deaths_total ?? 0),
-    revivals: (first, second) => Number(second.revivals_total ?? 0) - Number(first.revivals_total ?? 0)
+    revivals: (first, second) => Number(second.revivals_total ?? 0) - Number(first.revivals_total ?? 0),
+    unique_kills: (first, second) => Number(second.unique_kills ?? 0) - Number(first.unique_kills ?? 0),
+    current_killstreak: (first, second) => Number(second.current_killstreak ?? 0) - Number(first.current_killstreak ?? 0),
+    highest_killstreak: (first, second) => Number(second.highest_killstreak ?? 0) - Number(first.highest_killstreak ?? 0),
+    mace_kills: (first, second) => Number(second.mace_kills ?? 0) - Number(first.mace_kills ?? 0),
+    playtime: (first, second) => Number(second.playtime_seconds ?? 0) - Number(first.playtime_seconds ?? 0)
   };
   const sorter = sorters[sort] ?? sorters.hearts;
 
@@ -1416,7 +1483,7 @@ export function startWebServer(client) {
     res.json({
       ok: true,
       schemaVersion: snapshot.schema_version,
-      sort: ['hearts', 'kills', 'deaths', 'revivals'].includes(sort) ? sort : 'hearts',
+      sort: ['hearts', 'kills', 'deaths', 'revivals', 'unique_kills', 'current_killstreak', 'highest_killstreak', 'mace_kills', 'playtime'].includes(sort) ? sort : 'hearts',
       players: publicLeaderboard({ ...snapshot, players }, sort).slice(0, limit),
       snapshotAgeSeconds: snapshot.snapshot_age_seconds,
       updatedAt: snapshot.updated_at

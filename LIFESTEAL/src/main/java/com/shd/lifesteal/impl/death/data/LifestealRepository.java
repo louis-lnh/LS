@@ -11,5 +11,7 @@ public interface LifestealRepository {
 
     PlayerData savePlayer(PlayerData playerData);
 
+    boolean recordUniqueKill(UUID killerId, UUID victimId);
+
     void clearSeasonState();
 }

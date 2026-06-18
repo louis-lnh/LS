@@ -44,12 +44,32 @@ public final class SqliteLifestealRepository implements LifestealRepository {
                         heart_gains INTEGER NOT NULL DEFAULT 0,
                         heart_losses INTEGER NOT NULL DEFAULT 0,
                         mace_kills INTEGER NOT NULL DEFAULT 0,
+                        unique_kills INTEGER NOT NULL DEFAULT 0,
+                        current_killstreak INTEGER NOT NULL DEFAULT 0,
+                        highest_killstreak INTEGER NOT NULL DEFAULT 0,
+                        mace_1_kills INTEGER NOT NULL DEFAULT 0,
+                        mace_2_kills INTEGER NOT NULL DEFAULT 0,
+                        playtime_seconds INTEGER NOT NULL DEFAULT 0,
                         updated_at INTEGER NOT NULL
+                    )
+                    """);
+            statement.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS unique_kills (
+                        killer_id TEXT NOT NULL,
+                        victim_id TEXT NOT NULL,
+                        first_kill_at INTEGER NOT NULL,
+                        PRIMARY KEY (killer_id, victim_id)
                     )
                     """);
             ensureColumn(connection, "heart_gains", "INTEGER NOT NULL DEFAULT 0");
             ensureColumn(connection, "heart_losses", "INTEGER NOT NULL DEFAULT 0");
             ensureColumn(connection, "mace_kills", "INTEGER NOT NULL DEFAULT 0");
+            ensureColumn(connection, "unique_kills", "INTEGER NOT NULL DEFAULT 0");
+            ensureColumn(connection, "current_killstreak", "INTEGER NOT NULL DEFAULT 0");
+            ensureColumn(connection, "highest_killstreak", "INTEGER NOT NULL DEFAULT 0");
+            ensureColumn(connection, "mace_1_kills", "INTEGER NOT NULL DEFAULT 0");
+            ensureColumn(connection, "mace_2_kills", "INTEGER NOT NULL DEFAULT 0");
+            ensureColumn(connection, "playtime_seconds", "INTEGER NOT NULL DEFAULT 0");
             ShdLifestealMod.LOGGER.info("Lifesteal SQLite store ready at {}", databasePath.toAbsolutePath());
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed to initialize lifesteal SQLite store", exception);
@@ -59,7 +79,8 @@ public final class SqliteLifestealRepository implements LifestealRepository {
     @Override
     public Optional<PlayerData> findPlayer(UUID playerId) {
         String sql = """
-                SELECT player_id, hearts, eliminated, kills, deaths, revivals, heart_gains, heart_losses, mace_kills
+                SELECT player_id, hearts, eliminated, kills, deaths, revivals, heart_gains, heart_losses, mace_kills,
+                       unique_kills, current_killstreak, highest_killstreak, mace_1_kills, mace_2_kills, playtime_seconds
                 FROM players
                 WHERE player_id = ?
                 """;
@@ -83,7 +104,8 @@ public final class SqliteLifestealRepository implements LifestealRepository {
     @Override
     public List<PlayerData> findPlayers() {
         String sql = """
-                SELECT player_id, hearts, eliminated, kills, deaths, revivals, heart_gains, heart_losses, mace_kills
+                SELECT player_id, hearts, eliminated, kills, deaths, revivals, heart_gains, heart_losses, mace_kills,
+                       unique_kills, current_killstreak, highest_killstreak, mace_1_kills, mace_2_kills, playtime_seconds
                 FROM players
                 """;
 
@@ -103,8 +125,11 @@ public final class SqliteLifestealRepository implements LifestealRepository {
     @Override
     public PlayerData savePlayer(PlayerData playerData) {
         String sql = """
-                INSERT INTO players (player_id, hearts, eliminated, kills, deaths, revivals, heart_gains, heart_losses, mace_kills, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO players (
+                    player_id, hearts, eliminated, kills, deaths, revivals, heart_gains, heart_losses, mace_kills,
+                    unique_kills, current_killstreak, highest_killstreak, mace_1_kills, mace_2_kills, playtime_seconds, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(player_id) DO UPDATE SET
                     hearts = excluded.hearts,
                     eliminated = excluded.eliminated,
@@ -114,6 +139,12 @@ public final class SqliteLifestealRepository implements LifestealRepository {
                     heart_gains = excluded.heart_gains,
                     heart_losses = excluded.heart_losses,
                     mace_kills = excluded.mace_kills,
+                    unique_kills = excluded.unique_kills,
+                    current_killstreak = excluded.current_killstreak,
+                    highest_killstreak = excluded.highest_killstreak,
+                    mace_1_kills = excluded.mace_1_kills,
+                    mace_2_kills = excluded.mace_2_kills,
+                    playtime_seconds = excluded.playtime_seconds,
                     updated_at = excluded.updated_at
                 """;
 
@@ -128,7 +159,13 @@ public final class SqliteLifestealRepository implements LifestealRepository {
             statement.setInt(7, playerData.heartGains());
             statement.setInt(8, playerData.heartLosses());
             statement.setInt(9, playerData.maceKills());
-            statement.setLong(10, System.currentTimeMillis());
+            statement.setInt(10, playerData.uniqueKills());
+            statement.setInt(11, playerData.currentKillstreak());
+            statement.setInt(12, playerData.highestKillstreak());
+            statement.setInt(13, playerData.maceOneKills());
+            statement.setInt(14, playerData.maceTwoKills());
+            statement.setLong(15, playerData.playtimeSeconds());
+            statement.setLong(16, System.currentTimeMillis());
             statement.executeUpdate();
             return playerData;
         } catch (SQLException exception) {
@@ -137,10 +174,29 @@ public final class SqliteLifestealRepository implements LifestealRepository {
     }
 
     @Override
+    public boolean recordUniqueKill(UUID killerId, UUID victimId) {
+        String sql = """
+                INSERT OR IGNORE INTO unique_kills (killer_id, victim_id, first_kill_at)
+                VALUES (?, ?, ?)
+                """;
+
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, killerId.toString());
+            statement.setString(2, victimId.toString());
+            statement.setLong(3, System.currentTimeMillis());
+            return statement.executeUpdate() > 0;
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed to record unique kill for " + killerId + " -> " + victimId, exception);
+        }
+    }
+
+    @Override
     public void clearSeasonState() {
         try (Connection connection = connect();
              Statement statement = connection.createStatement()) {
             statement.executeUpdate("DELETE FROM players");
+            statement.executeUpdate("DELETE FROM unique_kills");
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed to clear lifesteal season state", exception);
         }
@@ -175,7 +231,13 @@ public final class SqliteLifestealRepository implements LifestealRepository {
                 result.getInt("revivals"),
                 result.getInt("heart_gains"),
                 result.getInt("heart_losses"),
-                result.getInt("mace_kills")
+                result.getInt("mace_kills"),
+                result.getInt("unique_kills"),
+                result.getInt("current_killstreak"),
+                result.getInt("highest_killstreak"),
+                result.getInt("mace_1_kills"),
+                result.getInt("mace_2_kills"),
+                result.getLong("playtime_seconds")
         );
     }
 }

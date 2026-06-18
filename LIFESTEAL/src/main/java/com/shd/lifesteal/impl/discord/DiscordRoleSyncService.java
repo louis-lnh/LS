@@ -134,6 +134,12 @@ public final class DiscordRoleSyncService {
             player.addProperty("heartGains", snapshot.heartGains());
             player.addProperty("heartLosses", snapshot.heartLosses());
             player.addProperty("maceKills", snapshot.maceKills());
+            player.addProperty("uniqueKills", snapshot.uniqueKills());
+            player.addProperty("currentKillstreak", snapshot.currentKillstreak());
+            player.addProperty("highestKillstreak", snapshot.highestKillstreak());
+            player.addProperty("maceOneKills", snapshot.maceOneKills());
+            player.addProperty("maceTwoKills", snapshot.maceTwoKills());
+            player.addProperty("playtimeSeconds", snapshot.playtimeSeconds());
             player.addProperty("hearts", snapshot.hearts());
             player.addProperty("kills", snapshot.kills());
             player.addProperty("deaths", snapshot.deaths());

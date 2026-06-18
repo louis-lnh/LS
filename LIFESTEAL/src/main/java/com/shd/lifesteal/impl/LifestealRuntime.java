@@ -25,6 +25,7 @@ import com.shd.lifesteal.impl.heart.HeartService;
 import com.shd.lifesteal.impl.heart.PlayerHeartApplier;
 import com.shd.lifesteal.impl.item.ModItems;
 import com.shd.lifesteal.impl.player.WhitelistPlayerResolver;
+import com.shd.lifesteal.impl.player.PlayerPlaytimeTracker;
 import com.shd.lifesteal.impl.restriction.DisabledFeatureHandler;
 import com.shd.lifesteal.impl.restriction.ElytraCombatCooldownService;
 import com.shd.lifesteal.impl.restriction.MaceLimitRules;
@@ -70,6 +71,7 @@ public final class LifestealRuntime {
     private final ModItems modItems = new ModItems(heartService, playerHeartApplier);
     private final DragonEggTracker dragonEggTracker = new DragonEggTracker(restrictedItemPolicy);
     private final WhitelistPlayerResolver playerResolver = new WhitelistPlayerResolver();
+    private final PlayerPlaytimeTracker playerPlaytimeTracker = new PlayerPlaytimeTracker(heartService);
     private final LifestealCommandRegistrar commandRegistrar = new LifestealCommandRegistrar(
             heartService,
             playerHeartApplier,
@@ -121,6 +123,7 @@ public final class LifestealRuntime {
         playerConnectionHooks.register();
         joinLeaveMessageHandler.register();
         playerDeathHandler.register();
+        playerPlaytimeTracker.register();
         combatEventHandler.register();
         combatLogoutHandler.register();
         graceProtectionHandler.register();

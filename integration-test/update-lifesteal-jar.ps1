@@ -7,8 +7,6 @@ $source = Join-Path $root "LIFESTEAL\build\libs\$jarName"
 $targets = @(
     Join-Path $PSScriptRoot "mods\$jarName"
     "B:\.minecraft-server\mods\$jarName"
-    "B:\CourseForge\Instances\LS PVP 1.21.11\mods\$jarName"
-    "B:\CourseForge\Instances\LS PVP 1.21.11 (1)\mods\$jarName"
 )
 
 if (!(Test-Path -LiteralPath $source)) {

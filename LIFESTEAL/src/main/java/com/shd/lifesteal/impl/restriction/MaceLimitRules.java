@@ -58,8 +58,8 @@ public final class MaceLimitRules {
     private static final String LEGACY_EVENT_KIT_MACE_KEY = "shd_lifesteal_event_kit_mace";
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final List<MaceSpec> SPECS = List.of(
-            new MaceSpec(MACE_ONE, "SHD Mace M1", 1),
-            new MaceSpec(MACE_TWO, "SHD Mace M2", 2)
+            new MaceSpec(MACE_ONE, "The Dragon's Due", 1),
+            new MaceSpec(MACE_TWO, "Bloodright", 2)
     );
 
     private static final State STATE = new State();

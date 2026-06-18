@@ -52,24 +52,24 @@ public final class DeathResolutionService {
 
     public DeathResolutionResult resolve(ServerPlayerEntity victim, DamageSource damageSource) {
         Optional<UUID> creditedKiller = combatTagService.recentAttacker(victim.getUuid(), Instant.now());
-        boolean trackedMaceKill = isTrackedMaceKill(damageSource, creditedKiller);
-        DeathResolutionResult result = heartService.resolveDeath(victim.getUuid(), creditedKiller, trackedMaceKill);
+        Optional<String> trackedMaceKillKey = trackedMaceKillKey(damageSource, creditedKiller);
+        DeathResolutionResult result = heartService.resolveDeath(victim.getUuid(), creditedKiller, trackedMaceKillKey);
         combatTagService.clear(victim.getUuid());
         applySideEffects(victim, result);
         return result;
     }
 
-    private boolean isTrackedMaceKill(DamageSource damageSource, Optional<UUID> creditedKiller) {
+    private Optional<String> trackedMaceKillKey(DamageSource damageSource, Optional<UUID> creditedKiller) {
         if (damageSource == null || creditedKiller.isEmpty()) {
-            return false;
+            return Optional.empty();
         }
 
         Entity attacker = damageSource.getAttacker();
         if (!(attacker instanceof ServerPlayerEntity player) || !creditedKiller.get().equals(player.getUuid())) {
-            return false;
+            return Optional.empty();
         }
 
-        return MaceLimitRules.heldTrackedMaceKey(player).isPresent();
+        return MaceLimitRules.heldTrackedMaceKey(player);
     }
 
     private void applySideEffects(ServerPlayerEntity victim, DeathResolutionResult result) {
