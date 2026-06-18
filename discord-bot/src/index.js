@@ -55,10 +55,9 @@ const staffCommands = new Set([
   'data'
 ]);
 
-client.once(Events.ClientReady, async (readyClient) => {
+client.once(Events.ClientReady, (readyClient) => {
   console.log(`Logged in as ${readyClient.user.tag}`);
   startWebServer(client);
-  await syncActiveWhitelistOnStartup(client);
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
@@ -1458,47 +1457,6 @@ function recordMinecraftSnapshot(profile) {
     username: profile.name,
     seenAt: Date.now()
   });
-}
-
-async function syncActiveWhitelistOnStartup(clientForLog) {
-  const activePlayers = statements.findLinkedAccounts.all()
-    .filter((linked) => linked.status === 'active')
-    .filter((linked) => String(linked.minecraft_name ?? '').trim())
-    .sort((left, right) => String(left.minecraft_name ?? '').localeCompare(String(right.minecraft_name ?? '')));
-
-  if (activePlayers.length === 0) {
-    audit('minecraft.whitelist_startup_sync', {
-      data: { total: 0, ok: 0, failed: 0, skipped: 0 }
-    });
-    return;
-  }
-
-  let ok = 0;
-  let failed = 0;
-  for (const linked of activePlayers) {
-    const result = await optionalSideEffect(clientForLog, {
-      type: 'minecraft.whitelist_startup_add',
-      action: 'Startup whitelist reconciliation',
-      discordId: linked.discord_id,
-      minecraftUuid: linked.minecraft_uuid,
-      fields: [
-        { name: 'Discord', value: `<@${linked.discord_id}>`, inline: true },
-        { name: 'Minecraft', value: linked.minecraft_name, inline: true }
-      ],
-      run: () => whitelistAdd(linked.minecraft_name)
-    });
-    if (result.ok) ok++;
-    else failed++;
-  }
-
-  audit('minecraft.whitelist_startup_sync', {
-    data: { total: activePlayers.length, ok, failed, skipped: 0 }
-  });
-  await staffAuditLog(clientForLog, failed ? 'Startup Whitelist Sync Completed With Issues' : 'Startup Whitelist Sync Completed', [
-    { name: 'Active players', value: String(activePlayers.length), inline: true },
-    { name: 'Synced', value: String(ok), inline: true },
-    { name: 'Failed', value: String(failed), inline: true }
-  ]);
 }
 
 function hasCommandAccess(interaction) {

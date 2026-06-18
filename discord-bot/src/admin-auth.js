@@ -932,18 +932,6 @@ async function adminMinecraftSideEffect({ type, action, run }) {
   }
 }
 
-function shouldWhitelistPlayer(status) {
-  return status?.status === 'active';
-}
-
-async function adminWhitelistAdd(minecraftName) {
-  return adminMinecraftSideEffect({
-    type: 'minecraft.whitelist_add',
-    action: 'Add Minecraft whitelist entry',
-    run: () => whitelistAdd(minecraftName)
-  });
-}
-
 function normalizeEventText(value, max = 240) {
   return String(value ?? '').trim().replace(/\s+/g, ' ').slice(0, max);
 }
@@ -1459,7 +1447,6 @@ export function createAdminRouter(client) {
 
     const now = Date.now();
     const minecraftUuid = normalizeManualMinecraftUuid(req.body?.minecraftUuid, minecraftName);
-    let whitelistResult = { ok: true, error: null };
     try {
       statements.upsertLinked.run({
         discordId,
@@ -1484,8 +1471,7 @@ export function createAdminRouter(client) {
     } catch (error) {
       return res.status(409).json({ ok: false, code: 'ADMIN_PLAYER_LINK_CONFLICT', error: error.message || 'Could not create manual player link.' });
     }
-    if (shouldWhitelistPlayer(nextStatus)) {
-      whitelistResult = await adminWhitelistAdd(minecraftName);
+    if (nextStatus.status === 'active') {
       statements.upsertRulesAcceptance.run({
         discordId,
         minecraftUuid,
@@ -1498,16 +1484,15 @@ export function createAdminRouter(client) {
     audit('admin.player_created', {
       discordId: req.adminSession.id,
       minecraftUuid,
-      data: { targetDiscordId: discordId, minecraftName, status: nextStatus.label, badge: nextBadge, manual: true, whitelistOk: whitelistResult.ok }
+      data: { targetDiscordId: discordId, minecraftName, status: nextStatus.label, badge: nextBadge, manual: true }
     });
     await staffAuditLog(client, 'Admin Player Manually Added', [
       { name: 'Player', value: minecraftName, inline: true },
       { name: 'Discord ID', value: discordId, inline: true },
       { name: 'Status', value: nextStatus.label, inline: true },
       { name: 'Badge', value: playerBadgeLabel(nextBadge), inline: true },
-      whitelistResult.ok ? null : { name: 'Whitelist Warning', value: whitelistResult.error },
       { name: 'Staff', value: `${req.adminSession.displayName} (${req.adminSession.id})`, inline: true }
-    ].filter(Boolean));
+    ]);
     return res.status(201).json({ ok: true, players: buildAdminPlayers(), player: findAdminPlayer(`linked:${discordId}`), updatedAt: Date.now() });
   });
 
@@ -1566,7 +1551,6 @@ export function createAdminRouter(client) {
       return res.status(400).json({ ok: false, code: 'ADMIN_PLAYER_BADGE_INVALID', error: 'Player badge is invalid.' });
     }
 
-    let whitelistResult = { ok: true, error: null };
     statements.updateLinkedAdminProfile.run({
       discordId: rawId,
       status: nextStatus?.status,
@@ -1576,8 +1560,7 @@ export function createAdminRouter(client) {
       reason: 'Updated from the admin player manager.',
       updatedAt: now
     });
-    if (shouldWhitelistPlayer(nextStatus)) {
-      whitelistResult = await adminWhitelistAdd(linked.minecraft_name);
+    if (nextStatus?.status === 'active') {
       statements.upsertRulesAcceptance.run({
         discordId: rawId,
         minecraftUuid: linked.minecraft_uuid,
@@ -1589,13 +1572,12 @@ export function createAdminRouter(client) {
     audit('admin.player_updated', {
       discordId: req.adminSession.id,
       minecraftUuid: linked.minecraft_uuid,
-      data: { playerId, status: nextStatus?.label ?? null, badge: nextBadge ?? null, whitelistOk: whitelistResult.ok }
+      data: { playerId, status: nextStatus?.label ?? null, badge: nextBadge ?? null }
     });
     await staffAuditLog(client, 'Admin Player Updated', [
       { name: 'Player', value: linked.minecraft_name || rawId, inline: true },
       nextStatus ? { name: 'Status', value: nextStatus.label, inline: true } : null,
       nextBadge ? { name: 'Badge', value: playerBadgeLabel(nextBadge), inline: true } : null,
-      whitelistResult.ok ? null : { name: 'Whitelist Warning', value: whitelistResult.error },
       { name: 'Staff', value: `${req.adminSession.displayName} (${req.adminSession.id})`, inline: true }
     ].filter(Boolean));
 

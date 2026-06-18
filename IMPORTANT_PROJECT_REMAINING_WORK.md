@@ -37,6 +37,8 @@ The core Lifesteal stack is mostly at the stage of launch hardening, real-server
 
    The bot is feature-rich, but still needs a final hardening pass: staff copy/errors, permission review, rate limit tuning, route exposure review, CORS review, deployment hygiene, backup/restore, secret rotation, and possibly JSON-to-SQLite migration.
 
+   Add a non-RCON Minecraft access sync before launch: the bot should expose a protected active/denied/banned access-list endpoint, and the Lifesteal Fabric mod should poll it over outbound HTTPS and apply whitelist/ban changes locally. This avoids public RCON and works when the bot and Minecraft server live on different machines.
+
 6. **Public Lifesteal site completion**
 
    The live data path exists, but remaining polish includes world/map info, punishments/bans page, final legal/provider details, richer player profiles/overlays, better stale/offline states, and live event countdown language.

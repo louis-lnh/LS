@@ -21,6 +21,8 @@ const CLAIM_BUTTON_ID = 'ticket:claim';
 const APPEAL_MODAL_ID = 'ticket:appeal:modal';
 const CLOSE_MODAL_ID = 'ticket:close:modal';
 const APPLICATION_CODE_PATTERN = /\bSHD-APP-[A-Z0-9]{4,12}\b/i;
+const APPEAL_TICKETS_PAUSED = true;
+const APPEAL_TICKETS_PAUSED_MESSAGE = 'Appeal tickets are temporarily closed. Please check back later.';
 
 export async function handlePanelCommand(interaction) {
   await interaction.deferReply({ ephemeral: true });
@@ -53,8 +55,9 @@ export async function handlePanelCommand(interaction) {
 
   const button = new ButtonBuilder()
     .setCustomId(isAppeal ? APPEAL_BUTTON_ID : JOIN_BUTTON_ID)
-    .setLabel(isAppeal ? 'Open Appeal Ticket' : 'Open Application Ticket')
-    .setStyle(isAppeal ? ButtonStyle.Danger : ButtonStyle.Primary);
+    .setLabel(isAppeal && APPEAL_TICKETS_PAUSED ? 'Appeal Tickets Closed' : isAppeal ? 'Open Appeal Ticket' : 'Open Application Ticket')
+    .setStyle(isAppeal ? ButtonStyle.Danger : ButtonStyle.Primary)
+    .setDisabled(isAppeal && APPEAL_TICKETS_PAUSED);
 
   await interaction.channel.send({
     embeds: [embed],
@@ -75,6 +78,9 @@ export async function handlePanelCommand(interaction) {
 export async function handleTicketInteraction(interaction) {
   if (interaction.isButton()) {
     if (interaction.customId === APPEAL_BUTTON_ID) {
+      if (APPEAL_TICKETS_PAUSED) {
+        return interaction.reply({ content: APPEAL_TICKETS_PAUSED_MESSAGE, ephemeral: true });
+      }
       return showAppealModal(interaction);
     }
     if (interaction.customId === JOIN_BUTTON_ID) {
@@ -89,6 +95,9 @@ export async function handleTicketInteraction(interaction) {
   }
 
   if (interaction.isModalSubmit() && interaction.customId === APPEAL_MODAL_ID) {
+    if (APPEAL_TICKETS_PAUSED) {
+      return interaction.reply({ content: APPEAL_TICKETS_PAUSED_MESSAGE, ephemeral: true });
+    }
     return openAppealTicket(interaction);
   }
   if (interaction.isModalSubmit() && interaction.customId === CLOSE_MODAL_ID) {
