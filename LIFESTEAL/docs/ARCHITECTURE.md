@@ -11,7 +11,7 @@ Expected ecosystem boundaries:
 - `shd-ui-client`: client-side rendering only
 - `shd-pvp`: mostly client automation
 
-Anti-cheat/security remains a future separate module.
+Anti-cheat/security remains a future separate module. The canonical split is documented in `docs/ANTI_CHEAT.md`: reusable `shd-anticheat-core` plus a Lifesteal-specific integrity add-on.
 
 ## Canonical Gameplay Decisions
 

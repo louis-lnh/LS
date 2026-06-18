@@ -1,0 +1,21 @@
+package com.shd.lifesteal.impl.anticheat;
+
+public enum AntiCheatCategory {
+    MOVEMENT,
+    COMBAT,
+    INVENTORY,
+    RESTRICTED_ITEM,
+    HEART_INTEGRITY,
+    ELIMINATION,
+    REVIVAL,
+    CUSTOM_MACE,
+    DRAGON_EGG,
+    GRACE_PERIOD,
+    COMBAT_TAG,
+    EVENT_STATE,
+    CLIENT_INTEGRITY,
+    ACCOUNT_ACCESS,
+    STAFF_ACTION,
+    PUBLIC_DATA_EXPOSURE,
+    SYSTEM_CONSISTENCY
+}

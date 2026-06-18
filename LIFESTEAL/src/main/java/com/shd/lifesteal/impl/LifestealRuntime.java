@@ -1,6 +1,9 @@
 package com.shd.lifesteal.impl;
 
 import com.shd.lifesteal.api.LifestealApi;
+import com.shd.lifesteal.impl.anticheat.AntiCheatCheckRunner;
+import com.shd.lifesteal.impl.anticheat.AntiCheatService;
+import com.shd.lifesteal.impl.anticheat.AntiCheatSettings;
 import com.shd.lifesteal.impl.audit.LifestealAuditLog;
 import com.shd.lifesteal.impl.combat.CombatEventHandler;
 import com.shd.lifesteal.impl.combat.CombatLogoutHandler;
@@ -54,8 +57,11 @@ public final class LifestealRuntime {
             .resolve("lifesteal.sqlite");
     private final LifestealUiSettings uiSettings = new LifestealUiSettings(configDirectory.resolve("ui.properties"));
     private final LifestealRuleSettings ruleSettings = new LifestealRuleSettings(configDirectory.resolve("rules.properties"));
+    private final AntiCheatSettings antiCheatSettings = new AntiCheatSettings(configDirectory.resolve("anticheat.properties"));
     private final LifestealSoundService soundService = new LifestealSoundService(uiSettings);
     private final LifestealAuditLog auditLog = new LifestealAuditLog(configDirectory.resolve("lifesteal-audit.log"));
+    private final AntiCheatService antiCheatService = new AntiCheatService(antiCheatSettings, auditLog);
+    private final AntiCheatCheckRunner antiCheatCheckRunner = new AntiCheatCheckRunner(antiCheatService, antiCheatSettings);
     private final SqliteLifestealRepository repository = new SqliteLifestealRepository(databasePath);
     private final UiBridgeManager uiBridgeManager = new UiBridgeManager();
     private final GracePeriodService gracePeriodService = new GracePeriodService(config, uiBridgeManager);
@@ -83,7 +89,8 @@ public final class LifestealRuntime {
             ruleSettings,
             uiSettings,
             soundService,
-            auditLog
+            auditLog,
+            antiCheatService
     );
     private final PlayerConnectionHooks playerConnectionHooks = new PlayerConnectionHooks(heartService, playerHeartApplier);
     private final JoinLeaveMessageHandler joinLeaveMessageHandler = new JoinLeaveMessageHandler(uiBridgeManager);
@@ -114,6 +121,7 @@ public final class LifestealRuntime {
     public void initialize() {
         uiSettings.load();
         ruleSettings.load();
+        antiCheatSettings.load();
         eventTimerService.load();
         repository.initialize();
         uiBridgeManager.loadEntrypoints();
@@ -136,6 +144,7 @@ public final class LifestealRuntime {
         lifestealActionbar.register();
         lifestealTabListService.register();
         lifestealBossbarService.register();
+        antiCheatCheckRunner.register();
         discordRoleSyncService.register();
         LifestealApi.setService(heartService);
     }
@@ -150,5 +159,9 @@ public final class LifestealRuntime {
 
     public DragonEggTracker dragonEggTracker() {
         return dragonEggTracker;
+    }
+
+    public AntiCheatService antiCheatService() {
+        return antiCheatService;
     }
 }
