@@ -4,72 +4,32 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="Download the required client-side mod for Lifesteal by SHD.">
-    <title>Lifesteal Client Mod | SHD</title>
+    <title>Lifesteal Client | SHD</title>
     <link rel="stylesheet" href="styles.css">
   </head>
-  <body>
-    <img class="site-bg" src="assets/lifesteal-hero.png" alt="">
-    <div class="site-bg-shade"></div>
+  <body class="landing-page">
+    <main class="landing-shell" aria-labelledby="page-title">
+      <img class="mark" src="assets/shd-logo.png" alt="SHD">
+      <span class="chip">Required Client Mod</span>
 
-    <header class="topbar">
-      <a class="brand" href="/" aria-label="Lifesteal by SHD">
-        <img src="assets/shd-logo.png" alt="SHD">
-      </a>
-      <nav aria-label="Helpful links">
-        <a href="https://lifesteal.shd-esports.com">Event Info</a>
-        <a href="https://support.shd-esports.com">Support</a>
-      </nav>
-    </header>
+      <h1 id="page-title">
+        <span>Lifesteal</span>
+        <span>Client</span>
+      </h1>
 
-    <main class="page-frame">
-      <section class="hero" aria-labelledby="page-title">
-        <div class="hero-copy">
-          <span class="chip">Required Client Mod</span>
-          <h1 id="page-title">Lifesteal Client</h1>
-          <p>
-            Download the client-side mod required for custom items and event features on Lifesteal by SHD.
-          </p>
-          <div class="actions">
-            <a class="primary-action" href="downloads/shd-lifesteal-client-0.1.0.jar" download>Download Mod</a>
-            <a class="secondary-action" href="#install">Install Help</a>
-          </div>
-        </div>
+      <p class="landing-copy">
+        Download the client-side mod required for custom items and event features on Lifesteal by SHD.
+      </p>
 
-        <aside class="status-panel" aria-label="Download status">
-          <span class="section-kicker">Download Status</span>
-          <div class="status-row ready">
-            <strong>Ready</strong>
-            <span>Available now</span>
-          </div>
-          <dl>
-            <div>
-              <dt>Version</dt>
-              <dd>0.1.0</dd>
-            </div>
-            <div>
-              <dt>File</dt>
-              <dd>shd-lifesteal-client-0.1.0.jar</dd>
-            </div>
-            <div>
-              <dt>Minecraft</dt>
-              <dd>Fabric client</dd>
-            </div>
-          </dl>
-        </aside>
-      </section>
+      <div class="status-pill" aria-label="Download status">
+        <strong>Ready</strong>
+        <span>/ v0.1.0</span>
+      </div>
 
-      <section id="install" class="install-panel" aria-labelledby="install-title">
-        <div>
-          <span class="section-kicker">Quick Install</span>
-          <h2 id="install-title">Add The Mod</h2>
-        </div>
-        <ol>
-          <li>Install the matching Fabric Loader for your Minecraft client.</li>
-          <li>Download the Lifesteal client mod from this page.</li>
-          <li>Move the downloaded JAR into your Minecraft <code>mods</code> folder.</li>
-          <li>Restart Minecraft and join with the same account used for the event.</li>
-        </ol>
-      </section>
+      <div class="action-panel">
+        <a class="primary-action" href="downloads/shd-lifesteal-client-0.1.0.jar" download>Download Mod</a>
+        <a class="secondary-action" href="install.html">Install Help</a>
+      </div>
     </main>
   </body>
 </html>
