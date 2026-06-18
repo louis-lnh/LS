@@ -1008,11 +1008,16 @@ export const statements = {
   },
   findAdminStaffAccessById: {
     get(id) {
-      const numeric = Number(id);
+      const raw = String(id ?? '');
+      if (/^\d{10,30}$/.test(raw)) {
+        const byDiscord = state.admin_staff_access.find((row) => row.discord_id === raw && !row.deleted_at);
+        if (byDiscord) return structuredClone(byDiscord);
+      }
+      const numeric = Number(raw);
       if (Number.isFinite(numeric)) {
         return structuredClone(state.admin_staff_access.find((row) => row.id === numeric && !row.deleted_at) ?? null);
       }
-      return structuredClone(state.admin_staff_access.find((row) => row.discord_id === id && !row.deleted_at) ?? null);
+      return structuredClone(state.admin_staff_access.find((row) => row.discord_id === raw && !row.deleted_at) ?? null);
     }
   },
   createAdminStaffAccess: {

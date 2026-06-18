@@ -1,6 +1,5 @@
 import crypto from 'node:crypto';
 import express from 'express';
-import { PermissionFlagsBits } from 'discord.js';
 import { config } from './config.js';
 import { statements } from './db.js';
 import { audit, staffAuditLog } from './logger.js';
@@ -109,10 +108,7 @@ async function validatedSession(client, req) {
   const session = sessionFromRequest(req);
   if (!session) return null;
 
-  const guild = await client.guilds.fetch(config.guildId);
-  const member = guild.members.cache.get(session.id) ?? await guild.members.fetch(session.id).catch(() => null);
-  if (!member) return null;
-  const access = workspaceAccess(member, guild);
+  const access = portalAccessForDiscordId(session.id);
   if (!access) return null;
   return { ...session, role: access.role, workspaces: access.workspaces, permissions: access.permissions };
 }
@@ -128,41 +124,6 @@ function requireAdminSession(client) {
       console.error('Admin session validation failed', error);
       return res.status(503).json({ ok: false, code: 'ADMIN_AUTH_UNAVAILABLE', error: 'Could not validate the staff session.' });
     }
-  };
-}
-
-function workspaceAccess(member, guild) {
-  const owner = guild.ownerId === member.id || config.admin.ownerIds.includes(member.id);
-  const administrator = member.permissions.has(PermissionFlagsBits.Administrator);
-  const moderator = member.permissions.has(PermissionFlagsBits.ModerateMembers);
-  const configuredRole = config.staffRoleIds.some((roleId) => member.roles.cache.has(roleId));
-  if (!owner && !administrator && !moderator && !configuredRole) return null;
-
-  const global = owner || administrator;
-  const permissions = global
-    ? [
-      'global:audit',
-      'integrations:read',
-      'staff:read',
-      'staff:manage',
-      'lifesteal:read',
-      'lifesteal:review',
-      'lifesteal:ticket',
-      'lifesteal:players',
-      'lifesteal:events',
-      'lifesteal:staff-chat'
-    ]
-    : [
-      'lifesteal:read',
-      'lifesteal:review',
-      'lifesteal:ticket',
-      'lifesteal:events',
-      'lifesteal:staff-chat'
-    ];
-  return {
-    role: owner ? 'Owner' : administrator ? 'Administrator' : moderator ? 'Moderator' : 'Staff',
-    workspaces: global ? ['global', 'lifesteal', 'general', 'valorant'] : ['lifesteal'],
-    permissions
   };
 }
 
@@ -264,6 +225,38 @@ function staffPermissionsForRole(role, workspaces) {
   return [...permissions];
 }
 
+function activePortalAccessStatus(value) {
+  return ['Active', 'Limited'].includes(normalizeStaffStatus(value));
+}
+
+function accessFromStaffRecord(row) {
+  if (!row || !activePortalAccessStatus(row.status)) return null;
+  const role = normalizeStaffRole(row.role);
+  const workspaces = normalizeStaffWorkspaces(row.workspaces);
+  if (!role || workspaces.length === 0) return null;
+  return {
+    role,
+    workspaces,
+    permissions: staffPermissionsForRole(role, workspaces)
+  };
+}
+
+function bootstrapOwnerAccess(discordId) {
+  if (!config.admin.ownerIds.includes(String(discordId ?? ''))) return null;
+  const role = 'Owner';
+  const workspaces = ['global', 'lifesteal', 'general', 'valorant'];
+  return {
+    role,
+    workspaces,
+    permissions: staffPermissionsForRole(role, workspaces)
+  };
+}
+
+function portalAccessForDiscordId(discordId) {
+  const saved = statements.findAdminStaffAccessById.get(String(discordId ?? ''));
+  return accessFromStaffRecord(saved) ?? bootstrapOwnerAccess(discordId);
+}
+
 function staffAccessId(value) {
   const id = String(value ?? '').trim();
   if (id.startsWith('draft:')) return { recordId: Number(id.slice('draft:'.length)), discordId: null };
@@ -338,7 +331,6 @@ function serializeStaffRecord(row, user, activity = []) {
 }
 
 async function buildAdminStaffPayload(client, session) {
-  const guild = await client.guilds.fetch(config.guildId);
   const auditEvents = statements.recentAudit.all(500)
     .filter((event) => event.discord_id && String(event.type).startsWith('admin.'));
   const grouped = new Map();
@@ -388,16 +380,14 @@ async function buildAdminStaffPayload(client, session) {
 
   const staff = await Promise.all([...grouped.values()].map(async (entry) => {
     const user = client.users.cache.get(entry.id) ?? await client.users.fetch(entry.id).catch(() => null);
-    const member = guild.members.cache.get(entry.id) ?? await guild.members.fetch(entry.id).catch(() => null);
-    const access = member ? workspaceAccess(member, guild) : null;
     const isCurrent = entry.id === session.id;
     const saved = savedByDiscord.get(entry.id);
     const savedWorkspaces = saved ? normalizeStaffWorkspaces(saved.workspaces) : null;
     const savedRole = saved ? normalizeStaffRole(saved.role) : null;
     const savedStatus = saved ? normalizeStaffStatus(saved.status) : null;
     const savedTrust = saved ? normalizeStaffTrust(saved.trust) : null;
-    const role = savedRole ?? access?.role ?? (isCurrent ? session.role : 'Former staff');
-    const workspaces = savedWorkspaces ?? access?.workspaces ?? (isCurrent ? session.workspaces : []);
+    const role = savedRole ?? (isCurrent ? session.role : 'Former staff');
+    const workspaces = savedWorkspaces ?? (isCurrent ? session.workspaces : []);
     const activity = staffActivityFromEvents(activityByActor.get(entry.id) ?? []);
     return {
       id: entry.id,
@@ -408,16 +398,16 @@ async function buildAdminStaffPayload(client, session) {
       avatarUrl: user?.displayAvatarURL?.({ size: 64 }) ?? null,
       role,
       workspaces,
-      permissions: saved ? staffPermissionsForRole(role, workspaces) : access?.permissions ?? (isCurrent ? session.permissions ?? [] : []),
-      status: savedStatus ?? statusForAccess(access ?? (isCurrent ? session : null)),
-      trust: savedTrust ?? trustForAccess(access ?? (isCurrent ? session : null)),
-      source: saved ? 'Saved admin access override' : isCurrent ? 'Current Discord OAuth session' : 'Admin portal audit history',
+      permissions: saved ? staffPermissionsForRole(role, workspaces) : isCurrent ? session.permissions ?? [] : [],
+      status: savedStatus ?? (isCurrent ? statusForAccess(session) : 'Review'),
+      trust: savedTrust ?? (isCurrent ? trustForAccess(session) : 'Pending'),
+      source: saved ? 'Saved admin portal access' : isCurrent ? 'Current portal session' : 'Admin portal audit history',
       firstSeen: saved ? Math.min(entry.firstSeen, saved.created_at) : entry.firstSeen,
       lastActive: saved ? Math.max(entry.lastActive, saved.updated_at) : entry.lastActive,
       portalActions: entry.portalActions + (saved ? 1 : 0),
-      notes: saved?.notes || (access
-        ? 'This identity has Discord-backed admin portal access and has appeared in portal audit history.'
-        : 'This identity appears in admin portal audit history but no longer resolves to an active staff access role.'),
+      notes: saved?.notes || (isCurrent
+        ? 'This identity is signed in through Discord OAuth. Portal access comes from Staff & Access records or owner bootstrap config.'
+        : 'This identity appears in admin portal audit history but does not have a saved active portal access record.'),
       activity
     };
   }));
@@ -561,11 +551,11 @@ export async function buildBootstrapPayload(client, session) {
   const linkedPlayers = snapshot.linked_accounts.filter((item) => item.status === 'active').length;
   const publicSnapshot = snapshot.public_lifesteal_snapshot;
 
-  const guild = await client.guilds.fetch(config.guildId);
-  const members = guild.members.cache.size > 0
-    ? guild.members.cache
-    : await guild.members.fetch().catch(() => guild.members.cache);
-  const authorizedStaff = members.filter((member) => Boolean(workspaceAccess(member, guild))).size;
+  const authorizedStaffIds = new Set(config.admin.ownerIds);
+  for (const row of statements.findAdminStaffAccess.all()) {
+    if (row.discord_id && accessFromStaffRecord(row)) authorizedStaffIds.add(row.discord_id);
+  }
+  const authorizedStaff = authorizedStaffIds.size;
 
   const auditWindow = statements.recentAudit.all(50);
   const meaningfulAudit = auditWindow.filter((event) => event.type !== 'gameplay.roles_sync');
@@ -1226,16 +1216,13 @@ export function createAdminRouter(client) {
     try {
       const token = await exchangeCode(String(req.query.code ?? ''));
       const user = await fetchDiscordUser(token.access_token);
-      const guild = await client.guilds.fetch(config.guildId);
-      const member = await guild.members.fetch(user.id).catch(() => null);
-      if (!member) return res.redirect(safePortalUrl('/?auth=not_member'));
-      const access = workspaceAccess(member, guild);
+      const access = portalAccessForDiscordId(user.id);
       if (!access) return res.redirect(safePortalUrl('/?auth=denied'));
 
       const session = {
         id: user.id,
         username: user.username,
-        displayName: user.global_name || member.displayName || user.username,
+        displayName: user.global_name || user.username,
         avatarUrl: user.avatar
           ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=128`
           : null,

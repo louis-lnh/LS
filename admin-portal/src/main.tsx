@@ -462,11 +462,11 @@ function LoginScreen({ authError, onSignIn }: { authError: string | null; onSign
         {authError && <p className="login-error">{errorMessages[authError] ?? 'Access could not be verified.'}</p>}
         <div className="login-security">
           <LockKeyhole size={16} />
-          <span>Guild membership and staff roles will control access.</span>
+          <span>Admin portal Staff & Access entries control portal access.</span>
         </div>
       </section>
       <aside className="login-context">
-        <span className="eyebrow">{adminDemoMode ? 'Frontend Prototype' : 'Discord Protected'}</span>
+        <span className="eyebrow">{adminDemoMode ? 'Frontend Prototype' : 'Portal Protected'}</span>
         <strong>One review surface.</strong>
         <p>Discord stays the player conversation. This portal holds review state, claims, decisions, notes, and audit context.</p>
       </aside>
@@ -1193,7 +1193,7 @@ function GlobalOverviewPage({ overview, state, submissions, onNavigate }: {
         <MetricCard label="Open work" value={String(metrics.openWork)} detail={`${metrics.unclaimed} currently unclaimed`} icon={<Inbox size={18} />} />
         <MetricCard label="Active workspaces" value={`${metrics.activeWorkspaces} / ${metrics.totalWorkspaces}`} detail="Lifesteal live; General and Valorant staged" icon={<Building2 size={18} />} />
         <MetricCard label="Bot connections" value={`${metrics.botConnections} / ${metrics.totalBotConnections}`} detail="Lifesteal online, SHD bot pending" icon={<Bot size={18} />} />
-        <MetricCard label="Authorized staff" value={String(metrics.authorizedStaff)} detail="Current Discord role access" icon={<ShieldCheck size={18} />} />
+        <MetricCard label="Authorized staff" value={String(metrics.authorizedStaff)} detail="Active portal access records" icon={<ShieldCheck size={18} />} />
       </section>
       <section className="project-grid">
         {projects.map(({ id, name, description, status, work, icon: Icon, target, tone }) => (
@@ -1557,7 +1557,7 @@ function StaffAccessPage({ user }: { user: AdminUser }) {
       workspaces,
       status: 'Invite pending',
       trust: 'Pending',
-      notes: 'Invite draft created in Staff & Access. Discord role sync is still a future backend step.',
+      notes: 'Invite draft created in Staff & Access. Portal access is managed separately from Discord roles.',
     }
     if (!adminDemoMode) {
       setStaffMutationState('saving')
@@ -1839,7 +1839,7 @@ function StaffAccessPage({ user }: { user: AdminUser }) {
       </section>}
       {inviteOpen && <div className="modal-layer">
         <section className="admin-modal staff-invite-modal">
-          <header><div><span className="eyebrow">Access Draft</span><h2>Invite staff</h2><p>Save an admin-side staff draft. Discord role syncing is still a separate future backend step.</p></div><button aria-label="Close invite modal" onClick={() => setInviteOpen(false)} type="button"><X size={17} /></button></header>
+          <header><div><span className="eyebrow">Access Draft</span><h2>Invite staff</h2><p>Save an admin-side staff draft. Portal access is managed separately from Discord roles.</p></div><button aria-label="Close invite modal" onClick={() => setInviteOpen(false)} type="button"><X size={17} /></button></header>
           <div className="manual-player-grid">
             <label><span>Discord ID</span><input value={inviteDraft.discordId} onChange={(event) => setInviteDraft((current) => ({ ...current, discordId: event.target.value }))} placeholder="1224..." /></label>
             <label><span>Display name</span><input value={inviteDraft.displayName} onChange={(event) => setInviteDraft((current) => ({ ...current, displayName: event.target.value }))} placeholder="Staff name" /></label>
