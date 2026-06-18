@@ -13,16 +13,38 @@ const LIFESTEAL_RULES_BUTTON_ID = 'rules:lifesteal:accept';
 
 const panelConfigs = {
   discord: {
-    title: 'Discord Rules',
+    title: 'Welcome to Lifesteal by SHD',
     description: [
-      'Read the Discord server rules above.',
-      'Press the button below to confirm you accept them and unlock the server member role.'
+      'Lifesteal by SHD is a competitive Minecraft event focused on PvP, survival, strategy, and player interaction. Every player starts with 10 hearts.',
+      '',
+      '**How to Join**',
+      '1. Accept the requirements in this channel.',
+      '2. Apply through the Support Portal.',
+      '3. Verify yourself in Discord.',
+      '4. Wait for staff approval.',
+      '',
+      '**Portal:** https://support.shd-esports.com',
+      '',
+      '**Required Mod**',
+      'This server uses a required client-side mod that enables custom items and event features. Download the latest version from the link above.',
+      '',
+      '**Support**',
+      'For technical issues, general questions, or Discord-related assistance, use the support ticket system. For Minecraft-related support, visit the Support Portal.',
+      '',
+      '**Lifesteal Rules & Information**',
+      'For detailed event information, gameplay mechanics, and server rules, visit: https://lifesteal.shd-esports.com',
+      '',
+      '**Rules**',
+      "- Follow Discord's Terms of Service.",
+      '- Follow SHD Terms of Service and staff instructions: https://shd-esports.com',
+      '',
+      'By clicking **Accept & Verify**, you confirm that you have read and accepted these requirements.'
     ].join('\n'),
-    buttonLabel: 'Accept Discord Rules',
+    buttonLabel: 'Accept & Verify',
     buttonId: DISCORD_RULES_BUTTON_ID,
     roleId: () => config.discordRulesRoleId,
     auditType: 'rules.discord_accepted',
-    logTitle: 'Discord Rules Accepted'
+    logTitle: 'Discord Requirements Accepted'
   },
   lifesteal: {
     title: 'Lifesteal Rules',
