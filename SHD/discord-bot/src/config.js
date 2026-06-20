@@ -31,6 +31,8 @@ export const config = {
   dataFile: process.env.DATA_FILE ?? './data/shd-bot.json',
   apiSharedSecret: process.env.API_SHARED_SECRET ?? '',
   production: bool('NODE_ENV_PRODUCTION', false) || process.env.NODE_ENV === 'production',
+  enableGuildMembersIntent: bool('ENABLE_GUILD_MEMBERS_INTENT', false),
+  enableMessageContentIntent: bool('ENABLE_MESSAGE_CONTENT_INTENT', false),
   owners: {
     discordIds: list('ADMIN_OWNER_IDS')
   },

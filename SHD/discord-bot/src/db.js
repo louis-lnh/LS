@@ -25,6 +25,8 @@ const initialState = {
   support_submissions: [],
   admin_sessions: [],
   ticket_threads: [],
+  rules_acceptances: [],
+  role_assignments: [],
   role_panel_messages: [],
   settings: {},
   counters: {
@@ -32,7 +34,9 @@ const initialState = {
     support_submissions: 1,
     support_notes: 1,
     ticket_threads: 1,
-    role_panel_messages: 1
+    role_panel_messages: 1,
+    rules_acceptances: 1,
+    role_assignments: 1
   }
 };
 
@@ -189,7 +193,7 @@ export const statements = {
       submission.claimed_by = staffId;
       submission.claimed_at = Date.now();
       submission.updated_at = submission.claimed_at;
-      if (submission.status === 'submitted') {
+      if (submission.status === 'submitted' || submission.status === 'ticket_verified') {
         submission.status = 'in_review';
       }
       persist();
@@ -226,6 +230,152 @@ export const statements = {
       }
       persist();
       return clone(submission);
+    },
+    attachTicket(code, threadId) {
+      const submission = state.support_submissions.find((row) => row.code === code);
+      if (!submission) return null;
+      submission.ticket_thread_id = threadId;
+      submission.updated_at = Date.now();
+      if (submission.status === 'submitted') {
+        submission.status = 'ticket_verified';
+      }
+      persist();
+      return clone(submission);
+    }
+  },
+  ticketThreads: {
+    create(row) {
+      const now = row.createdAt ?? Date.now();
+      const ticket = {
+        id: state.counters.ticket_threads++,
+        type: row.type,
+        thread_id: row.threadId,
+        channel_id: row.channelId,
+        discord_id: row.discordId,
+        submission_code: row.submissionCode ?? null,
+        status: 'open',
+        claimed_by: null,
+        claimed_at: null,
+        closed_at: null,
+        close_reason: null,
+        created_at: now,
+        updated_at: now
+      };
+      state.ticket_threads.push(ticket);
+      persist();
+      return clone(ticket);
+    },
+    findOpenByThread(threadId) {
+      return clone(state.ticket_threads.find((row) => row.thread_id === threadId && row.status === 'open') ?? null);
+    },
+    findOpenForUser(discordId, type) {
+      return clone(state.ticket_threads.find((row) =>
+        row.discord_id === discordId &&
+        row.type === type &&
+        row.status === 'open'
+      ) ?? null);
+    },
+    attachSubmission(threadId, code) {
+      const ticket = state.ticket_threads.find((row) => row.thread_id === threadId && row.status === 'open');
+      if (!ticket) return null;
+      ticket.submission_code = code;
+      ticket.updated_at = Date.now();
+      persist();
+      return clone(ticket);
+    },
+    claim(threadId, staffId) {
+      const ticket = state.ticket_threads.find((row) => row.thread_id === threadId && row.status === 'open');
+      if (!ticket) return { ok: false, reason: 'not_found', ticket: null };
+      if (ticket.claimed_by && ticket.claimed_by !== staffId) {
+        return { ok: false, reason: 'claimed', ticket: clone(ticket) };
+      }
+      if (ticket.claimed_by === staffId) {
+        return { ok: true, changed: false, ticket: clone(ticket) };
+      }
+      ticket.claimed_by = staffId;
+      ticket.claimed_at = Date.now();
+      ticket.updated_at = ticket.claimed_at;
+      persist();
+      return { ok: true, changed: true, ticket: clone(ticket) };
+    },
+    close(threadId, reason, closedBy) {
+      const ticket = state.ticket_threads.find((row) => row.thread_id === threadId && row.status === 'open');
+      if (!ticket) return null;
+      ticket.status = 'closed';
+      ticket.closed_at = Date.now();
+      ticket.close_reason = reason ?? null;
+      ticket.closed_by = closedBy ?? null;
+      ticket.updated_at = ticket.closed_at;
+      persist();
+      return clone(ticket);
+    }
+  },
+  rulesAcceptances: {
+    upsert(row) {
+      const now = row.acceptedAt ?? Date.now();
+      const existing = state.rules_acceptances.find((item) =>
+        item.discord_id === row.discordId &&
+        item.type === row.type
+      );
+      if (existing) {
+        existing.role_id = row.roleId ?? existing.role_id ?? null;
+        existing.accepted_at = now;
+        existing.source = row.source ?? existing.source ?? 'discord';
+        persist();
+        return clone(existing);
+      }
+      const acceptance = {
+        id: state.counters.rules_acceptances++,
+        discord_id: row.discordId,
+        type: row.type,
+        role_id: row.roleId ?? null,
+        accepted_at: now,
+        source: row.source ?? 'discord'
+      };
+      state.rules_acceptances.push(acceptance);
+      persist();
+      return clone(acceptance);
+    }
+  },
+  roleAssignments: {
+    upsert(row) {
+      const now = row.updatedAt ?? Date.now();
+      const existing = state.role_assignments.find((item) =>
+        item.discord_id === row.discordId &&
+        item.role_id === row.roleId
+      );
+      if (existing) {
+        existing.enabled = Boolean(row.enabled);
+        existing.updated_at = now;
+        persist();
+        return clone(existing);
+      }
+      const assignment = {
+        id: state.counters.role_assignments++,
+        discord_id: row.discordId,
+        role_id: row.roleId,
+        key: row.key,
+        enabled: Boolean(row.enabled),
+        updated_at: now
+      };
+      state.role_assignments.push(assignment);
+      persist();
+      return clone(assignment);
+    }
+  },
+  rolePanelMessages: {
+    create(row) {
+      const panel = {
+        id: state.counters.role_panel_messages++,
+        type: row.type,
+        channel_id: row.channelId,
+        message_id: row.messageId,
+        created_by: row.createdBy,
+        created_at: row.createdAt ?? Date.now()
+      };
+      state.role_panel_messages.push(panel);
+      persist();
+      return clone(panel);
     }
   },
   adminSessions: {

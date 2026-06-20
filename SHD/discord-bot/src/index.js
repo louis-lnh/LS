@@ -1,20 +1,26 @@
-import { Client, GatewayIntentBits } from 'discord.js';
+import { Client, Events, GatewayIntentBits } from 'discord.js';
 import { assertRuntimeConfig, config } from './config.js';
 import { statements } from './db.js';
 import { audit, systemLog } from './logger.js';
 import { handleInteraction } from './commands.js';
 import { startWeb } from './web.js';
+import { handlePanelInteraction } from './panels.js';
+import { handleTicketInteraction, handleTicketMessage } from './tickets.js';
 
 assertRuntimeConfig();
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers
+    ...(config.enableGuildMembersIntent ? [GatewayIntentBits.GuildMembers] : []),
+    ...(config.enableMessageContentIntent ? [
+      GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.MessageContent
+    ] : [])
   ]
 });
 
-client.once('ready', async () => {
+client.once(Events.ClientReady, async () => {
   statements.updateHealth.run({
     bot_started_at: statements.snapshot.get().service_health.bot_started_at ?? Date.now(),
     discord_ready_at: Date.now(),
@@ -32,7 +38,11 @@ client.once('ready', async () => {
 });
 
 client.on('interactionCreate', async (interaction) => {
-  await handleInteraction(interaction).catch(async (error) => {
+  await (async () => {
+    if (await handlePanelInteraction(interaction)) return;
+    if (await handleTicketInteraction(interaction)) return;
+    await handleInteraction(interaction);
+  })().catch(async (error) => {
     console.error('Interaction failed:', error);
     audit('discord.interaction_error', {
       actorId: interaction.user?.id ?? null,
@@ -48,6 +58,20 @@ client.on('interactionCreate', async (interaction) => {
     } else {
       await interaction.reply(message).catch(() => {});
     }
+  });
+});
+
+client.on(Events.MessageCreate, async (message) => {
+  await handleTicketMessage(message).catch(async (error) => {
+    console.error('Ticket message handling failed:', error);
+    audit('discord.message_error', {
+      actorId: message.author?.id ?? null,
+      data: {
+        channelId: message.channel?.id ?? null,
+        error: error.message
+      }
+    });
+    await message.reply('Something went wrong while checking that ticket key.').catch(() => {});
   });
 });
 

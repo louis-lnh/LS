@@ -5,6 +5,10 @@ Backend-first Discord bot for the SHD guild, websites, support flows, and future
 ## Current Scope
 
 - Discord `/status` command.
+- Discord `/panel ticket`, `/panel verify`, `/panel roles`, and `/setup check` commands.
+- Button-based SHD verification and public role panels.
+- Ticket panels for support, applications, appeals, reports, and partnerships.
+- Ticket thread claim/close controls and website submission key linking.
 - `GET /api/v1/health`.
 - `GET /api/v1/public/status`.
 - `POST /api/v1/public/support/submissions`.
@@ -37,6 +41,8 @@ npm start
 
 Fill `.env` with the SHD bot token, client ID, guild ID, owner/staff role IDs, and `API_SHARED_SECRET` before running in a real guild.
 
+The bot starts with only the non-privileged `Guilds` gateway intent. For richer guild workflows, enable the matching privileged intents in the Discord Developer Portal and set `ENABLE_GUILD_MEMBERS_INTENT=true` and `ENABLE_MESSAGE_CONTENT_INTENT=true`. Message content is required when users paste support keys into ticket threads.
+
 ## Scripts
 
 ```powershell
@@ -44,6 +50,21 @@ npm run check
 npm run register
 npm start
 ```
+
+## Guild Panels
+
+Staff can post Discord-native guild surfaces after commands are registered:
+
+```powershell
+npm run register
+```
+
+- `/panel verify`: posts the SHD accept/verify button and grants `SHD_VERIFIED_ROLE_ID`, plus `SHD_MEMBER_ROLE_ID` when configured.
+- `/panel roles`: posts self-service role buttons for announcements, events, and support pings.
+- `/panel ticket type:<type>`: posts ticket panels for support, application, appeal, report, or partnership flows.
+- `/setup check`: reports missing role/channel config and intent-dependent features.
+
+Ticket keys look like `SHD-APP-1A2B3C4D`, `SHD-SUP-1A2B3C4D`, `SHD-RPT-1A2B3C4D`, `SHD-APL-1A2B3C4D`, or `SHD-CON-1A2B3C4D`. Users paste them inside a ticket thread to attach their website submission to the Discord review.
 
 ## API
 

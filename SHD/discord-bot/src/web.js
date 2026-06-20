@@ -372,7 +372,7 @@ function adminSubmission(submission) {
     claimedById: submission.claimed_by,
     summary: submission.message,
     fields,
-    ticketThreadId: null,
+    ticketThreadId: submission.ticket_thread_id ?? null,
     requiresTicket: false,
     notes,
     activity
@@ -392,6 +392,7 @@ function adminSubmissionType(formType) {
 function adminSubmissionStatus(status) {
   return {
     submitted: 'New',
+    ticket_verified: 'Ticket verified',
     in_review: 'In review',
     needs_info: 'Waiting on player',
     waiting_on_player: 'Waiting on player',
