@@ -30,6 +30,10 @@ export const config = {
   publicBaseUrl: url('PUBLIC_BASE_URL', 'http://localhost:3010'),
   dataFile: process.env.DATA_FILE ?? './data/shd-bot.json',
   apiSharedSecret: process.env.API_SHARED_SECRET ?? '',
+  shdSite: {
+    internalBaseUrl: url('SHD_SITE_INTERNAL_API_BASE_URL', 'http://localhost:3000/api/internal/bot'),
+    internalToken: process.env.SHD_SITE_INTERNAL_TOKEN ?? ''
+  },
   production: bool('NODE_ENV_PRODUCTION', false) || process.env.NODE_ENV === 'production',
   enableGuildMembersIntent: bool('ENABLE_GUILD_MEMBERS_INTENT', false),
   enableMessageContentIntent: bool('ENABLE_MESSAGE_CONTENT_INTENT', false),
@@ -88,6 +92,7 @@ export function assertRuntimeConfig({ requireDiscord = true } = {}) {
   if (requireDiscord && !config.clientId) missing.push('DISCORD_CLIENT_ID');
   if (requireDiscord && !config.guildId) missing.push('DISCORD_GUILD_ID');
   if (!config.apiSharedSecret && config.production) missing.push('API_SHARED_SECRET');
+  if (!config.shdSite.internalToken && config.production) missing.push('SHD_SITE_INTERNAL_TOKEN');
   if (config.production && !config.admin.sessionSecret) missing.push('ADMIN_SESSION_SECRET');
   if (missing.length > 0) {
     throw new Error(`Missing required configuration: ${missing.join(', ')}`);

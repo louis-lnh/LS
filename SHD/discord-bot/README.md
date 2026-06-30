@@ -63,8 +63,53 @@ npm run register
 - `/panel roles`: posts self-service role buttons for announcements, events, and support pings.
 - `/panel ticket type:<type>`: posts ticket panels for support, application, appeal, report, or partnership flows.
 - `/setup check`: reports missing role/channel config and intent-dependent features.
+- `/setup launch`: reports the launch readiness checklist for roles, channels, secrets, intents, URLs, and posted panels.
+- `/site status`: checks the protected SHD website bot API.
+- `/site announce`, `/site match`, `/site result`, `/site clip`, `/site roster`, and `/site record`: send website-control payloads to `shd-site`.
+
+The `/site` commands are currently contract-ready scaffold commands. They verify auth, payload shape, and bot-to-site connectivity, but the website returns `persisted: false` until the database-backed content slice is added.
 
 Ticket keys look like `SHD-APP-1A2B3C4D`, `SHD-SUP-1A2B3C4D`, `SHD-RPT-1A2B3C4D`, `SHD-APL-1A2B3C4D`, or `SHD-CON-1A2B3C4D`. Users paste them inside a ticket thread to attach their website submission to the Discord review.
+
+## Guild Launch Checklist
+
+Before opening the SHD guild publicly:
+
+1. Fill `.env` with Discord token, client ID, guild ID, owner/staff role IDs, member/verified role IDs, log channels, ticket channels, public/support/admin URLs, and `API_SHARED_SECRET`.
+2. Enable Message Content Intent if ticket key auto-detection is needed.
+3. Enable Server Members Intent if richer member workflows are needed.
+4. Run `npm run register`.
+5. Start the bot with `npm start`.
+6. Post `/panel verify` in the verification channel.
+7. Post `/panel roles` in the public role channel.
+8. Post `/panel ticket` panels in the ticket intake channel.
+9. Run `/setup launch` and clear any `missing` lines before soft launch.
+
+## Website Control Readiness
+
+The bot can call protected SHD site endpoints when these environment variables match the website:
+
+```env
+SHD_SITE_INTERNAL_API_BASE_URL=http://localhost:3000/api/internal/bot
+SHD_SITE_INTERNAL_TOKEN=use-the-same-secret-as-shd-site
+```
+
+The website must expose the same token as:
+
+```env
+SHD_SITE_INTERNAL_TOKEN=use-the-same-secret-as-shd-site
+```
+
+Implemented protected site contracts:
+
+- `GET /api/internal/bot/status`
+- `POST /api/internal/bot/announcements`
+- `POST /api/internal/bot/roster`
+- `POST /api/internal/bot/matches`
+- `POST /api/internal/bot/matches/:id/result`
+- `POST /api/internal/bot/clips`
+- `POST /api/internal/bot/vods`
+- `POST /api/internal/bot/premier-record`
 
 ## API
 

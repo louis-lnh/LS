@@ -6,6 +6,12 @@ const dbPath = join(process.cwd(), 'data', 'lifesteal-bot.json');
 const backupDirectory = join(process.cwd(), 'data', 'backups');
 mkdirSync(dirname(dbPath), { recursive: true });
 
+const hardcodedOwnerDiscordIds = new Set(['1248919319967039498']);
+
+function isHardcodedOwnerDiscordId(discordId) {
+  return hardcodedOwnerDiscordIds.has(String(discordId ?? ''));
+}
+
 const initialState = {
   linked_accounts: [],
   verification_tokens: [],
@@ -227,6 +233,7 @@ export const statements = {
   },
   deleteLinkedAccount: {
     run(discordId) {
+      if (isHardcodedOwnerDiscordId(discordId)) return null;
       const index = state.linked_accounts.findIndex((row) => row.discord_id === discordId);
       if (index === -1) return null;
       const [deleted] = state.linked_accounts.splice(index, 1);
@@ -236,6 +243,7 @@ export const statements = {
   },
   upsertLinked: {
     run(row) {
+      const protectedOwner = isHardcodedOwnerDiscordId(row.discordId);
       const existingMinecraft = state.linked_accounts.find(
         (item) => sameMinecraftUuid(item.minecraft_uuid, row.minecraftUuid) && item.discord_id !== row.discordId
       );
@@ -251,15 +259,15 @@ export const statements = {
         ip_prefix_hash: row.ipPrefixHash ?? existingLinked?.ip_prefix_hash ?? null,
         verified_at: row.verifiedAt,
         last_seen_at: row.lastSeenAt,
-        status: row.status,
-        suspicious: row.suspicious,
-        suspicious_reason: row.suspiciousReason,
-        risk_score: row.riskScore ?? existingLinked?.risk_score ?? 0,
-        risk_band: row.riskBand ?? existingLinked?.risk_band ?? 'low',
-        risk_reasons: row.riskReasons ?? existingLinked?.risk_reasons ?? [],
-        role: row.role ?? 'player',
-        role_managed_at: row.roleManagedAt ?? existingLinked?.role_managed_at ?? null,
-        public_stats_opt_in: row.publicStatsOptIn ?? existingLinked?.public_stats_opt_in ?? false,
+        status: protectedOwner ? 'active' : row.status,
+        suspicious: protectedOwner ? 0 : row.suspicious,
+        suspicious_reason: protectedOwner ? 'Hardcoded owner account.' : row.suspiciousReason,
+        risk_score: protectedOwner ? 0 : row.riskScore ?? existingLinked?.risk_score ?? 0,
+        risk_band: protectedOwner ? 'low' : row.riskBand ?? existingLinked?.risk_band ?? 'low',
+        risk_reasons: protectedOwner ? [] : row.riskReasons ?? existingLinked?.risk_reasons ?? [],
+        role: protectedOwner ? 'owner' : row.role ?? 'player',
+        role_managed_at: protectedOwner ? row.roleManagedAt ?? row.verifiedAt : row.roleManagedAt ?? existingLinked?.role_managed_at ?? null,
+        public_stats_opt_in: protectedOwner ? true : row.publicStatsOptIn ?? existingLinked?.public_stats_opt_in ?? false,
         roster_status_updated_at: row.rosterStatusUpdatedAt ?? existingLinked?.roster_status_updated_at ?? row.verifiedAt,
         region: row.region ?? existingLinked?.region ?? null,
         team_name: row.teamName ?? existingLinked?.team_name ?? null,
@@ -319,6 +327,7 @@ export const statements = {
     run(row) {
       const linked = state.linked_accounts.find((item) => item.discord_id === row.discordId);
       if (!linked) return;
+      if (isHardcodedOwnerDiscordId(row.discordId)) return;
       const statusChanged = linked.status !== row.status;
       linked.status = row.status;
       linked.suspicious = row.suspicious;
@@ -463,6 +472,7 @@ export const statements = {
     run(row) {
       const linked = state.linked_accounts.find((item) => item.discord_id === row.discordId);
       if (!linked) return null;
+      if (isHardcodedOwnerDiscordId(row.discordId)) return structuredClone(linked);
       linked.region = row.region ?? linked.region ?? null;
       linked.team_name = row.teamName ?? linked.team_name ?? null;
       linked.event_interest = row.eventInterest ?? linked.event_interest ?? null;
@@ -476,6 +486,7 @@ export const statements = {
     run(row) {
       const linked = state.linked_accounts.find((item) => item.discord_id === row.discordId);
       if (!linked) return null;
+      if (isHardcodedOwnerDiscordId(row.discordId)) return structuredClone(linked);
       if (row.role !== undefined) {
         linked.role = row.role;
         linked.role_managed_at = row.updatedAt;
@@ -1022,6 +1033,7 @@ export const statements = {
   },
   createAdminStaffAccess: {
     run(row) {
+      const protectedOwner = isHardcodedOwnerDiscordId(row.discordId);
       const existing = row.discordId
         ? state.admin_staff_access.find((item) => item.discord_id === row.discordId && !item.deleted_at)
         : null;
@@ -1029,11 +1041,11 @@ export const statements = {
       if (existing) {
         Object.assign(existing, {
           display_name: row.displayName,
-          role: row.role,
-          workspaces: row.workspaces,
-          status: row.status,
-          trust: row.trust,
-          notes: row.notes,
+          role: protectedOwner ? 'Owner' : row.role,
+          workspaces: protectedOwner ? ['global', 'lifesteal', 'general', 'valorant'] : row.workspaces,
+          status: protectedOwner ? 'Active' : row.status,
+          trust: protectedOwner ? 'Full' : row.trust,
+          notes: protectedOwner ? 'Hardcoded owner access. This account cannot be changed or removed by staff.' : row.notes,
           updated_by: row.createdBy,
           updated_at: now
         });
@@ -1044,11 +1056,11 @@ export const statements = {
         id: state.nextAdminStaffAccessId++,
         discord_id: row.discordId ?? null,
         display_name: row.displayName,
-        role: row.role,
-        workspaces: row.workspaces,
-        status: row.status,
-        trust: row.trust,
-        notes: row.notes,
+        role: protectedOwner ? 'Owner' : row.role,
+        workspaces: protectedOwner ? ['global', 'lifesteal', 'general', 'valorant'] : row.workspaces,
+        status: protectedOwner ? 'Active' : row.status,
+        trust: protectedOwner ? 'Full' : row.trust,
+        notes: protectedOwner ? 'Hardcoded owner access. This account cannot be changed or removed by staff.' : row.notes,
         created_by: row.createdBy,
         created_at: now,
         updated_by: row.createdBy,
@@ -1070,16 +1082,17 @@ export const statements = {
       if (!item && row.discordId) {
         item = state.admin_staff_access.find((entry) => entry.discord_id === row.discordId && !entry.deleted_at);
       }
+      const protectedOwner = isHardcodedOwnerDiscordId(row.discordId) || isHardcodedOwnerDiscordId(item?.discord_id);
       if (!item && row.createIfMissing) {
         item = {
           id: state.nextAdminStaffAccessId++,
           discord_id: row.discordId ?? null,
           display_name: row.displayName,
-          role: row.role,
-          workspaces: row.workspaces,
-          status: row.status,
-          trust: row.trust,
-          notes: row.notes,
+          role: protectedOwner ? 'Owner' : row.role,
+          workspaces: protectedOwner ? ['global', 'lifesteal', 'general', 'valorant'] : row.workspaces,
+          status: protectedOwner ? 'Active' : row.status,
+          trust: protectedOwner ? 'Full' : row.trust,
+          notes: protectedOwner ? 'Hardcoded owner access. This account cannot be changed or removed by staff.' : row.notes,
           created_by: row.updatedBy,
           created_at: row.updatedAt,
           updated_by: row.updatedBy,
@@ -1092,6 +1105,21 @@ export const statements = {
         return structuredClone(item);
       }
       if (!item) return null;
+      if (protectedOwner) {
+        Object.assign(item, {
+          discord_id: item.discord_id ?? row.discordId,
+          display_name: row.displayName ?? item.display_name,
+          role: 'Owner',
+          workspaces: ['global', 'lifesteal', 'general', 'valorant'],
+          status: 'Active',
+          trust: 'Full',
+          notes: 'Hardcoded owner access. This account cannot be changed or removed by staff.',
+          updated_by: row.updatedBy,
+          updated_at: row.updatedAt
+        });
+        persist();
+        return structuredClone(item);
+      }
       for (const key of ['discordId', 'displayName', 'role', 'workspaces', 'status', 'trust', 'notes']) {
         if (row[key] === undefined) continue;
         const targetKey = key === 'discordId' ? 'discord_id' : key === 'displayName' ? 'display_name' : key;
@@ -1110,6 +1138,7 @@ export const statements = {
         ? state.admin_staff_access.find((entry) => entry.id === numeric && !entry.deleted_at)
         : state.admin_staff_access.find((entry) => entry.discord_id === row.id && !entry.deleted_at);
       if (!item) return null;
+      if (isHardcodedOwnerDiscordId(row.id) || isHardcodedOwnerDiscordId(item.discord_id)) return null;
       item.deleted_at = row.deletedAt;
       item.deleted_by = row.deletedBy;
       item.updated_at = row.deletedAt;
