@@ -16,16 +16,22 @@ const roleOptions = [
   {
     key: 'announcements',
     label: 'Announcements',
+    description: 'Roster updates, match posts, site news, and important SHD announcements.',
+    style: ButtonStyle.Primary,
     roleId: () => config.roles.announcements
   },
   {
     key: 'events',
     label: 'Events',
+    description: 'Community nights, watch parties, special sessions, and event reminders.',
+    style: ButtonStyle.Success,
     roleId: () => config.roles.events
   },
   {
     key: 'supportPing',
-    label: 'Support Ping',
+    label: 'Support',
+    description: 'Optional pings for support flow, ticket help, and staff-requested extra eyes.',
+    style: ButtonStyle.Secondary,
     roleId: () => config.roles.supportPing
   }
 ];
@@ -84,10 +90,7 @@ export async function handleRolePanelCommand(interaction) {
   }
 
   const message = await interaction.channel.send({
-    embeds: [new EmbedBuilder()
-      .setTitle('SHD Role Selection')
-      .setColor(0x5865f2)
-      .setDescription('Choose the updates you want to receive.')],
+    embeds: [rolePanelEmbed(configured)],
     components: [roleButtonRow(configured)]
   });
 
@@ -194,7 +197,28 @@ function roleButtonRow(options) {
       new ButtonBuilder()
         .setCustomId(`${ROLE_BUTTON_PREFIX}${option.key}`)
         .setLabel(option.label)
-        .setStyle(ButtonStyle.Secondary)
+        .setStyle(option.style)
     )
   );
+}
+
+function rolePanelEmbed(options) {
+  const embed = new EmbedBuilder()
+    .setTitle('SHD Notifications')
+    .setColor(0xead49f)
+    .setDescription([
+      'Choose what you want to be pinged for in the SHD guild.',
+      'These roles are optional, lightweight, and can be changed whenever your preferences change.'
+    ].join('\n'))
+    .setFooter({ text: 'Click a button again to remove that role.' });
+
+  for (const option of options) {
+    embed.addFields({
+      name: option.label,
+      value: option.description,
+      inline: false
+    });
+  }
+
+  return embed;
 }
