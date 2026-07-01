@@ -227,7 +227,7 @@ const rankMoveLifetimeMs = 24 * 60 * 60 * 1000
 const liveDataRefreshMs = 5000
 const backgroundLiveDataRefreshMs = 30000
 const seasonStarted = false
-const seasonStartTimestamp = Date.UTC(2026, 6, 20, 10, 0, 0)
+const seasonStartTimestamp = Date.UTC(2026, 6, 20, 16, 0, 0)
 
 const prestigeBadges: Record<PrestigeBadgeId, { label: string; shortLabel: string; image?: string }> = {
   owner: { label: 'Owner', shortLabel: 'OWN', image: ownerBadge },
