@@ -1085,6 +1085,24 @@ const legalPages: Record<string, LegalPageContent> = {
   },
 }
 
+const supportPortalHost = 'support.shd-esports.com'
+const supportPortalUrl = `https://${supportPortalHost}`
+
+function renderLegalBody(body: string) {
+  const parts = body.split(supportPortalHost)
+  if (parts.length === 1) return body
+
+  return parts.flatMap((part, index) => {
+    if (index === parts.length - 1) return [part]
+    return [
+      part,
+      <a key={`support-portal-${index}`} href={supportPortalUrl}>
+        {supportPortalHost}
+      </a>,
+    ]
+  })
+}
+
 function pageFromPath(): PageId {
   const value = window.location.pathname.replace(/^\/+/, '') as PageId
   return routeItems.some((item) => item.id === value) ? value : 'landing'
@@ -2083,7 +2101,7 @@ function LegalInfoPage({ page }: { page: PageId }) {
         {content.sections.map((section) => (
           <section key={section.title}>
             <h2>{section.title}</h2>
-            <p>{section.body}</p>
+            <p>{renderLegalBody(section.body)}</p>
           </section>
         ))}
       </article>
