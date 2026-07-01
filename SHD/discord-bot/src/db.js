@@ -25,6 +25,7 @@ const initialState = {
   support_submissions: [],
   admin_sessions: [],
   ticket_threads: [],
+  twitch_live_states: [],
   rules_acceptances: [],
   role_assignments: [],
   role_panel_messages: [],
@@ -308,6 +309,42 @@ export const statements = {
       ticket.updated_at = ticket.closed_at;
       persist();
       return clone(ticket);
+    }
+  },
+  twitchLiveStates: {
+    get(login) {
+      return clone(state.twitch_live_states.find((row) => row.login === login.toLowerCase()) ?? null);
+    },
+    upsert(row) {
+      const login = row.login.toLowerCase();
+      const existing = state.twitch_live_states.find((item) => item.login === login);
+      const now = Date.now();
+      if (existing) {
+        Object.assign(existing, row, {
+          login,
+          updated_at: now
+        });
+        persist();
+        return clone(existing);
+      }
+      const liveState = {
+        login,
+        display_name: row.display_name ?? row.login,
+        is_live: Boolean(row.is_live),
+        stream_id: row.stream_id ?? null,
+        notified_stream_id: row.notified_stream_id ?? null,
+        title: row.title ?? null,
+        game_name: row.game_name ?? null,
+        started_at: row.started_at ?? null,
+        last_seen_at: row.last_seen_at ?? now,
+        updated_at: now
+      };
+      state.twitch_live_states.push(liveState);
+      persist();
+      return clone(liveState);
+    },
+    all() {
+      return clone(state.twitch_live_states);
     }
   },
   rulesAcceptances: {

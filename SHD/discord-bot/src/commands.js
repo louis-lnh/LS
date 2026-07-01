@@ -361,7 +361,11 @@ function launchReadinessReport(snapshot) {
     check('role selection panel has been posted', panelTypes.has('roles'), 'warn'),
     check('announcement role configured', Boolean(config.roles.announcements), 'warn'),
     check('events role configured', Boolean(config.roles.events), 'warn'),
-    check('support ping role configured', Boolean(config.roles.supportPing), 'warn')
+    check('support ping role configured', Boolean(config.roles.supportPing), 'warn'),
+    check('live notification role configured', Boolean(config.roles.live), 'warn'),
+    check('Twitch live channel configured', Boolean(config.channels.twitchLive), 'warn'),
+    check('Twitch app credentials configured', Boolean(config.twitch.clientId && config.twitch.clientSecret), 'warn'),
+    check('Twitch usernames configured', config.twitch.usernames.length > 0, 'warn')
   ];
 
   const openTickets = snapshot.ticket_threads.filter((ticket) => ticket.status === 'open').length;

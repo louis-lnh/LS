@@ -28,6 +28,13 @@ const roleOptions = [
     roleId: () => config.roles.events
   },
   {
+    key: 'live',
+    label: 'Live',
+    description: 'Get pinged when linked SHD creators or players go live on Twitch.',
+    style: ButtonStyle.Primary,
+    roleId: () => config.roles.live
+  },
+  {
     key: 'supportPing',
     label: 'Support',
     description: 'Optional pings for support flow, ticket help, and staff-requested extra eyes.',

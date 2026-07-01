@@ -69,6 +69,23 @@ npm run register
 
 The `/site` commands are currently contract-ready scaffold commands. They verify auth, payload shape, and bot-to-site connectivity, but the website returns `persisted: false` until the database-backed content slice is added.
 
+## Twitch Live Notifications
+
+The bot can watch SHD Twitch accounts and post an embed when a watched account goes live.
+
+Required env:
+
+```env
+TWITCH_CLIENT_ID=
+TWITCH_CLIENT_SECRET=
+TWITCH_USERNAMES=accountone,accounttwo
+TWITCH_LIVE_CHANNEL_ID=
+SHD_LIVE_ROLE_ID=
+TWITCH_POLL_INTERVAL_MS=120000
+```
+
+`SHD_LIVE_ROLE_ID` is optional for the monitor, but recommended. When configured, the role panel includes a `Live` button and live embeds ping only that role. The bot stores announced Twitch stream IDs in the local JSON data file, so restarts should not repost the same live stream.
+
 Ticket keys look like `SHD-APP-1A2B3C4D`, `SHD-SUP-1A2B3C4D`, `SHD-RPT-1A2B3C4D`, `SHD-APL-1A2B3C4D`, or `SHD-CON-1A2B3C4D`. Users paste them inside a ticket thread to attach their website submission to the Discord review.
 
 ## Guild Launch Checklist

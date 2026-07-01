@@ -6,6 +6,7 @@ import { handleInteraction } from './commands.js';
 import { startWeb } from './web.js';
 import { handlePanelInteraction } from './panels.js';
 import { handleTicketInteraction, handleTicketMessage } from './tickets.js';
+import { startTwitchLiveMonitor } from './twitch.js';
 
 assertRuntimeConfig();
 
@@ -35,6 +36,7 @@ client.once(Events.ClientReady, async () => {
     { name: 'Bot', value: client.user?.tag ?? 'unknown', inline: true },
     { name: 'Guild', value: config.guildId, inline: true }
   ]);
+  startTwitchLiveMonitor(client);
 });
 
 client.on('interactionCreate', async (interaction) => {

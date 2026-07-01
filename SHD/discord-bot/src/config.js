@@ -50,7 +50,8 @@ export const config = {
     verified: process.env.SHD_VERIFIED_ROLE_ID ?? '',
     announcements: process.env.SHD_ANNOUNCEMENTS_ROLE_ID ?? '',
     events: process.env.SHD_EVENTS_ROLE_ID ?? '',
-    supportPing: process.env.SHD_SUPPORT_PING_ROLE_ID ?? ''
+    supportPing: process.env.SHD_SUPPORT_PING_ROLE_ID ?? '',
+    live: process.env.SHD_LIVE_ROLE_ID ?? '',
   },
   channels: {
     securityLog: process.env.SECURITY_LOG_CHANNEL_ID ?? '',
@@ -58,7 +59,14 @@ export const config = {
     supportLog: process.env.SUPPORT_LOG_CHANNEL_ID ?? '',
     systemLog: process.env.SYSTEM_LOG_CHANNEL_ID ?? '',
     ticketNotify: process.env.TICKET_NOTIFY_CHANNEL_ID ?? '',
-    ticketArchive: process.env.TICKET_ARCHIVE_CHANNEL_ID ?? ''
+    ticketArchive: process.env.TICKET_ARCHIVE_CHANNEL_ID ?? '',
+    twitchLive: process.env.TWITCH_LIVE_CHANNEL_ID ?? ''
+  },
+  twitch: {
+    clientId: process.env.TWITCH_CLIENT_ID ?? '',
+    clientSecret: process.env.TWITCH_CLIENT_SECRET ?? '',
+    usernames: list('TWITCH_USERNAMES').map((name) => name.toLowerCase()),
+    pollIntervalMs: int('TWITCH_POLL_INTERVAL_MS', 120_000)
   },
   websites: {
     publicSite: url('PUBLIC_SITE_URL'),
