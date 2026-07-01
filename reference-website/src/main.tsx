@@ -227,7 +227,7 @@ const rankMoveLifetimeMs = 24 * 60 * 60 * 1000
 const liveDataRefreshMs = 5000
 const backgroundLiveDataRefreshMs = 30000
 const seasonStarted = false
-const seasonStartTimestamp = Date.UTC(2026, 6, 1, 10, 0, 0)
+const seasonStartTimestamp = Date.UTC(2026, 6, 20, 10, 0, 0)
 
 const prestigeBadges: Record<PrestigeBadgeId, { label: string; shortLabel: string; image?: string }> = {
   owner: { label: 'Owner', shortLabel: 'OWN', image: ownerBadge },
@@ -1161,17 +1161,17 @@ function Landing({ liveHealth, liveLoaded, liveStatus, onNavigate }: { liveHealt
   const population = !seasonStarted
     ? eventCountdown
     : hasLivePopulation
-    ? `${liveStatus.online_players} / ${liveStatus.max_players} Players`
-    : liveLoaded
-      ? 'Live status unavailable'
-      : 'Loading live data'
+      ? `${liveStatus.online_players} / ${liveStatus.max_players} Players`
+      : liveLoaded
+        ? 'Live status unavailable'
+        : 'Loading live data'
   const populationNote = !seasonStarted
     ? 'July 1, 2026 - 12:00 CEST. Registered players are listed on the Players page until Season 1 begins.'
     : hasLivePopulation
-    ? `Updated ${relativeTime(liveStatus.updated_at)}`
-    : liveLoaded
-      ? 'Waiting for the next public server sync.'
-      : 'Connecting to the public live API.'
+      ? `Updated ${relativeTime(liveStatus.updated_at)}`
+      : liveLoaded
+        ? 'Waiting for the next public server sync.'
+        : 'Connecting to the public live API.'
 
   useEffect(() => {
     if (seasonStarted) return
