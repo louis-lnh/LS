@@ -4,7 +4,7 @@ import { statements } from './db.js';
 import { audit } from './logger.js';
 import { hasStaffAccess, missingPermissionMessage } from './permissions.js';
 import { handleVerifyPanelCommand, handleRolePanelCommand } from './panels.js';
-import { siteConfigured, siteGet, sitePost } from './site-client.js';
+import { siteConfigured, siteDelete, siteGet, sitePatch, sitePost } from './site-client.js';
 import { handleTicketPanelCommand, ticketTypeChoices } from './tickets.js';
 
 const statusCommand = new SlashCommandBuilder()
@@ -80,6 +80,31 @@ const siteCommand = new SlashCommandBuilder()
   )
   .addSubcommand((subcommand) =>
     subcommand
+      .setName('list')
+      .setDescription('List website content and useful IDs.')
+      .addStringOption((option) =>
+        option
+          .setName('type')
+          .setDescription('Which content to list.')
+          .addChoices(
+            { name: 'summary', value: 'summary' },
+            { name: 'roster', value: 'roster' },
+            { name: 'matches', value: 'matches' },
+            { name: 'clips', value: 'clips' },
+            { name: 'announcements', value: 'announcements' },
+            { name: 'audit', value: 'audit' }
+          )
+      )
+      .addIntegerOption((option) =>
+        option
+          .setName('limit')
+          .setDescription('Rows to show.')
+          .setMinValue(1)
+          .setMaxValue(10)
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
       .setName('announce')
       .setDescription('Stage a website announcement.')
       .addStringOption((option) => option.setName('title').setDescription('Announcement title.').setRequired(true).setMaxLength(120))
@@ -128,6 +153,24 @@ const siteCommand = new SlashCommandBuilder()
   )
   .addSubcommand((subcommand) =>
     subcommand
+      .setName('edit-match')
+      .setDescription('Edit an existing website match.')
+      .addStringOption((option) => option.setName('match_id').setDescription('Website match id.').setRequired(true).setMaxLength(80))
+      .addStringOption((option) => option.setName('opponent').setDescription('Opponent name.').setMaxLength(120))
+      .addStringOption((option) => option.setName('starts_at').setDescription('ISO date/time or readable schedule text.').setMaxLength(80))
+      .addStringOption((option) => option.setName('event_type').setDescription('Premier, scrim, tournament, or showmatch.').setMaxLength(40))
+      .addStringOption((option) => option.setName('maps').setDescription('Comma-separated map list.').setMaxLength(200))
+      .addStringOption((option) => option.setName('notes').setDescription('Short review notes.').setMaxLength(1000))
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName('vod')
+      .setDescription('Attach a VOD link to a website match.')
+      .addStringOption((option) => option.setName('match_id').setDescription('Website match id.').setRequired(true).setMaxLength(80))
+      .addStringOption((option) => option.setName('url').setDescription('VOD URL.').setRequired(true).setMaxLength(500))
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
       .setName('clip')
       .setDescription('Stage a website clip.')
       .addStringOption((option) => option.setName('title').setDescription('Clip title.').setRequired(true).setMaxLength(140))
@@ -135,6 +178,37 @@ const siteCommand = new SlashCommandBuilder()
       .addStringOption((option) => option.setName('url').setDescription('Clip URL.').setRequired(true).setMaxLength(500))
       .addStringOption((option) => option.setName('map').setDescription('Map name.').setMaxLength(80))
       .addStringOption((option) => option.setName('tags').setDescription('Comma-separated tags.').setMaxLength(200))
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName('edit-clip')
+      .setDescription('Edit an existing website clip.')
+      .addStringOption((option) => option.setName('clip_id').setDescription('Website clip id.').setRequired(true).setMaxLength(120))
+      .addStringOption((option) => option.setName('title').setDescription('Clip title.').setMaxLength(140))
+      .addStringOption((option) => option.setName('player').setDescription('Player name.').setMaxLength(80))
+      .addStringOption((option) => option.setName('url').setDescription('Clip URL.').setMaxLength(500))
+      .addStringOption((option) => option.setName('map').setDescription('Map name.').setMaxLength(80))
+      .addStringOption((option) => option.setName('tags').setDescription('Comma-separated tags.').setMaxLength(200))
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName('edit-announce')
+      .setDescription('Edit an existing website announcement.')
+      .addStringOption((option) => option.setName('announcement_id').setDescription('Website announcement id.').setRequired(true).setMaxLength(140))
+      .addStringOption((option) => option.setName('title').setDescription('Announcement title.').setMaxLength(120))
+      .addStringOption((option) => option.setName('body').setDescription('Announcement body.').setMaxLength(2000))
+      .addStringOption((option) =>
+        option
+          .setName('kind')
+          .setDescription('Announcement type.')
+          .addChoices(
+            { name: 'site', value: 'site' },
+            { name: 'match', value: 'match' },
+            { name: 'result', value: 'result' },
+            { name: 'roster', value: 'roster' },
+            { name: 'clip', value: 'clip' }
+          )
+      )
   )
   .addSubcommand((subcommand) =>
     subcommand
@@ -153,6 +227,24 @@ const siteCommand = new SlashCommandBuilder()
       .addIntegerOption((option) => option.setName('wins').setDescription('Wins.').setRequired(true).setMinValue(0))
       .addIntegerOption((option) => option.setName('losses').setDescription('Losses.').setRequired(true).setMinValue(0))
       .addStringOption((option) => option.setName('season').setDescription('Season label.').setMaxLength(80))
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName('delete')
+      .setDescription('Delete website content by id.')
+      .addStringOption((option) =>
+        option
+          .setName('type')
+          .setDescription('Content type.')
+          .setRequired(true)
+          .addChoices(
+            { name: 'match', value: 'match' },
+            { name: 'clip', value: 'clip' },
+            { name: 'announcement', value: 'announcement' },
+            { name: 'roster', value: 'roster' }
+          )
+      )
+      .addStringOption((option) => option.setName('id').setDescription('Website content id.').setRequired(true).setMaxLength(140))
   );
 
 export const commands = [
@@ -433,6 +525,11 @@ async function runSiteCommand(interaction, subcommand) {
   if (subcommand === 'status') {
     return siteGet('/status');
   }
+  if (subcommand === 'list') {
+    const type = interaction.options.getString('type') ?? 'summary';
+    const limit = interaction.options.getInteger('limit') ?? 8;
+    return siteGet(`/content?type=${encodeURIComponent(type)}&limit=${limit}`);
+  }
   if (subcommand === 'announce') {
     return sitePost('/announcements', {
       title: interaction.options.getString('title', true),
@@ -456,6 +553,22 @@ async function runSiteCommand(interaction, subcommand) {
       reviewNotes: interaction.options.getString('notes') ?? ''
     }, interaction.user.id);
   }
+  if (subcommand === 'edit-match') {
+    const matchId = interaction.options.getString('match_id', true);
+    return sitePatch(`/matches/${encodeURIComponent(matchId)}`, {
+      opponent: interaction.options.getString('opponent') ?? '',
+      startsAt: interaction.options.getString('starts_at') ?? '',
+      eventType: interaction.options.getString('event_type') ?? '',
+      maps: splitCsv(interaction.options.getString('maps')),
+      reviewNotes: interaction.options.getString('notes') ?? ''
+    }, interaction.user.id);
+  }
+  if (subcommand === 'vod') {
+    return sitePost('/vods', {
+      matchId: interaction.options.getString('match_id', true),
+      vodUrl: interaction.options.getString('url', true)
+    }, interaction.user.id);
+  }
   if (subcommand === 'clip') {
     return sitePost('/clips', {
       title: interaction.options.getString('title', true),
@@ -463,6 +576,24 @@ async function runSiteCommand(interaction, subcommand) {
       sourceUrl: interaction.options.getString('url', true),
       map: interaction.options.getString('map') ?? '',
       tags: splitCsv(interaction.options.getString('tags'))
+    }, interaction.user.id);
+  }
+  if (subcommand === 'edit-clip') {
+    const clipId = interaction.options.getString('clip_id', true);
+    return sitePatch(`/clips/${encodeURIComponent(clipId)}`, {
+      title: interaction.options.getString('title') ?? '',
+      player: interaction.options.getString('player') ?? '',
+      sourceUrl: interaction.options.getString('url') ?? '',
+      map: interaction.options.getString('map') ?? '',
+      tags: splitCsv(interaction.options.getString('tags'))
+    }, interaction.user.id);
+  }
+  if (subcommand === 'edit-announce') {
+    const announcementId = interaction.options.getString('announcement_id', true);
+    return sitePatch(`/announcements/${encodeURIComponent(announcementId)}`, {
+      title: interaction.options.getString('title') ?? '',
+      body: interaction.options.getString('body') ?? '',
+      kind: interaction.options.getString('kind') ?? ''
     }, interaction.user.id);
   }
   if (subcommand === 'roster') {
@@ -481,7 +612,19 @@ async function runSiteCommand(interaction, subcommand) {
       seasonLabel: interaction.options.getString('season') ?? 'Premier Stage'
     }, interaction.user.id);
   }
+  if (subcommand === 'delete') {
+    const type = interaction.options.getString('type', true);
+    const id = interaction.options.getString('id', true);
+    return siteDelete(`/${deletePathForType(type)}/${encodeURIComponent(id)}`, interaction.user.id);
+  }
   throw new Error(`Unsupported site subcommand: ${subcommand}`);
+}
+
+function deletePathForType(type) {
+  if (type === 'match') return 'matches';
+  if (type === 'clip') return 'clips';
+  if (type === 'announcement') return 'announcements';
+  return 'roster';
 }
 
 function splitCsv(value) {
@@ -492,12 +635,108 @@ function splitCsv(value) {
 }
 
 function siteCommandReply(response) {
+  if (response.content) return siteContentReply(response.content);
+
+  const details = siteResponseDetails(response);
   return [
-    '**SHD Site API**',
-    `ok: ${response.ok ? 'yes' : 'no'}`,
-    `action: ${response.action ?? 'status'}`,
-    `mode: ${response.mode ?? 'live'}`,
-    `persisted: ${response.persisted ? 'yes' : 'no'}`,
-    response.message ? `message: ${response.message}` : null
+    '**SHD Site Control**',
+    `Status: ${response.ok ? 'saved' : 'failed'}`,
+    `Action: ${response.action ?? 'status'}`,
+    `Storage: ${response.persisted ? 'SQLite' : response.mode ?? 'live'}`,
+    response.storage ? `Backend: ${response.storage}` : null,
+    response.message ? `Message: ${response.message}` : null,
+    details.length ? '' : null,
+    ...details
   ].filter(Boolean).join('\n').slice(0, 1900);
+}
+
+function siteResponseDetails(response) {
+  if (response.announcement) {
+    return [
+      `Announcement ID: \`${response.announcement.id}\``,
+      `Title: ${response.announcement.title}`,
+      `Kind: ${response.announcement.kind}`
+    ];
+  }
+  if (response.match) {
+    return [
+      `Match ID: \`${response.match.id}\``,
+      `Opponent: ${response.match.opponent}`,
+      `Status: ${response.match.status}`,
+      `Score: ${response.match.score}`,
+      `Maps: ${listOrFallback(response.match.maps, 'TBD')}`
+    ];
+  }
+  if (response.clip) {
+    return [
+      `Clip ID: \`${response.clip.id}\``,
+      `Title: ${response.clip.title}`,
+      `Player: ${response.clip.player}`,
+      `Tags: ${listOrFallback(response.clip.tags, 'none')}`
+    ];
+  }
+  if (response.member) {
+    return [
+      `Member ID: \`${response.member.id}\``,
+      `Name: ${response.member.displayName}`,
+      `Riot ID: ${response.member.riotId}`,
+      `Rank row: #${response.member.rank}`
+    ];
+  }
+  if (response.stats) {
+    return [
+      `Season: ${response.stats.seasonLabel}`,
+      `Record: ${response.stats.wins}-${response.stats.losses}`
+    ];
+  }
+  if (response.deletion) {
+    return [
+      `Deleted: ${response.deletion.removed ? 'yes' : 'no'}`,
+      `Type: ${response.deletion.type}`,
+      `ID: \`${response.deletion.id}\``,
+      `Rows removed: ${response.deletion.deleted}`
+    ];
+  }
+  if (Array.isArray(response.capabilities)) {
+    return [`Capabilities: ${response.capabilities.join(', ')}`];
+  }
+  return [];
+}
+
+function siteContentReply(content) {
+  const lines = [
+    `**SHD Site ${titleCase(content.type)}**`,
+    content.counts ? `Counts: ${Object.entries(content.counts).map(([key, value]) => `${key} ${value}`).join(' | ')}` : null,
+    ''
+  ].filter(Boolean);
+
+  if (content.type === 'matches') {
+    lines.push(...content.matches.map((match) => `\`${match.id}\` ${match.status} ${match.opponent} | ${match.score} | ${listOrFallback(match.maps, 'TBD')}`));
+  } else if (content.type === 'roster') {
+    lines.push(...content.members.map((member) => `#${member.rank} \`${member.id}\` ${member.displayName} | ${member.riotId} | ${member.peak}`));
+  } else if (content.type === 'clips') {
+    lines.push(...content.clips.map((clip) => `\`${clip.id}\` ${clip.title} | ${clip.player} | ${clip.map}`));
+  } else if (content.type === 'announcements') {
+    lines.push(...content.announcements.map((item) => `\`${item.id}\` ${item.kind} | ${item.title}`));
+  } else if (content.type === 'audit') {
+    lines.push(...content.auditEvents.map((event) => `#${event.id} ${event.type} <t:${Math.floor(event.createdAt / 1000)}:R>`));
+  } else if (content.latest) {
+    lines.push(
+      content.latest.match ? `Latest match: \`${content.latest.match.id}\` ${content.latest.match.opponent}` : 'Latest match: none',
+      content.latest.clip ? `Latest clip: \`${content.latest.clip.id}\` ${content.latest.clip.title}` : 'Latest clip: none',
+      content.latest.announcement ? `Latest announcement: \`${content.latest.announcement.id}\` ${content.latest.announcement.title}` : 'Latest announcement: none',
+      content.latest.auditEvent ? `Latest audit: #${content.latest.auditEvent.id} ${content.latest.auditEvent.type}` : 'Latest audit: none'
+    );
+  }
+
+  if (lines.length <= 3) lines.push('No rows found.');
+  return lines.join('\n').slice(0, 1900);
+}
+
+function listOrFallback(value, fallback) {
+  return Array.isArray(value) && value.length ? value.join(', ') : fallback;
+}
+
+function titleCase(value) {
+  return String(value ?? 'summary').replace(/^\w/, (letter) => letter.toUpperCase());
 }

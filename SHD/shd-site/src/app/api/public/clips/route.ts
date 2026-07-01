@@ -1,5 +1,5 @@
-import { clips } from "@/lib/site-data";
+import { getClips } from "@/lib/content-store";
 
 export async function GET() {
-  return Response.json({ ok: true, clips, updatedAt: Date.now() });
+  return Response.json({ ok: true, clips: getClips(), updatedAt: Date.now() });
 }

@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { CoreRosterCarousel } from "@/components/core-roster-carousel";
-import { announcements, clips, matches, members, players, stats } from "@/lib/site-data";
+import type { SiteStats } from "@/lib/content-store";
+import type { Announcement, Clip, Match, Member, Player } from "@/lib/site-data";
 
 const rankIcon = {
   "ascendant-1": "/ranks/ascendant-1.png",
@@ -13,13 +14,16 @@ const rankIcon = {
 };
 
 export function formatDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value || "TBD";
+
   return new Intl.DateTimeFormat("en-GB", {
     timeZone: "Europe/Berlin",
     month: "short",
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-  }).format(new Date(value));
+  }).format(date);
 }
 
 function resultLabel(result: string) {
@@ -64,10 +68,18 @@ export function PageIntro({
   );
 }
 
-export function RosterSection() {
+export function RosterSection({ members, players }: { members: Member[]; players: Player[] }) {
   return (
     <>
-      <CoreRosterCarousel players={players} />
+      {players.length > 0 ? (
+        <CoreRosterCarousel players={players} />
+      ) : (
+        <section className="feature-panel page-section">
+          <span className="panel-kicker">Roster</span>
+          <h2>Core roster coming soon</h2>
+          <p>The featured player cards will appear once the first core members are added.</p>
+        </section>
+      )}
       <section className="member-title page-section" aria-label="SHD members title">
         <h2>Full Roster</h2>
       </section>
@@ -86,28 +98,34 @@ export function RosterSection() {
             <div className="member-board__col">Move</div>
           </div>
           <div className="member-board__body">
-          {members.map((member) => (
-            <article className="member-row" key={member.id}>
-              <span className="member-row__cell member-row__cell--rank">
-                #{member.rank}
-              </span>
-              <strong className="member-row__cell member-row__cell--name">{member.displayName}</strong>
-              <span className="member-row__cell member-row__cell--name member-row__riot">{member.riotId}</span>
-              <span className="member-row__cell member-row__cell--icon">
-                <Image src={rankIcon[member.peak]} alt="" width={34} height={34} />
-              </span>
-              <span className="member-row__cell">{member.kda}</span>
-              <span className="member-row__cell">{member.win}</span>
-              <span className="member-row__cell">{member.matches}</span>
-              <span className="member-row__cell">{member.hs}</span>
-              <span className="member-row__cell">{member.acs}</span>
-              <span className="member-row__cell member-row__cell--move">
-                <span className={`movement movement--${member.move}`}>
-                  {member.move === "steady" ? "-" : "<"}
-                </span>
-              </span>
-            </article>
-          ))}
+            {members.length > 0 ? (
+              members.map((member) => (
+                <article className="member-row" key={member.id}>
+                  <span className="member-row__cell member-row__cell--rank">
+                    #{member.rank}
+                  </span>
+                  <strong className="member-row__cell member-row__cell--name">{member.displayName}</strong>
+                  <span className="member-row__cell member-row__cell--name member-row__riot">{member.riotId}</span>
+                  <span className="member-row__cell member-row__cell--icon">
+                    <Image src={rankIcon[member.peak] ?? "/ranks/gold-1.png"} alt="" width={34} height={34} />
+                  </span>
+                  <span className="member-row__cell">{member.kda}</span>
+                  <span className="member-row__cell">{member.win}</span>
+                  <span className="member-row__cell">{member.matches}</span>
+                  <span className="member-row__cell">{member.hs}</span>
+                  <span className="member-row__cell">{member.acs}</span>
+                  <span className="member-row__cell member-row__cell--move">
+                    <span className={`movement movement--${member.move}`}>
+                      {member.move === "steady" ? "-" : "<"}
+                    </span>
+                  </span>
+                </article>
+              ))
+            ) : (
+              <article className="member-row">
+                <strong className="member-row__cell member-row__cell--name">No members listed yet</strong>
+              </article>
+            )}
           </div>
         </div>
       </section>
@@ -115,7 +133,7 @@ export function RosterSection() {
   );
 }
 
-export function MatchBoard() {
+export function MatchBoard({ matches }: { matches: Match[] }) {
   const scheduledMatches = matches.filter((match) => match.status === "scheduled");
   const pastMatches = matches.filter((match) => match.status === "completed");
 
@@ -127,7 +145,7 @@ export function MatchBoard() {
   );
 }
 
-function MatchGroup({ detail, matches: groupMatches, title }: { detail: string; matches: typeof matches; title: string }) {
+function MatchGroup({ detail, matches: groupMatches, title }: { detail: string; matches: Match[]; title: string }) {
   return (
     <section className="match-group">
       <header className="match-group-header">
@@ -137,50 +155,68 @@ function MatchGroup({ detail, matches: groupMatches, title }: { detail: string; 
         </div>
         <strong>{groupMatches.length}</strong>
       </header>
-      {groupMatches.map((match) => (
-        <article className="match-row" key={match.id}>
+      {groupMatches.length > 0 ? (
+        groupMatches.map((match) => (
+          <article className="match-row" key={match.id}>
+            <div>
+              <span className={`result-badge ${match.result}`}>{resultLabel(match.result)}</span>
+              <h3>{match.opponent}</h3>
+              <p>{match.reviewNotes || "Notes will be added after staff review."}</p>
+            </div>
+            <div className="match-meta">
+              <Detail label="Date" value={formatDate(match.startsAt)} />
+              <Detail label="Type" value={match.eventType} />
+              <Detail label="Score" value={match.score || "-"} />
+              <Detail label="Maps" value={match.maps.length ? match.maps.join(", ") : "TBD"} />
+            </div>
+          </article>
+        ))
+      ) : (
+        <article className="match-row">
           <div>
-            <span className={`result-badge ${match.result}`}>{resultLabel(match.result)}</span>
-            <h3>{match.opponent}</h3>
-            <p>{match.reviewNotes}</p>
-          </div>
-          <div className="match-meta">
-            <Detail label="Date" value={formatDate(match.startsAt)} />
-            <Detail label="Type" value={match.eventType} />
-            <Detail label="Score" value={match.score} />
-            <Detail label="Maps" value={match.maps.join(", ")} />
+            <span className="result-badge pending">Empty</span>
+            <h3>No matches here yet</h3>
+            <p>New entries will appear here once they are added through Discord.</p>
           </div>
         </article>
-      ))}
+      )}
     </section>
   );
 }
 
-export function ClipGrid() {
+export function ClipGrid({ clips }: { clips: Clip[] }) {
   return (
     <section className="clip-grid page-section">
-      {clips.map((clip) => (
-        <article className="clip-card" key={clip.id}>
-          <div className="clip-thumb">
-            <Image src={clip.thumbnail} alt="" width={420} height={260} />
-          </div>
-          <span className="panel-kicker">{clip.map}</span>
-          <h3>{clip.title}</h3>
-          <p>
-            {clip.player} &middot; {formatDate(clip.publishedAt)}
-          </p>
-          <div className="agent-list">
-            {clip.tags.map((tag) => (
-              <span key={tag}>{tag}</span>
-            ))}
-          </div>
+      {clips.length > 0 ? (
+        clips.map((clip) => (
+          <article className="clip-card" key={clip.id}>
+            <div className="clip-thumb">
+              <Image src={clip.thumbnail || "/brand/shd-logo-no-text.png"} alt="" width={420} height={260} />
+            </div>
+            <span className="panel-kicker">{clip.map || "TBD"}</span>
+            <h3>{clip.title}</h3>
+            <p>
+              {clip.player} &middot; {formatDate(clip.publishedAt)}
+            </p>
+            <div className="agent-list">
+              {(clip.tags.length ? clip.tags : ["highlight"]).map((tag) => (
+                <span key={tag}>{tag}</span>
+              ))}
+            </div>
+          </article>
+        ))
+      ) : (
+        <article className="feature-panel">
+          <span className="panel-kicker">Clips</span>
+          <h2>No clips posted yet</h2>
+          <p>Highlights added through Discord will show up here.</p>
         </article>
-      ))}
+      )}
     </section>
   );
 }
 
-export function StatsSnapshot() {
+export function StatsSnapshot({ stats }: { stats: SiteStats }) {
   return (
     <section className="stats-layout page-section">
       <article className="feature-panel">
@@ -192,7 +228,7 @@ export function StatsSnapshot() {
       </article>
       <article className="data-panel">
         <h3>Map Pool</h3>
-        {stats.mapStats.map((map) => (
+        {(stats.mapStats.length ? stats.mapStats : [{ map: "TBD", record: "/", winRate: "/" }]).map((map) => (
           <div className="data-line" key={map.map}>
             <span>{map.map}</span>
             <strong>{map.record}</strong>
@@ -202,7 +238,7 @@ export function StatsSnapshot() {
       </article>
       <article className="data-panel">
         <h3>Agent Usage</h3>
-        {stats.agentUsage.map((agent) => (
+        {(stats.agentUsage.length ? stats.agentUsage : [{ agent: "TBD", picks: 0 }]).map((agent) => (
           <div className="data-line" key={agent.agent}>
             <span>{agent.agent}</span>
             <strong>{agent.picks}</strong>
@@ -214,7 +250,7 @@ export function StatsSnapshot() {
   );
 }
 
-export function AboutPanels() {
+export function AboutPanels({ announcements }: { announcements: Announcement[] }) {
   return (
     <section className="about-grid page-section">
       <article className="feature-panel">
@@ -227,12 +263,19 @@ export function AboutPanels() {
       </article>
       <article className="feature-panel">
         <span className="panel-kicker">Announcements</span>
-        {announcements.map((item) => (
-          <div className="announcement" key={item.id}>
-            <strong>{item.title}</strong>
-            <p>{item.body}</p>
+        {announcements.length > 0 ? (
+          announcements.map((item) => (
+            <div className="announcement" key={item.id}>
+              <strong>{item.title}</strong>
+              <p>{item.body}</p>
+            </div>
+          ))
+        ) : (
+          <div className="announcement">
+            <strong>No announcements yet</strong>
+            <p>Team updates added through Discord will appear here.</p>
           </div>
-        ))}
+        )}
       </article>
     </section>
   );

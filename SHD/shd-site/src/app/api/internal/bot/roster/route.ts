@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { acceptedScaffold, readJsonBody, requireBotAuth, requireString } from "@/lib/internal-bot-api";
+import { upsertRosterFromBot } from "@/lib/content-store";
+import { readJsonBody, requireBotAuth, requireString } from "@/lib/internal-bot-api";
 
 export async function POST(request: NextRequest) {
   const authError = requireBotAuth(request);
@@ -13,5 +14,6 @@ export async function POST(request: NextRequest) {
     return Response.json({ ok: false, code: "INVALID_ROSTER_PAYLOAD", error: "displayName and riotId are required." }, { status: 400 });
   }
 
-  return acceptedScaffold("roster.upsert", { ...body, displayName, riotId, status });
+  const member = upsertRosterFromBot({ ...body, displayName, riotId, status });
+  return Response.json({ ok: true, action: "roster.upsert", persisted: true, member, updatedAt: Date.now() });
 }

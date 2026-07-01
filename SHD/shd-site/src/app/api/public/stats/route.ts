@@ -1,5 +1,5 @@
-import { stats } from "@/lib/site-data";
+import { getStats } from "@/lib/content-store";
 
 export async function GET() {
-  return Response.json({ ok: true, stats, updatedAt: Date.now() });
+  return Response.json({ ok: true, stats: getStats(), updatedAt: Date.now() });
 }

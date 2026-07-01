@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { acceptedScaffold, readJsonBody, requireBotAuth, requireString } from "@/lib/internal-bot-api";
+import { createAnnouncementFromBot } from "@/lib/content-store";
+import { readJsonBody, requireBotAuth, requireString } from "@/lib/internal-bot-api";
 
 export async function POST(request: NextRequest) {
   const authError = requireBotAuth(request);
@@ -13,5 +14,6 @@ export async function POST(request: NextRequest) {
     return Response.json({ ok: false, code: "INVALID_ANNOUNCEMENT", error: "title and body are required." }, { status: 400 });
   }
 
-  return acceptedScaffold("announcement.create", { title, body: bodyText, kind, actor: request.headers.get("x-shd-actor") ?? "discord-bot" });
+  const announcement = createAnnouncementFromBot({ title, body: bodyText, kind, actor: request.headers.get("x-shd-actor") ?? "discord-bot" });
+  return Response.json({ ok: true, action: "announcement.create", persisted: true, announcement, updatedAt: Date.now() });
 }

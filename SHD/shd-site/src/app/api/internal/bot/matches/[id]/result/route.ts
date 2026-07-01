@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { acceptedScaffold, readJsonBody, requireBotAuth, requireString } from "@/lib/internal-bot-api";
+import { updateMatchResultFromBot } from "@/lib/content-store";
+import { readJsonBody, requireBotAuth, requireString } from "@/lib/internal-bot-api";
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const authError = requireBotAuth(request);
@@ -13,5 +14,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     return Response.json({ ok: false, code: "INVALID_MATCH_RESULT", error: "result and score are required." }, { status: 400 });
   }
 
-  return acceptedScaffold("match.result", { ...body, id, result, score });
+  const match = updateMatchResultFromBot(id, { ...body, result, score });
+  if (!match) {
+    return Response.json({ ok: false, code: "MATCH_NOT_FOUND", error: "No match exists with that id." }, { status: 404 });
+  }
+  return Response.json({ ok: true, action: "match.result", persisted: true, match, updatedAt: Date.now() });
 }

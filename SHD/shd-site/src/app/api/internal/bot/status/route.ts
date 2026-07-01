@@ -17,9 +17,14 @@ export async function GET(request: NextRequest) {
       "clips",
       "vods",
       "premier-record",
+      "content-summary",
+      "audit-summary",
+      "content-edit",
+      "content-delete",
     ],
-    persisted: false,
-    message: "Internal bot API is reachable. Persistence lands with the database slice.",
+    persisted: true,
+    storage: "sqlite",
+    message: "Internal bot API is reachable and writes to SQLite.",
     updatedAt: Date.now(),
   });
 }

@@ -46,6 +46,20 @@ export function requireString(body: JsonValue | null, field: string, maxLength =
   return trimmed;
 }
 
+export function requireUrl(body: JsonValue | null, field: string, maxLength = 500) {
+  const value = requireString(body, field, maxLength);
+  if (!value) return null;
+
+  try {
+    const url = new URL(value);
+    if (url.protocol === "http:" || url.protocol === "https:") return value;
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 export function acceptedScaffold(action: string, payload: JsonValue) {
   return Response.json({
     ok: true,

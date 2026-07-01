@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { acceptedScaffold, readJsonBody, requireBotAuth } from "@/lib/internal-bot-api";
+import { updatePremierRecordFromBot } from "@/lib/content-store";
+import { readJsonBody, requireBotAuth } from "@/lib/internal-bot-api";
 
 export async function POST(request: NextRequest) {
   const authError = requireBotAuth(request);
@@ -12,5 +13,6 @@ export async function POST(request: NextRequest) {
     return Response.json({ ok: false, code: "INVALID_PREMIER_RECORD", error: "wins and losses must be positive integers." }, { status: 400 });
   }
 
-  return acceptedScaffold("premier-record.update", { ...body, wins, losses });
+  const stats = updatePremierRecordFromBot({ ...body, wins, losses });
+  return Response.json({ ok: true, action: "premier-record.update", persisted: true, stats, updatedAt: Date.now() });
 }

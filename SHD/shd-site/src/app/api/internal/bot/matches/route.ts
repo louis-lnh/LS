@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { acceptedScaffold, readJsonBody, requireBotAuth, requireString } from "@/lib/internal-bot-api";
+import { createMatchFromBot } from "@/lib/content-store";
+import { readJsonBody, requireBotAuth, requireString } from "@/lib/internal-bot-api";
 
 export async function POST(request: NextRequest) {
   const authError = requireBotAuth(request);
@@ -13,5 +14,6 @@ export async function POST(request: NextRequest) {
     return Response.json({ ok: false, code: "INVALID_MATCH_PAYLOAD", error: "opponent and startsAt are required." }, { status: 400 });
   }
 
-  return acceptedScaffold("match.create", { ...body, opponent, startsAt, eventType });
+  const match = createMatchFromBot({ ...body, opponent, startsAt, eventType });
+  return Response.json({ ok: true, action: "match.create", persisted: true, match, updatedAt: Date.now() });
 }
