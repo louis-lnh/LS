@@ -285,7 +285,7 @@ export const commands = [
       option.setName('title').setDescription('Notification title').setRequired(true).setMaxLength(120)
     )
     .addStringOption((option) =>
-      option.setName('message').setDescription('Notification message').setRequired(true).setMaxLength(2000)
+      option.setName('message').setDescription('Notification message. Use \\n for line breaks').setRequired(true).setMaxLength(2000)
     )
     .addStringOption((option) =>
       option

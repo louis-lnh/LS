@@ -224,7 +224,7 @@ const notificationCommand = new SlashCommandBuilder()
     option.setName('title').setDescription('Notification title.').setRequired(true).setMaxLength(120)
   )
   .addStringOption((option) =>
-    option.setName('message').setDescription('Notification message.').setRequired(true).setMaxLength(2000)
+    option.setName('message').setDescription('Notification message. Use \\n for line breaks.').setRequired(true).setMaxLength(2000)
   )
   .addStringOption((option) =>
     option
@@ -833,7 +833,7 @@ async function handleNotification(interaction) {
   }
 
   const title = interaction.options.getString('title', true).trim();
-  const message = interaction.options.getString('message', true).trim();
+  const message = formatNotificationMessage(interaction.options.getString('message', true));
   const style = interaction.options.getString('style') ?? 'info';
   const footer = interaction.options.getString('footer')?.trim();
   const buttonText = interaction.options.getString('button_text')?.trim();
@@ -971,6 +971,14 @@ function notificationEmbed(preview, styleConfig, fallbackUserTag) {
     .setColor(styleConfig.color)
     .setTimestamp(new Date())
     .setFooter({ text: preview.footer || `SHD - sent by ${fallbackUserTag}` });
+}
+
+function formatNotificationMessage(value) {
+  return value
+    .replaceAll('\\n', '\n')
+    .replaceAll('{br}', '\n')
+    .replaceAll('{BR}', '\n')
+    .trim();
 }
 
 function notificationPublishRoleIds(interaction) {

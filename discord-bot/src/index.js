@@ -1236,7 +1236,7 @@ async function handleNotification(interaction) {
   }
 
   const title = interaction.options.getString('title', true).trim();
-  const message = interaction.options.getString('message', true).trim();
+  const message = formatNotificationMessage(interaction.options.getString('message', true));
   const style = interaction.options.getString('style') ?? 'info';
   const footer = interaction.options.getString('footer')?.trim();
   const buttonText = interaction.options.getString('button_text')?.trim();
@@ -1363,6 +1363,14 @@ function notificationEmbed(preview, styleConfig, fallbackUserTag) {
     .setColor(styleConfig.color)
     .setTimestamp(new Date())
     .setFooter({ text: preview.footer || `SHD Lifesteal - sent by ${fallbackUserTag}` });
+}
+
+function formatNotificationMessage(value) {
+  return value
+    .replaceAll('\\n', '\n')
+    .replaceAll('{br}', '\n')
+    .replaceAll('{BR}', '\n')
+    .trim();
 }
 
 function notificationPublishRoleIds(interaction) {
