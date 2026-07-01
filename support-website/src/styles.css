@@ -333,6 +333,16 @@ main {
   transform: translateY(-1px);
 }
 
+.support-tile.locked-tile {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.support-tile.locked-tile:hover {
+  border-color: rgba(245, 242, 235, 0.12);
+  transform: none;
+}
+
 .support-tile span,
 .section-kicker,
 .locked-eyebrow,

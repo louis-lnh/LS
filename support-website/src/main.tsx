@@ -84,8 +84,6 @@ type SupportIntakeResponse = {
 
 const primarySections: Array<{ id: SectionId; label: string; title: string }> = [
   { id: 'minecraft', label: 'Minecraft', title: 'Minecraft Support' },
-  { id: 'support', label: 'Support', title: 'General Support' },
-  { id: 'valorant', label: 'Valorant', title: 'Valorant Support' },
   { id: 'info', label: 'Info', title: 'SHD Info' },
 ]
 
@@ -103,7 +101,7 @@ const sectionForms: Record<SectionId, Array<{ id: PageId; label: string }>> = {
     { id: 'player-report', label: 'Player Report' },
     { id: 'minecraft-support', label: 'Minecraft Support' },
   ],
-  support: [{ id: 'general-support', label: 'General Support' }],
+  support: [],
   valorant: [],
   info: [
     { id: 'status', label: 'Status' },
@@ -398,14 +396,24 @@ function HomePage({ onNavigate }: { onNavigate: (page: PageId) => void }) {
       </div>
       <div className="support-grid" aria-label="Support areas">
         <SupportTile title="Minecraft" state="Lifesteal Open" detail="Lifesteal applications, ban appeals, player reports, and Minecraft support flows." onClick={() => onNavigate('minecraft')} />
-        <SupportTile title="Support" state="Reserved" detail="General SHD help, account questions, staff contact, and project support requests." onClick={() => onNavigate('support')} />
-        <SupportTile title="Valorant" state="Coming Later" detail="Valorant support, reports, and team-related workflows will live here later." onClick={() => onNavigate('valorant')} />
+        <SupportTile title="Support" state="Locked" detail="General SHD help, account questions, staff contact, and project support requests are reserved for a later portal release." locked />
+        <SupportTile title="Valorant" state="Locked" detail="Valorant support, reports, and team-related workflows are reserved for a later portal release." locked />
       </div>
     </section>
   )
 }
 
-function SupportTile({ title, state, detail, onClick }: { title: string; state: string; detail: string; onClick: () => void }) {
+function SupportTile({ title, state, detail, onClick, locked = false }: { title: string; state: string; detail: string; onClick?: () => void; locked?: boolean }) {
+  if (locked) {
+    return (
+      <article className="support-tile locked-tile" aria-disabled="true">
+        <span>{state}</span>
+        <strong>{title}</strong>
+        <p>{detail}</p>
+      </article>
+    )
+  }
+
   return (
     <button className="support-tile" onClick={onClick} type="button">
       <span>{state}</span>
@@ -511,7 +519,6 @@ const infoWorkflowCategories: Array<{ title: string; label: string; workflows: I
         label: 'Support',
         title: 'General Support',
         body: 'Account questions, project contact, and non-game-specific SHD support after the Lifesteal launch pass.',
-        target: 'general-support',
         state: 'Later',
       },
     ],
@@ -524,7 +531,6 @@ const infoWorkflowCategories: Array<{ title: string; label: string; workflows: I
         label: 'Valorant',
         title: 'Support Workflows',
         body: 'Valorant support, team, report, and appeal flows will live here once that portal slice starts.',
-        target: 'valorant',
         state: 'Planned',
       },
     ],
@@ -564,7 +570,7 @@ function InfoPage({ copy, onNavigate }: { copy: { label: string; title: string; 
                 <h3>{workflow.title}</h3>
                 <p>{workflow.body}</p>
               </div>
-              <button onClick={() => workflow.target && onNavigate(workflow.target)} type="button">{workflow.state ?? 'Open'}</button>
+              <button disabled={!workflow.target} onClick={() => workflow.target && onNavigate(workflow.target)} type="button">{workflow.state ?? 'Open'}</button>
             </article>
           ))}
         </div>
@@ -1092,23 +1098,28 @@ function LockedPanel({ eyebrow, title, detail, compact = false }: { eyebrow: str
 
 const legalSections = {
   legal: [
-    { title: 'Purpose', body: 'This support portal provides application, appeal, report, status, and player support flows for SHD Esports projects.' },
-    { title: 'Contact', body: 'Temporary contact: louis.lenhartz.ll@icloud.com. Dedicated SHD support addresses will replace this before full public launch.' },
+    { title: 'Purpose', body: 'This support portal provides Lifesteal application, appeal, report, and Minecraft support flows for SHD Esports projects.' },
+    { title: 'Operator', body: 'SHD Esports, represented by Louis Lenhartz, An der Burg Suelz 27a, 53797 Lohmar, Nordrhein-Westfalen, Germany.' },
+    { title: 'Contact', body: 'For support requests, applications, appeals, reports, or general questions about this portal, contact support@shd-esports.com.' },
   ],
   privacy: [
     { title: 'Data We Process', body: 'Support forms may process Discord usernames or IDs, Minecraft usernames or UUIDs, application answers, appeal text, report evidence, staff review notes, and technical logs.' },
     { title: 'Use of Data', body: 'Submitted data is used to review applications, handle support requests, enforce rules, protect community safety, and operate SHD Esports services.' },
     { title: 'Application Approval', body: 'If a Lifesteal application is approved, the bot may link the approved Minecraft username to the applicant Discord account, prepare server access, and enable public gameplay stats for the Lifesteal leaderboard.' },
-    { title: 'Requests', body: 'Players may request correction or deletion through the listed support contact until a self-service request workflow is available.' },
+    { title: 'Retention', body: 'Applications are generally kept for the relevant season, usually around 3 to 4 months. Appeals, reports, support requests, and moderation records may be kept longer when needed for repeat-case review, security, or rule enforcement.' },
+    { title: 'Requests', body: 'Players may request access, correction, or deletion of support data through support@shd-esports.com.' },
   ],
   terms: [
     { title: 'Use of the Portal', body: 'The portal is intended for legitimate SHD Esports support requests. Spam, impersonation, false reports, or abuse may lead to denied requests or server restrictions.' },
     { title: 'Applications and Appeals', body: 'Submitting a form does not guarantee acceptance, appeal approval, or access to any SHD service. Staff decisions may depend on server rules, safety, and available capacity.' },
     { title: 'Approved Access', body: 'Approved Lifesteal applications may be processed automatically by the Discord bot. If automation cannot prepare Minecraft access, staff may finish the setup manually in the Discord ticket.' },
+    { title: 'Changes', body: 'Support workflows, rules, portal pages, and staff processes may change during the Lifesteal season. Material updates will be reflected on the portal or announced through official SHD channels where appropriate.' },
   ],
   imprint: [
-    { title: 'Operator', body: 'SHD Esports support portal. Full provider details and dedicated business contact information will be completed before the final public launch.' },
-    { title: 'Temporary Contact', body: 'louis.lenhartz.ll@icloud.com' },
+    { title: 'Responsible Entity', body: 'SHD Esports, represented by Louis Lenhartz.' },
+    { title: 'Address', body: 'Louis Lenhartz, An der Burg Suelz 27a, 53797 Lohmar, Nordrhein-Westfalen, Germany.' },
+    { title: 'Contact', body: 'support@shd-esports.com' },
+    { title: 'Editorial Responsibility', body: 'Louis Lenhartz is responsible for the portal content unless another responsible editor is expressly named.' },
   ],
 }
 
@@ -1122,8 +1133,8 @@ function LegalPage({ title, label, sections }: { title: string; label: string; s
         <aside className="legal-note">
           <span className="section-kicker">SHD Portal</span>
           <strong>Portal Notice</strong>
-          <p>These pages describe the current portal release and will expand as additional support workflows launch.</p>
-          <span className="legal-status">Current draft</span>
+          <p>These pages describe the current Lifesteal support portal release for players, applicants, and visitors.</p>
+          <span className="legal-status">Current release</span>
         </aside>
         <article className="legal-document">
           {sections.map((section, index) => (
@@ -1147,8 +1158,6 @@ function Footer({ current, onNavigate }: { current: string; onNavigate: (page: P
       <span>{current}</span>
       <div>
         <button onClick={() => onNavigate('minecraft')} type="button">Minecraft</button>
-        <button onClick={() => onNavigate('support')} type="button">Support</button>
-        <button onClick={() => onNavigate('valorant')} type="button">Valorant</button>
         {legalItems.map((item) => (
           <button key={item.id} onClick={() => onNavigate(item.id)} type="button">{item.label}</button>
         ))}

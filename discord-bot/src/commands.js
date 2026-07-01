@@ -1,5 +1,6 @@
 import {
   ApplicationCommandOptionType,
+  ChannelType,
   PermissionFlagsBits,
   SlashCommandBuilder
 } from 'discord.js';
@@ -278,7 +279,7 @@ export const commands = [
     .addStringOption((option) => option.setName('reason').setDescription('Reason')),
   new SlashCommandBuilder()
     .setName('notification')
-    .setDescription('Send a staff notification embed in this channel')
+    .setDescription('Create a notification preview for staff review')
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
     .addStringOption((option) =>
       option.setName('title').setDescription('Notification title').setRequired(true).setMaxLength(120)
@@ -307,6 +308,25 @@ export const commands = [
     .addStringOption((option) =>
       option.setName('button_url').setDescription('Optional link button URL').setMaxLength(500)
     ),
+  new SlashCommandBuilder()
+    .setName('notification-publish')
+    .setDescription('Publish a notification preview to a channel')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+    .addIntegerOption((option) =>
+      option.setName('id').setDescription('Notification preview ID').setRequired(true).setMinValue(1)
+    )
+    .addChannelOption((option) =>
+      option
+        .setName('channel')
+        .setDescription('Channel to publish into')
+        .setRequired(true)
+        .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+    )
+    .addRoleOption((option) => option.setName('role_1').setDescription('Role to notify'))
+    .addRoleOption((option) => option.setName('role_2').setDescription('Additional role to notify'))
+    .addRoleOption((option) => option.setName('role_3').setDescription('Additional role to notify'))
+    .addRoleOption((option) => option.setName('role_4').setDescription('Additional role to notify'))
+    .addRoleOption((option) => option.setName('role_5').setDescription('Additional role to notify')),
   new SlashCommandBuilder()
     .setName('data')
     .setDescription('Backup or export bot data')

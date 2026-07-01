@@ -55,6 +55,7 @@ const staffCommands = new Set([
   'ban',
   'unlink',
   'notification',
+  'notification-publish',
   'data'
 ]);
 
@@ -178,6 +179,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
         break;
       case 'notification':
         await handleNotification(interaction);
+        break;
+      case 'notification-publish':
+        await handleNotificationPublish(interaction);
         break;
       case 'data':
         await handleData(interaction);
@@ -1223,9 +1227,12 @@ const notificationStyles = {
 
 async function handleNotification(interaction) {
   await interaction.deferReply({ ephemeral: true });
-  const channel = interaction.channel;
-  if (!channel?.isTextBased()) {
-    return interaction.editReply('This command must be used in a text channel.');
+  if (!config.previewNotifChannelId) {
+    return interaction.editReply('PREVIEW_NOTIF_CHANNEL_ID is not configured.');
+  }
+  const previewChannel = await interaction.client.channels.fetch(config.previewNotifChannelId).catch(() => null);
+  if (!previewChannel?.isTextBased()) {
+    return interaction.editReply('The configured notification preview channel is missing or not text-based.');
   }
 
   const title = interaction.options.getString('title', true).trim();
@@ -1247,34 +1254,84 @@ async function handleNotification(interaction) {
     return interaction.editReply('Button URL must start with http:// or https://.');
   }
 
-  const embed = new EmbedBuilder()
-    .setTitle(title)
-    .setDescription(message)
-    .setColor(styleConfig.color)
-    .setTimestamp(new Date())
-    .setFooter({ text: footer || `SHD Lifesteal - sent by ${interaction.user.tag}` });
-
+  const preview = statements.notificationPreviews.create({
+    title,
+    message,
+    style,
+    footer,
+    buttonText,
+    buttonUrl: parsedButtonUrl,
+    createdBy: interaction.user.id,
+    previewChannelId: previewChannel.id
+  });
+  const embed = notificationEmbed(preview, styleConfig, interaction.user.tag)
+    .addFields({ name: 'Preview ID', value: String(preview.id), inline: true });
   const components = notificationComponents(buttonText, parsedButtonUrl);
-  const announcementRoleId = config.announcementRoleId;
-  await channel.send({
-    content: announcementRoleId ? `<@&${announcementRoleId}>` : undefined,
+
+  const previewMessage = await previewChannel.send({
+    content: `Notification preview ID: \`${preview.id}\``,
     embeds: [embed],
     components,
-    allowedMentions: announcementRoleId ? { roles: [announcementRoleId] } : { parse: [] }
+    allowedMentions: { parse: [] }
   });
-  audit('notification.sent', {
+  statements.notificationPreviews.setPreviewMessage({ id: preview.id, messageId: previewMessage.id });
+  audit('notification.preview_created', {
     discordId: interaction.user.id,
-    data: { channelId: channel.id, title, style, announcementRoleId: announcementRoleId || null, hasButton: components.length > 0 }
+    data: { previewId: preview.id, previewChannelId: previewChannel.id, title, style, hasButton: components.length > 0 }
   });
-  await staffAuditLog(client, 'Notification Sent', [
+  await staffAuditLog(client, 'Notification Preview Created', [
     { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true },
-    { name: 'Channel', value: `<#${channel.id}>`, inline: true },
+    { name: 'Preview ID', value: String(preview.id), inline: true },
+    { name: 'Preview Channel', value: `<#${previewChannel.id}>`, inline: true },
     { name: 'Style', value: styleConfig.label, inline: true },
-    announcementRoleId ? { name: 'Pinged Role', value: `<@&${announcementRoleId}>`, inline: true } : null,
     components.length > 0 ? { name: 'Button', value: `${buttonText} -> ${buttonUrl}` } : null,
     { name: 'Title', value: title }
   ].filter(Boolean));
-  await interaction.editReply(`Notification sent in <#${channel.id}>${announcementRoleId ? '' : ' without an announcement role ping because LIFESTEAL_ANNOUNCEMENTS_ROLE_ID or ANNOUNCEMENTS_ROLE_ID is not configured'}.`);
+  await interaction.editReply(`Notification preview \`${preview.id}\` sent to <#${previewChannel.id}>.`);
+}
+
+async function handleNotificationPublish(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const id = interaction.options.getInteger('id', true);
+  const preview = statements.notificationPreviews.get(id);
+  if (!preview) {
+    return interaction.editReply(`Notification preview \`${id}\` was not found.`);
+  }
+  if (preview.published_at) {
+    return interaction.editReply(`Notification preview \`${id}\` was already published.`);
+  }
+
+  const channel = interaction.options.getChannel('channel', true);
+  if (!channel?.isTextBased()) {
+    return interaction.editReply('The selected channel is not text-based.');
+  }
+  const roleIds = notificationPublishRoleIds(interaction);
+  const styleConfig = notificationStyles[preview.style] ?? notificationStyles.info;
+  const sent = await channel.send({
+    content: roleIds.length ? roleIds.map((roleId) => `<@&${roleId}>`).join(' ') : undefined,
+    embeds: [notificationEmbed(preview, styleConfig, interaction.user.tag)],
+    components: notificationComponents(preview.button_text, preview.button_url),
+    allowedMentions: roleIds.length ? { roles: roleIds } : { parse: [] }
+  });
+
+  statements.notificationPreviews.markPublished({
+    id,
+    publishedBy: interaction.user.id,
+    channelId: channel.id,
+    messageId: sent.id,
+    roleIds
+  });
+  audit('notification.published', {
+    discordId: interaction.user.id,
+    data: { previewId: id, channelId: channel.id, roleIds }
+  });
+  await staffAuditLog(client, 'Notification Published', [
+    { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true },
+    { name: 'Preview ID', value: String(id), inline: true },
+    { name: 'Channel', value: `<#${channel.id}>`, inline: true },
+    roleIds.length ? { name: 'Roles', value: roleIds.map((roleId) => `<@&${roleId}>`).join(', ') } : null
+  ].filter(Boolean));
+  return interaction.editReply(`Notification preview \`${id}\` published in <#${channel.id}>.`);
 }
 
 function notificationComponents(buttonText, buttonUrl) {
@@ -1297,6 +1354,21 @@ function parseHttpUrl(value) {
   } catch {
     return null;
   }
+}
+
+function notificationEmbed(preview, styleConfig, fallbackUserTag) {
+  return new EmbedBuilder()
+    .setTitle(preview.title)
+    .setDescription(preview.message)
+    .setColor(styleConfig.color)
+    .setTimestamp(new Date())
+    .setFooter({ text: preview.footer || `SHD Lifesteal - sent by ${fallbackUserTag}` });
+}
+
+function notificationPublishRoleIds(interaction) {
+  return [...new Set([1, 2, 3, 4, 5]
+    .map((index) => interaction.options.getRole(`role_${index}`)?.id)
+    .filter(Boolean))];
 }
 
 async function handleData(interaction) {

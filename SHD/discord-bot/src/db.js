@@ -30,6 +30,7 @@ const initialState = {
   rules_acceptances: [],
   role_assignments: [],
   role_panel_messages: [],
+  notification_previews: [],
   settings: {},
   counters: {
     audit_events: 1,
@@ -39,7 +40,8 @@ const initialState = {
     mod_cases: 1,
     role_panel_messages: 1,
     rules_acceptances: 1,
-    role_assignments: 1
+    role_assignments: 1,
+    notification_previews: 1
   }
 };
 
@@ -464,6 +466,52 @@ export const statements = {
       state.role_panel_messages.push(panel);
       persist();
       return clone(panel);
+    }
+  },
+  notificationPreviews: {
+    create(row) {
+      const preview = {
+        id: state.counters.notification_previews++,
+        title: row.title,
+        message: row.message,
+        style: row.style,
+        footer: row.footer ?? null,
+        button_text: row.buttonText ?? null,
+        button_url: row.buttonUrl ?? null,
+        created_by: row.createdBy,
+        created_at: row.createdAt ?? Date.now(),
+        preview_channel_id: row.previewChannelId,
+        preview_message_id: row.previewMessageId ?? null,
+        published_at: null,
+        published_by: null,
+        published_channel_id: null,
+        published_message_id: null,
+        notified_role_ids: []
+      };
+      state.notification_previews.push(preview);
+      persist();
+      return clone(preview);
+    },
+    setPreviewMessage(row) {
+      const preview = state.notification_previews.find((item) => item.id === row.id);
+      if (!preview) return null;
+      preview.preview_message_id = row.messageId;
+      persist();
+      return clone(preview);
+    },
+    get(id) {
+      return clone(state.notification_previews.find((item) => item.id === id) ?? null);
+    },
+    markPublished(row) {
+      const preview = state.notification_previews.find((item) => item.id === row.id);
+      if (!preview) return null;
+      preview.published_at = row.publishedAt ?? Date.now();
+      preview.published_by = row.publishedBy;
+      preview.published_channel_id = row.channelId;
+      preview.published_message_id = row.messageId;
+      preview.notified_role_ids = row.roleIds ?? [];
+      persist();
+      return clone(preview);
     }
   },
   adminSessions: {

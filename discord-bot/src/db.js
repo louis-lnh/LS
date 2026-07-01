@@ -31,6 +31,7 @@ const initialState = {
   staff_notes: [],
   shared_ip_exceptions: [],
   ticket_threads: [],
+  notification_previews: [],
   app_settings: {},
   overlay_lifesteal_player: null,
   public_lifesteal_snapshot: {
@@ -63,7 +64,8 @@ const initialState = {
   nextLifestealEventId: 1,
   nextAdminStaffAccessId: 1,
   nextNoteId: 1,
-  nextTicketId: 1
+  nextTicketId: 1,
+  nextNotificationPreviewId: 1
 };
 
 const defaultLifestealEventsSeedVersion = 'season-1-events-2026-06-15';
@@ -962,6 +964,52 @@ export const statements = {
     run(key, value) {
       state.app_settings[key] = value;
       persist();
+    }
+  },
+  notificationPreviews: {
+    create(row) {
+      const preview = {
+        id: state.nextNotificationPreviewId++,
+        title: row.title,
+        message: row.message,
+        style: row.style,
+        footer: row.footer ?? null,
+        button_text: row.buttonText ?? null,
+        button_url: row.buttonUrl ?? null,
+        created_by: row.createdBy,
+        created_at: row.createdAt ?? Date.now(),
+        preview_channel_id: row.previewChannelId,
+        preview_message_id: row.previewMessageId ?? null,
+        published_at: null,
+        published_by: null,
+        published_channel_id: null,
+        published_message_id: null,
+        notified_role_ids: []
+      };
+      state.notification_previews.push(preview);
+      persist();
+      return structuredClone(preview);
+    },
+    setPreviewMessage(row) {
+      const preview = state.notification_previews.find((item) => item.id === row.id);
+      if (!preview) return null;
+      preview.preview_message_id = row.messageId;
+      persist();
+      return structuredClone(preview);
+    },
+    get(id) {
+      return structuredClone(state.notification_previews.find((item) => item.id === id) ?? null);
+    },
+    markPublished(row) {
+      const preview = state.notification_previews.find((item) => item.id === row.id);
+      if (!preview) return null;
+      preview.published_at = row.publishedAt ?? Date.now();
+      preview.published_by = row.publishedBy;
+      preview.published_channel_id = row.channelId;
+      preview.published_message_id = row.messageId;
+      preview.notified_role_ids = row.roleIds ?? [];
+      persist();
+      return structuredClone(preview);
     }
   },
   createLifestealEvent: {

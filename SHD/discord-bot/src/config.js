@@ -63,6 +63,7 @@ export const config = {
   channels: {
     securityLog: process.env.SECURITY_LOG_CHANNEL_ID ?? '',
     staffAudit: process.env.STAFF_AUDIT_CHANNEL_ID ?? '',
+    previewNotif: process.env.PREVIEW_NOTIF_CHANNEL_ID ?? '',
     supportLog: process.env.SUPPORT_LOG_CHANNEL_ID ?? '',
     systemLog: process.env.SYSTEM_LOG_CHANNEL_ID ?? '',
     ticketNotify: process.env.TICKET_NOTIFY_CHANNEL_ID ?? '',

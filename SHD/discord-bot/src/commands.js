@@ -2,6 +2,7 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ChannelType,
   EmbedBuilder,
   PermissionFlagsBits,
   SlashCommandBuilder
@@ -217,7 +218,7 @@ const supportCommand = new SlashCommandBuilder()
 
 const notificationCommand = new SlashCommandBuilder()
   .setName('notification')
-  .setDescription('Send a staff notification embed in this channel.')
+  .setDescription('Create a notification preview for staff review.')
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
   .addStringOption((option) =>
     option.setName('title').setDescription('Notification title.').setRequired(true).setMaxLength(120)
@@ -246,6 +247,26 @@ const notificationCommand = new SlashCommandBuilder()
   .addStringOption((option) =>
     option.setName('button_url').setDescription('Optional link button URL.').setMaxLength(500)
   );
+
+const notificationPublishCommand = new SlashCommandBuilder()
+  .setName('notification-publish')
+  .setDescription('Publish a notification preview to a channel.')
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+  .addIntegerOption((option) =>
+    option.setName('id').setDescription('Notification preview ID.').setRequired(true).setMinValue(1)
+  )
+  .addChannelOption((option) =>
+    option
+      .setName('channel')
+      .setDescription('Channel to publish into.')
+      .setRequired(true)
+      .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+  )
+  .addRoleOption((option) => option.setName('role_1').setDescription('Role to notify.'))
+  .addRoleOption((option) => option.setName('role_2').setDescription('Additional role to notify.'))
+  .addRoleOption((option) => option.setName('role_3').setDescription('Additional role to notify.'))
+  .addRoleOption((option) => option.setName('role_4').setDescription('Additional role to notify.'))
+  .addRoleOption((option) => option.setName('role_5').setDescription('Additional role to notify.'));
 
 const siteCommand = new SlashCommandBuilder()
   .setName('site')
@@ -447,6 +468,7 @@ export const commands = [
   userInfoCommand.toJSON(),
   supportCommand.toJSON(),
   notificationCommand.toJSON(),
+  notificationPublishCommand.toJSON(),
   siteCommand.toJSON()
 ];
 
@@ -475,6 +497,11 @@ export async function handleInteraction(interaction) {
 
   if (interaction.commandName === 'notification') {
     await handleNotification(interaction);
+    return;
+  }
+
+  if (interaction.commandName === 'notification-publish') {
+    await handleNotificationPublish(interaction);
     return;
   }
 
@@ -795,9 +822,13 @@ async function handleNotification(interaction) {
   }
 
   await interaction.deferReply({ ephemeral: true });
-  const channel = interaction.channel;
-  if (!channel?.isTextBased()) {
-    await interaction.editReply('This command must be used in a text channel.');
+  if (!config.channels.previewNotif) {
+    await interaction.editReply('PREVIEW_NOTIF_CHANNEL_ID is not configured.');
+    return;
+  }
+  const previewChannel = await interaction.client.channels.fetch(config.channels.previewNotif).catch(() => null);
+  if (!previewChannel?.isTextBased()) {
+    await interaction.editReply('The configured notification preview channel is missing or not text-based.');
     return;
   }
 
@@ -823,34 +854,92 @@ async function handleNotification(interaction) {
     return;
   }
 
-  const embed = new EmbedBuilder()
-    .setTitle(title)
-    .setDescription(message)
-    .setColor(styleConfig.color)
-    .setTimestamp(new Date())
-    .setFooter({ text: footer || `SHD - sent by ${interaction.user.tag}` });
-
+  const preview = statements.notificationPreviews.create({
+    title,
+    message,
+    style,
+    footer,
+    buttonText,
+    buttonUrl: parsedButtonUrl,
+    createdBy: interaction.user.id,
+    previewChannelId: previewChannel.id
+  });
+  const embed = notificationEmbed(preview, styleConfig, interaction.user.tag)
+    .addFields({ name: 'Preview ID', value: String(preview.id), inline: true });
   const components = notificationComponents(buttonText, parsedButtonUrl);
-  const announcementRoleId = config.roles.announcements;
-  await channel.send({
-    content: announcementRoleId ? `<@&${announcementRoleId}>` : undefined,
+  const previewMessage = await previewChannel.send({
+    content: `Notification preview ID: \`${preview.id}\``,
     embeds: [embed],
     components,
-    allowedMentions: announcementRoleId ? { roles: [announcementRoleId] } : { parse: [] }
+    allowedMentions: { parse: [] }
   });
-  audit('notification.sent', {
+  statements.notificationPreviews.setPreviewMessage({ id: preview.id, messageId: previewMessage.id });
+  audit('notification.preview_created', {
     actorId: interaction.user.id,
-    data: { channelId: channel.id, title, style, announcementRoleId: announcementRoleId || null, hasButton: components.length > 0 }
+    data: { previewId: preview.id, previewChannelId: previewChannel.id, title, style, hasButton: components.length > 0 }
   });
-  await staffAuditLog(interaction.client, 'Notification Sent', [
+  await staffAuditLog(interaction.client, 'Notification Preview Created', [
     { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true },
-    { name: 'Channel', value: `<#${channel.id}>`, inline: true },
+    { name: 'Preview ID', value: String(preview.id), inline: true },
+    { name: 'Preview Channel', value: `<#${previewChannel.id}>`, inline: true },
     { name: 'Style', value: styleConfig.label, inline: true },
-    announcementRoleId ? { name: 'Pinged Role', value: `<@&${announcementRoleId}>`, inline: true } : null,
     components.length > 0 ? { name: 'Button', value: `${buttonText} -> ${buttonUrl}` } : null,
     { name: 'Title', value: title }
   ].filter(Boolean));
-  await interaction.editReply(`Notification sent in <#${channel.id}>${announcementRoleId ? '' : ' without an announcement role ping because SHD_ANNOUNCEMENTS_ROLE_ID is not configured'}.`);
+  await interaction.editReply(`Notification preview \`${preview.id}\` sent to <#${previewChannel.id}>.`);
+}
+
+async function handleNotificationPublish(interaction) {
+  if (!hasStaffAccess(interaction)) {
+    await interaction.reply({ ephemeral: true, content: missingPermissionMessage('publish notifications') });
+    return;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+  const id = interaction.options.getInteger('id', true);
+  const preview = statements.notificationPreviews.get(id);
+  if (!preview) {
+    await interaction.editReply(`Notification preview \`${id}\` was not found.`);
+    return;
+  }
+  if (preview.published_at) {
+    await interaction.editReply(`Notification preview \`${id}\` was already published.`);
+    return;
+  }
+
+  const channel = interaction.options.getChannel('channel', true);
+  if (!channel?.isTextBased()) {
+    await interaction.editReply('The selected channel is not text-based.');
+    return;
+  }
+
+  const roleIds = notificationPublishRoleIds(interaction);
+  const styleConfig = notificationStyles[preview.style] ?? notificationStyles.info;
+  const sent = await channel.send({
+    content: roleIds.length ? roleIds.map((roleId) => `<@&${roleId}>`).join(' ') : undefined,
+    embeds: [notificationEmbed(preview, styleConfig, interaction.user.tag)],
+    components: notificationComponents(preview.button_text, preview.button_url),
+    allowedMentions: roleIds.length ? { roles: roleIds } : { parse: [] }
+  });
+
+  statements.notificationPreviews.markPublished({
+    id,
+    publishedBy: interaction.user.id,
+    channelId: channel.id,
+    messageId: sent.id,
+    roleIds
+  });
+  audit('notification.published', {
+    actorId: interaction.user.id,
+    data: { previewId: id, channelId: channel.id, roleIds }
+  });
+  await staffAuditLog(interaction.client, 'Notification Published', [
+    { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true },
+    { name: 'Preview ID', value: String(id), inline: true },
+    { name: 'Channel', value: `<#${channel.id}>`, inline: true },
+    roleIds.length ? { name: 'Roles', value: roleIds.map((roleId) => `<@&${roleId}>`).join(', ') } : null
+  ].filter(Boolean));
+  await interaction.editReply(`Notification preview \`${id}\` published in <#${channel.id}>.`);
 }
 
 function notificationComponents(buttonText, buttonUrl) {
@@ -873,6 +962,21 @@ function parseHttpUrl(value) {
   } catch {
     return null;
   }
+}
+
+function notificationEmbed(preview, styleConfig, fallbackUserTag) {
+  return new EmbedBuilder()
+    .setTitle(preview.title)
+    .setDescription(preview.message)
+    .setColor(styleConfig.color)
+    .setTimestamp(new Date())
+    .setFooter({ text: preview.footer || `SHD - sent by ${fallbackUserTag}` });
+}
+
+function notificationPublishRoleIds(interaction) {
+  return [...new Set([1, 2, 3, 4, 5]
+    .map((index) => interaction.options.getRole(`role_${index}`)?.id)
+    .filter(Boolean))];
 }
 
 async function handlePurgeCommand(interaction) {

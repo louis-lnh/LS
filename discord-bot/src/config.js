@@ -130,6 +130,7 @@ export const config = {
   minecraftLogChannelId: process.env.MINECRAFT_LOG_CHANNEL_ID ?? '',
   appealLogChannelId: process.env.APPEAL_LOG_CHANNEL_ID ?? '',
   staffAuditChannelId: process.env.STAFF_AUDIT_CHANNEL_ID ?? '',
+  previewNotifChannelId: process.env.PREVIEW_NOTIF_CHANNEL_ID ?? '',
   ticketNotifyChannelId: process.env.TICKET_NOTIFY_CHANNEL_ID ?? '',
   ticketArchiveChannelId: process.env.TICKET_ARCHIVE_CHANNEL_ID ?? '',
   supportApplicationLogChannelId: process.env.SUPPORT_APPLICATION_LOG_CHANNEL_ID ?? '',
