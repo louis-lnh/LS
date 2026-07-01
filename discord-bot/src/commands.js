@@ -113,6 +113,10 @@ export const commands = [
     .setDescription('Post the Lifesteal rules acceptance panel in this channel')
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
   new SlashCommandBuilder()
+    .setName('lifesteal-roles-panel')
+    .setDescription('Post the Lifesteal notification role panel in this channel')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
+  new SlashCommandBuilder()
     .setName('appeal')
     .setDescription('Create or manage appeals')
     .addSubcommand((subcommand) =>
@@ -296,6 +300,12 @@ export const commands = [
     )
     .addStringOption((option) =>
       option.setName('footer').setDescription('Optional footer text').setMaxLength(120)
+    )
+    .addStringOption((option) =>
+      option.setName('button_text').setDescription('Optional link button text').setMaxLength(80)
+    )
+    .addStringOption((option) =>
+      option.setName('button_url').setDescription('Optional link button URL').setMaxLength(500)
     ),
   new SlashCommandBuilder()
     .setName('data')

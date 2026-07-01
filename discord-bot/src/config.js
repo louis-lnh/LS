@@ -102,6 +102,12 @@ export const config = {
   suspiciousRoleId: process.env.SUSPICIOUS_ROLE_ID ?? '',
   discordRulesRoleId: process.env.DISCORD_RULES_ROLE_ID ?? '',
   lifestealRulesRoleId: process.env.LIFESTEAL_RULES_ROLE_ID ?? '',
+  announcementRoleId: process.env.LIFESTEAL_ANNOUNCEMENTS_ROLE_ID ?? process.env.ANNOUNCEMENTS_ROLE_ID ?? '',
+  notificationRoleIds: {
+    announcements: process.env.LIFESTEAL_ANNOUNCEMENTS_ROLE_ID ?? process.env.ANNOUNCEMENTS_ROLE_ID ?? '',
+    ingame: process.env.LIFESTEAL_INGAME_NOTIFICATIONS_ROLE_ID ?? process.env.INGAME_NOTIFICATIONS_ROLE_ID ?? '',
+    events: process.env.LIFESTEAL_EVENT_NOTIFICATIONS_ROLE_ID ?? process.env.EVENT_NOTIFICATIONS_ROLE_ID ?? ''
+  },
   staffRoleIds: (process.env.STAFF_ROLE_IDS ?? '')
     .split(',')
     .map((value) => value.trim())

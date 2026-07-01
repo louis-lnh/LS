@@ -1030,16 +1030,18 @@ async function announceLifestealEvent(client, event, options = {}) {
   const channel = await client.channels.fetch(config.admin.lifestealEventChannelId).catch(() => null);
   if (!channel?.isTextBased?.()) return { ok: false, skipped: true, messageId: null };
   const unix = Math.floor(event.starts_at / 1000);
+  const eventRoleId = config.notificationRoleIds.events;
   const sent = await channel.send({
     content: [
+      eventRoleId ? `<@&${eventRoleId}>` : null,
       `**${event.title}**`,
       event.summary,
       `Starts: <t:${unix}:F> (<t:${unix}:R>)`,
       event.reward ? `Reward: ${event.reward}` : null
     ].filter(Boolean).join('\n'),
-    allowedMentions: { parse: [] }
+    allowedMentions: eventRoleId ? { roles: [eventRoleId] } : { parse: [] }
   });
-  return { ok: true, skipped: false, messageId: sent.id };
+  return { ok: true, skipped: false, messageId: sent.id, roleId: eventRoleId || null };
 }
 
 function compactFields(entries) {

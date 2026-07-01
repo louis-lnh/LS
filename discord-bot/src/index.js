@@ -17,6 +17,7 @@ import { minecraftBan, minecraftKick, resolveMinecraftProfile, whitelistAdd, whi
 import { calculateRisk, formatRiskReasons, refreshRisk } from './risk.js';
 import { currentRulesVersion, setRulesVersion } from './settings.js';
 import { handleRulesPanelCommand, handleRulesPanelInteraction } from './rule-panels.js';
+import { handleRolePanelCommand, handleRolePanelInteraction } from './role-panel.js';
 import { handlePanelCommand, handleTicketInteraction, handleTicketMessage } from './tickets.js';
 import { hasSensitiveDataAccess, hasStaffAccess, hasStaffOrPermission, missingPermissionMessage } from './permissions.js';
 import { createVerification } from './verification.js';
@@ -40,6 +41,7 @@ const staffCommands = new Set([
   'panel',
   'discord-rules-panel',
   'lifesteal-rules-panel',
+  'lifesteal-roles-panel',
   'alts',
   'history',
   'note',
@@ -63,6 +65,7 @@ client.once(Events.ClientReady, (readyClient) => {
 
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
+    if (await handleRolePanelInteraction(interaction)) return;
     if (await handleRulesPanelInteraction(interaction)) return;
   } catch (error) {
     console.error(error);
@@ -130,6 +133,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
         break;
       case 'lifesteal-rules-panel':
         await handleRulesPanelCommand(interaction, 'lifesteal');
+        break;
+      case 'lifesteal-roles-panel':
+        await handleRolePanelCommand(interaction);
         break;
       case 'appeal':
         await handleAppeal(interaction);
@@ -1226,10 +1232,19 @@ async function handleNotification(interaction) {
   const message = interaction.options.getString('message', true).trim();
   const style = interaction.options.getString('style') ?? 'info';
   const footer = interaction.options.getString('footer')?.trim();
+  const buttonText = interaction.options.getString('button_text')?.trim();
+  const buttonUrl = interaction.options.getString('button_url')?.trim();
   const styleConfig = notificationStyles[style] ?? notificationStyles.info;
 
   if (!title || !message) {
     return interaction.editReply('Title and message cannot be empty.');
+  }
+  if ((buttonText && !buttonUrl) || (!buttonText && buttonUrl)) {
+    return interaction.editReply('Button text and button URL must be provided together.');
+  }
+  const parsedButtonUrl = buttonUrl ? parseHttpUrl(buttonUrl) : null;
+  if (buttonUrl && !parsedButtonUrl) {
+    return interaction.editReply('Button URL must start with http:// or https://.');
   }
 
   const embed = new EmbedBuilder()
@@ -1239,18 +1254,49 @@ async function handleNotification(interaction) {
     .setTimestamp(new Date())
     .setFooter({ text: footer || `SHD Lifesteal - sent by ${interaction.user.tag}` });
 
-  await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
+  const components = notificationComponents(buttonText, parsedButtonUrl);
+  const announcementRoleId = config.announcementRoleId;
+  await channel.send({
+    content: announcementRoleId ? `<@&${announcementRoleId}>` : undefined,
+    embeds: [embed],
+    components,
+    allowedMentions: announcementRoleId ? { roles: [announcementRoleId] } : { parse: [] }
+  });
   audit('notification.sent', {
     discordId: interaction.user.id,
-    data: { channelId: channel.id, title, style }
+    data: { channelId: channel.id, title, style, announcementRoleId: announcementRoleId || null, hasButton: components.length > 0 }
   });
   await staffAuditLog(client, 'Notification Sent', [
     { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true },
     { name: 'Channel', value: `<#${channel.id}>`, inline: true },
     { name: 'Style', value: styleConfig.label, inline: true },
+    announcementRoleId ? { name: 'Pinged Role', value: `<@&${announcementRoleId}>`, inline: true } : null,
+    components.length > 0 ? { name: 'Button', value: `${buttonText} -> ${buttonUrl}` } : null,
     { name: 'Title', value: title }
-  ]);
-  await interaction.editReply(`Notification sent in <#${channel.id}>.`);
+  ].filter(Boolean));
+  await interaction.editReply(`Notification sent in <#${channel.id}>${announcementRoleId ? '' : ' without an announcement role ping because LIFESTEAL_ANNOUNCEMENTS_ROLE_ID or ANNOUNCEMENTS_ROLE_ID is not configured'}.`);
+}
+
+function notificationComponents(buttonText, buttonUrl) {
+  if (!buttonText && !buttonUrl) return [];
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setLabel(buttonText)
+        .setURL(buttonUrl)
+        .setStyle(ButtonStyle.Link)
+    )
+  ];
+}
+
+function parseHttpUrl(value) {
+  try {
+    const url = new URL(value);
+    if (!['http:', 'https:'].includes(url.protocol)) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
 }
 
 async function handleData(interaction) {
