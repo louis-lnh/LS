@@ -46,7 +46,11 @@ async function siteRequest(method, path, payload, actorId) {
 
   if (!response.ok || data.ok === false) {
     const detail = data.error || data.message || rawBody;
-    throw new Error(detail || `SHD site API request failed with ${response.status}.`);
+    const routeHint = `${method} ${new URL(url).pathname}`;
+    if (response.status === 404) {
+      throw new Error(`Site API endpoint not found (${routeHint}). Check that SHD_SITE_INTERNAL_API_BASE_URL points to the deployed SHD site and that the site deployment includes /api/internal/bot routes.`);
+    }
+    throw new Error(detail || `SHD site API request failed with ${response.status} (${routeHint}).`);
   }
   return data;
 }

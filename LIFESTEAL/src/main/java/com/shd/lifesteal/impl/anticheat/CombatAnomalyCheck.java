@@ -51,6 +51,7 @@ public final class CombatAnomalyCheck implements AntiCheatCheck {
             checkMenuAttack(context, state, sample);
             checkUsingItemAttack(context, state, sample);
             checkAirborneCriticalPattern(context, state, sample);
+            checkDamageSpike(context, state, sample);
             checkImpossibleModes(context, state, sample);
         }
     }
@@ -282,6 +283,30 @@ public final class CombatAnomalyCheck implements AntiCheatCheck {
         state.criticalBuffer = 0;
     }
 
+    private void checkDamageSpike(AntiCheatCheckContext context, CombatState state, CombatSample sample) {
+        if (sample.damageTaken() <= context.settings().combatMaxDamageTaken()
+                && sample.baseDamageTaken() <= context.settings().combatMaxDamageTaken()) {
+            state.damageSpikeBuffer = Math.max(0, state.damageSpikeBuffer - 1);
+            return;
+        }
+
+        state.damageSpikeBuffer++;
+        if (state.damageSpikeBuffer < context.settings().combatDamageSpikeBuffer()) {
+            return;
+        }
+
+        alert(context, state, AntiCheatSeverity.WARNING, "combat_damage_spike", "Unusual combat damage detected", sample, "baseDamage=%.2f damage=%.2f max=%.2f buffer=%d required=%d target=%s blocked=%s".formatted(
+                sample.baseDamageTaken(),
+                sample.damageTaken(),
+                context.settings().combatMaxDamageTaken(),
+                state.damageSpikeBuffer,
+                context.settings().combatDamageSpikeBuffer(),
+                sample.targetName(),
+                sample.blocked()
+        ));
+        state.damageSpikeBuffer = 0;
+    }
+
     private void checkImpossibleModes(AntiCheatCheckContext context, CombatState state, CombatSample sample) {
         if (sample.attackerSpectator()) {
             alert(context, state, AntiCheatSeverity.CRITICAL, "combat_spectator_attack", "Impossible spectator attack detected", sample, "target=%s damage=%.2f".formatted(
@@ -348,6 +373,7 @@ public final class CombatAnomalyCheck implements AntiCheatCheck {
         private int menuAttackBuffer;
         private int usingItemAttackBuffer;
         private int criticalBuffer;
+        private int damageSpikeBuffer;
         private final ArrayDeque<TargetHit> recentTargets = new ArrayDeque<>();
         private final Map<String, Long> lastAlertTicks = new HashMap<>();
     }

@@ -22,6 +22,13 @@ function url(name, fallback = '') {
   return (process.env[name] ?? fallback).replace(/\/+$/, '');
 }
 
+function shdSiteApiUrl(name, fallback = '') {
+  const value = url(name, fallback);
+  if (!value) return '';
+  if (value.endsWith('/api/internal/bot')) return value;
+  return `${value}/api/internal/bot`;
+}
+
 export const config = {
   discordToken: process.env.DISCORD_TOKEN ?? '',
   clientId: process.env.DISCORD_CLIENT_ID ?? '',
@@ -31,7 +38,7 @@ export const config = {
   dataFile: process.env.DATA_FILE ?? './data/shd-bot.json',
   apiSharedSecret: process.env.API_SHARED_SECRET ?? '',
   shdSite: {
-    internalBaseUrl: url('SHD_SITE_INTERNAL_API_BASE_URL', 'http://localhost:3000/api/internal/bot'),
+    internalBaseUrl: shdSiteApiUrl('SHD_SITE_INTERNAL_API_BASE_URL', 'http://localhost:3000/api/internal/bot'),
     internalToken: process.env.SHD_SITE_INTERNAL_TOKEN ?? ''
   },
   production: bool('NODE_ENV_PRODUCTION', false) || process.env.NODE_ENV === 'production',

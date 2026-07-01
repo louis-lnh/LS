@@ -242,6 +242,56 @@ public final class MaceLimitRules {
         return customMaceKey(stack);
     }
 
+    public static List<ActiveMaceSnapshot> activeMaceSnapshots() {
+        return STATE.activeMaces.entrySet().stream()
+                .map(entry -> new ActiveMaceSnapshot(
+                        entry.getKey(),
+                        normalizeMaceKey(entry.getValue().maceKey).orElse(entry.getValue().maceKey),
+                        entry.getValue().location,
+                        entry.getValue().lastSeenAt,
+                        entry.getValue().ownerId,
+                        entry.getValue().ownerName
+                ))
+                .toList();
+    }
+
+    public static Optional<String> customMaceIntegrityIssue(ItemStack stack) {
+        if (!stack.isOf(Items.MACE)) {
+            return Optional.empty();
+        }
+
+        NbtComponent customData = stack.get(DataComponentTypes.CUSTOM_DATA);
+        if (customData == null) {
+            return Optional.empty();
+        }
+
+        NbtCompound nbt = customData.copyNbt();
+        if (!nbt.getBoolean(CUSTOM_MACE_KEY).orElse(false)) {
+            return Optional.empty();
+        }
+
+        Optional<String> maceKey = nbt.getString(CUSTOM_MACE_ID_KEY).flatMap(MaceLimitRules::normalizeMaceKey);
+        if (maceKey.isEmpty()) {
+            return Optional.of("invalid custom mace key");
+        }
+
+        if (isTrackable(stack) && nbt.getString(CUSTOM_MACE_INSTANCE_KEY).filter(value -> !value.isBlank()).isEmpty()) {
+            return Optional.of("trackable mace missing instance id");
+        }
+
+        Integer maxDamage = stack.get(DataComponentTypes.MAX_DAMAGE);
+        if (maxDamage == null || maxDamage != EVENT_MACE_MAX_DAMAGE) {
+            return Optional.of("unexpected custom mace max damage");
+        }
+
+        String expectedName = spec(maceKey.get()).map(MaceSpec::displayName).orElse("");
+        if (!expectedName.isBlank() && !stack.getName().getString().equals(expectedName)) {
+            return Optional.of("unexpected custom mace name");
+        }
+
+        return Optional.empty();
+    }
+
     private static RegistryEntry<Enchantment> enchantment(DynamicRegistryManager registryManager, net.minecraft.registry.RegistryKey<Enchantment> key) {
         RegistryEntryLookup<Enchantment> enchantments = registryManager.getOrThrow(RegistryKeys.ENCHANTMENT);
         return enchantments.getOrThrow(key);
@@ -565,5 +615,8 @@ public final class MaceLimitRules {
     }
 
     public record CraftedMaceResult(boolean created, int activeCount) {
+    }
+
+    public record ActiveMaceSnapshot(String instanceId, String maceKey, String location, String lastSeenAt, String ownerId, String ownerName) {
     }
 }

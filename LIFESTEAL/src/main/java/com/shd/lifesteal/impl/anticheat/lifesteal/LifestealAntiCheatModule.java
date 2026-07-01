@@ -73,7 +73,7 @@ public final class LifestealAntiCheatModule {
     }
 
     public boolean active() {
-        return false;
+        return true;
     }
 
     public List<LifestealAntiCheatCheckDefinition> plannedChecks() {

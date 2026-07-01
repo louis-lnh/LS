@@ -4,7 +4,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import net.minecraft.entity.effect.StatusEffects;
+import net.minecraft.registry.tag.FluidTags;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 
 public final class MovementAnomalyCheck implements AntiCheatCheck {
@@ -44,6 +46,8 @@ public final class MovementAnomalyCheck implements AntiCheatCheck {
         checkHover(context, state, current, previous, delta);
         checkFlyAscend(context, state, current, previous, delta);
         checkNoFall(context, state, current, previous, delta);
+        checkWaterWalk(context, state, current, previous, delta);
+        checkClipping(context, state, current, previous, delta);
     }
 
     @Override
@@ -262,6 +266,71 @@ public final class MovementAnomalyCheck implements AntiCheatCheck {
         state.maxObservedFallDistance = 0.0F;
     }
 
+    private void checkWaterWalk(
+            AntiCheatCheckContext context,
+            MovementState state,
+            MovementSnapshot current,
+            MovementSnapshot previous,
+            MovementDelta delta
+    ) {
+        if (current.exemptFromMovementChecks()
+                || current.onGround()
+                || current.touchingWater()
+                || current.inLava()
+                || current.climbing()
+                || current.swimming()
+                || current.slowFalling()
+                || current.levitation()
+                || !current.waterBelow()
+                || Math.abs(delta.verticalPerTick()) > context.settings().movementHoverVerticalPerTick()
+                || delta.horizontalPerTick() < context.settings().movementWaterWalkMinHorizontalPerTick()) {
+            state.waterWalkTicks = Math.max(0, state.waterWalkTicks - 2);
+            return;
+        }
+
+        state.waterWalkTicks++;
+        if (state.waterWalkTicks < context.settings().movementWaterWalkTicks()) {
+            return;
+        }
+
+        alert(context, state, AntiCheatSeverity.WARNING, "movement_water_walk", "Unusual water-surface movement detected", current, previous, delta,
+                "waterWalkTicks=%d threshold=%d horizontalPerTick=%.2f minHorizontal=%.2f verticalPerTick=%.3f".formatted(
+                        state.waterWalkTicks,
+                        context.settings().movementWaterWalkTicks(),
+                        delta.horizontalPerTick(),
+                        context.settings().movementWaterWalkMinHorizontalPerTick(),
+                        delta.verticalPerTick()
+                ));
+        state.waterWalkTicks = 0;
+    }
+
+    private void checkClipping(
+            AntiCheatCheckContext context,
+            MovementState state,
+            MovementSnapshot current,
+            MovementSnapshot previous,
+            MovementDelta delta
+    ) {
+        if (current.exemptFromMovementChecks() || current.hasVehicle() || !current.insideWall()) {
+            state.clipTicks = Math.max(0, state.clipTicks - 2);
+            return;
+        }
+
+        state.clipTicks++;
+        if (state.clipTicks < context.settings().movementClipTicks()) {
+            return;
+        }
+
+        alert(context, state, AntiCheatSeverity.HIGH, "movement_inside_wall", "Unusual in-block movement detected", current, previous, delta,
+                "clipTicks=%d threshold=%d horizontalPerTick=%.2f verticalPerTick=%.2f".formatted(
+                        state.clipTicks,
+                        context.settings().movementClipTicks(),
+                        delta.horizontalPerTick(),
+                        delta.verticalPerTick()
+                ));
+        state.clipTicks = 0;
+    }
+
     private void alert(
             AntiCheatCheckContext context,
             MovementState state,
@@ -284,7 +353,7 @@ public final class MovementAnomalyCheck implements AntiCheatCheck {
                 severity,
                 reasonCode,
                 publicReason,
-                "check=%s %s from=%.2f,%.2f,%.2f to=%.2f,%.2f,%.2f horizontal=%.2f vertical=%.2f elapsedTicks=%d onGround=%s airTicks=%d water=%s lava=%s climbing=%s gliding=%s vehicle=%s slowFalling=%s levitation=%s velocity=%.2f,%.2f,%.2f".formatted(
+                "check=%s %s from=%.2f,%.2f,%.2f to=%.2f,%.2f,%.2f horizontal=%.2f vertical=%.2f elapsedTicks=%d onGround=%s airTicks=%d water=%s waterBelow=%s lava=%s climbing=%s gliding=%s vehicle=%s insideWall=%s slowFalling=%s levitation=%s velocity=%.2f,%.2f,%.2f".formatted(
                         id(),
                         detail,
                         previous.x(),
@@ -299,10 +368,12 @@ public final class MovementAnomalyCheck implements AntiCheatCheck {
                         current.onGround(),
                         state.airTicks,
                         current.touchingWater(),
+                        current.waterBelow(),
                         current.inLava(),
                         current.climbing(),
                         current.gliding(),
                         current.hasVehicle(),
+                        current.insideWall(),
                         current.slowFalling(),
                         current.levitation(),
                         current.velocityX(),
@@ -320,6 +391,8 @@ public final class MovementAnomalyCheck implements AntiCheatCheck {
         private int airTicks;
         private int hoverTicks;
         private int upwardTicks;
+        private int waterWalkTicks;
+        private int clipTicks;
         private double accumulatedFallDistance;
         private double maxObservedFallDistance;
         private final Map<String, Long> lastAlertTicks = new HashMap<>();
@@ -330,6 +403,8 @@ public final class MovementAnomalyCheck implements AntiCheatCheck {
             airTicks = 0;
             hoverTicks = 0;
             upwardTicks = 0;
+            waterWalkTicks = 0;
+            clipTicks = 0;
             accumulatedFallDistance = 0.0D;
             maxObservedFallDistance = 0.0F;
         }
@@ -351,6 +426,8 @@ public final class MovementAnomalyCheck implements AntiCheatCheck {
             boolean climbing,
             boolean gliding,
             boolean swimming,
+            boolean waterBelow,
+            boolean insideWall,
             boolean sneaking,
             boolean sprinting,
             boolean slowFalling,
@@ -376,6 +453,8 @@ public final class MovementAnomalyCheck implements AntiCheatCheck {
                     player.isClimbing(),
                     player.isGliding(),
                     player.isSwimming(),
+                    waterBelow(player),
+                    player.isInsideWall(),
                     player.isSneaking(),
                     player.isSprinting(),
                     player.hasStatusEffect(StatusEffects.SLOW_FALLING),
@@ -391,6 +470,11 @@ public final class MovementAnomalyCheck implements AntiCheatCheck {
 
         boolean exemptFromAirChecks() {
             return exemptFromMovementChecks() || touchingWater || inLava || climbing || swimming || slowFalling || levitation;
+        }
+
+        private static boolean waterBelow(ServerPlayerEntity player) {
+            BlockPos below = BlockPos.ofFloored(player.getX(), player.getY() - 0.08D, player.getZ());
+            return player.getEntityWorld().getFluidState(below).isIn(FluidTags.WATER);
         }
     }
 

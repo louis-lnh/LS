@@ -25,6 +25,7 @@ const initialState = {
   support_submissions: [],
   admin_sessions: [],
   ticket_threads: [],
+  mod_cases: [],
   twitch_live_states: [],
   rules_acceptances: [],
   role_assignments: [],
@@ -35,6 +36,7 @@ const initialState = {
     support_submissions: 1,
     support_notes: 1,
     ticket_threads: 1,
+    mod_cases: 1,
     role_panel_messages: 1,
     rules_acceptances: 1,
     role_assignments: 1
@@ -309,6 +311,55 @@ export const statements = {
       ticket.updated_at = ticket.closed_at;
       persist();
       return clone(ticket);
+    }
+  },
+  modCases: {
+    create(row) {
+      const now = row.createdAt ?? Date.now();
+      const modCase = {
+        id: state.counters.mod_cases++,
+        type: row.type,
+        actor_id: row.actorId,
+        target_id: row.targetId ?? null,
+        target_tag: row.targetTag ?? null,
+        guild_id: row.guildId ?? null,
+        channel_id: row.channelId ?? null,
+        reason: row.reason ?? 'No reason provided.',
+        duration_ms: row.durationMs ?? null,
+        message_count: row.messageCount ?? null,
+        metadata: row.metadata ?? {},
+        active: row.active ?? true,
+        created_at: now,
+        updated_at: now
+      };
+      state.mod_cases.push(modCase);
+      persist();
+      return clone(modCase);
+    },
+    get(id) {
+      return clone(state.mod_cases.find((row) => row.id === Number(id)) ?? null);
+    },
+    forUser(userId, limit = 10) {
+      return clone(state.mod_cases
+        .filter((row) => row.target_id === userId)
+        .sort((a, b) => b.created_at - a.created_at)
+        .slice(0, Math.min(Math.max(Number(limit) || 10, 1), 25)));
+    },
+    warningsForUser(userId, limit = 10) {
+      return clone(state.mod_cases
+        .filter((row) => row.target_id === userId && row.type === 'warn')
+        .sort((a, b) => b.created_at - a.created_at)
+        .slice(0, Math.min(Math.max(Number(limit) || 10, 1), 25)));
+    },
+    clearWarning(caseId, actorId, reason) {
+      const modCase = state.mod_cases.find((row) => row.id === Number(caseId) && row.type === 'warn');
+      if (!modCase) return null;
+      modCase.active = false;
+      modCase.cleared_by = actorId;
+      modCase.clear_reason = reason ?? 'No reason provided.';
+      modCase.updated_at = Date.now();
+      persist();
+      return clone(modCase);
     }
   },
   twitchLiveStates: {

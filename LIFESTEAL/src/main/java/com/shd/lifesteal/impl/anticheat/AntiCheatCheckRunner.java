@@ -14,6 +14,7 @@ public final class AntiCheatCheckRunner {
     private final AntiCheatSettings settings;
     private final AntiCheatIdentityStore identityStore;
     private final List<AntiCheatCheck> checks = new ArrayList<>();
+    private final List<AntiCheatCheck> eventChecks = new ArrayList<>();
     private long tick;
 
     public AntiCheatCheckRunner(AntiCheatService antiCheatService, AntiCheatSettings settings, AntiCheatIdentityStore identityStore) {
@@ -28,7 +29,14 @@ public final class AntiCheatCheckRunner {
         registerCheck(new CombatAnomalyCheck());
         registerCheck(new InventoryAnomalyCheck());
         registerCheck(new InteractionAnomalyCheck());
+        for (AntiCheatCheck check : eventChecks) {
+            registerCheck(check);
+        }
         ServerTickEvents.END_SERVER_TICK.register(this::tick);
+    }
+
+    public void addEventCheck(AntiCheatCheck check) {
+        eventChecks.add(check);
     }
 
     private void registerCheck(AntiCheatCheck check) {

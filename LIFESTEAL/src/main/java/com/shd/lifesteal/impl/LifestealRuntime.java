@@ -6,6 +6,7 @@ import com.shd.lifesteal.impl.anticheat.AntiCheatIdentityStore;
 import com.shd.lifesteal.impl.anticheat.AntiCheatPersistence;
 import com.shd.lifesteal.impl.anticheat.AntiCheatService;
 import com.shd.lifesteal.impl.anticheat.AntiCheatSettings;
+import com.shd.lifesteal.impl.anticheat.lifesteal.LifestealIntegrityCheck;
 import com.shd.lifesteal.impl.audit.LifestealAuditLog;
 import com.shd.lifesteal.impl.combat.CombatEventHandler;
 import com.shd.lifesteal.impl.combat.CombatLogoutHandler;
@@ -112,7 +113,7 @@ public final class LifestealRuntime {
             soundService
     );
     private final PlayerDeathHandler playerDeathHandler = new PlayerDeathHandler(playerHeartApplier, deathResolutionService, soundService, eliminatedPlayerAccess);
-    private final CombatLogoutHandler combatLogoutHandler = new CombatLogoutHandler(combatTagService, deathResolutionService, uiBridgeManager);
+    private final CombatLogoutHandler combatLogoutHandler = new CombatLogoutHandler(combatTagService, deathResolutionService, uiBridgeManager, antiCheatService);
     private final DisabledFeatureHandler disabledFeatureHandler = new DisabledFeatureHandler(combatTagService, ruleSettings, elytraCombatCooldownService, uiBridgeManager);
     private final RestrictedStorageHandler restrictedStorageHandler = new RestrictedStorageHandler(modItems);
     private final DragonEggGlowHandler dragonEggGlowHandler = new DragonEggGlowHandler(config);
@@ -155,6 +156,7 @@ public final class LifestealRuntime {
         lifestealActionbar.register();
         lifestealTabListService.register();
         lifestealBossbarService.register();
+        antiCheatCheckRunner.addEventCheck(new LifestealIntegrityCheck(heartService, gracePeriodService, combatTagService, modItems, dragonEggBeaconEffectHandler, eventTimerService));
         antiCheatCheckRunner.register();
         discordRoleSyncService.register();
         LifestealApi.setService(heartService);

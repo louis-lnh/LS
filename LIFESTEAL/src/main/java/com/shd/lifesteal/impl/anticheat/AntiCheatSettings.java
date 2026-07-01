@@ -33,6 +33,9 @@ public final class AntiCheatSettings {
     private static final String MOVEMENT_FLY_UPWARD_PER_TICK = "movement.flyUpwardPerTick";
     private static final String MOVEMENT_NO_FALL_MIN_DISTANCE = "movement.noFallMinDistance";
     private static final String MOVEMENT_NO_FALL_MIN_AIR_TICKS = "movement.noFallMinAirTicks";
+    private static final String MOVEMENT_WATER_WALK_TICKS = "movement.waterWalkTicks";
+    private static final String MOVEMENT_WATER_WALK_MIN_HORIZONTAL_PER_TICK = "movement.waterWalkMinHorizontalPerTick";
+    private static final String MOVEMENT_CLIP_TICKS = "movement.clipTicks";
     private static final String MOVEMENT_ALERT_COOLDOWN_TICKS = "movement.alertCooldownTicks";
     private static final String COMBAT_CHECKS_ENABLED = "combat.enabled";
     private static final String COMBAT_MAX_REACH_BLOCKS = "combat.maxReachBlocks";
@@ -49,6 +52,8 @@ public final class AntiCheatSettings {
     private static final String COMBAT_USING_ITEM_ATTACK_BUFFER = "combat.usingItemAttackBuffer";
     private static final String COMBAT_CRITICAL_BUFFER = "combat.criticalBuffer";
     private static final String COMBAT_CRITICAL_MIN_FALL_DISTANCE = "combat.criticalMinFallDistance";
+    private static final String COMBAT_MAX_DAMAGE_TAKEN = "combat.maxDamageTaken";
+    private static final String COMBAT_DAMAGE_SPIKE_BUFFER = "combat.damageSpikeBuffer";
     private static final String COMBAT_ALERT_COOLDOWN_TICKS = "combat.alertCooldownTicks";
     private static final String INVENTORY_CHECKS_ENABLED = "inventory.enabled";
     private static final String INVENTORY_SCAN_INTERVAL_TICKS = "inventory.scanIntervalTicks";
@@ -81,6 +86,11 @@ public final class AntiCheatSettings {
     private static final String CLIENT_BLOCKED_BRANDS = "client.blockedBrands";
     private static final String CLIENT_REQUIRED_CHANNELS = "client.requiredChannels";
     private static final String CLIENT_DISALLOWED_CHANNELS = "client.disallowedChannels";
+    private static final String LIFESTEAL_CHECKS_ENABLED = "lifesteal.enabled";
+    private static final String LIFESTEAL_SCAN_INTERVAL_TICKS = "lifesteal.scanIntervalTicks";
+    private static final String LIFESTEAL_ALERT_COOLDOWN_TICKS = "lifesteal.alertCooldownTicks";
+    private static final String LIFESTEAL_END_ACCESS_REQUIRES_EVENT = "lifesteal.endAccessRequiresEvent";
+    private static final String LIFESTEAL_END_EVENT_NAME_MARKER = "lifesteal.endEventNameMarker";
     private static final String CATEGORY_PREFIX = "category.";
 
     private final Path path;
@@ -105,6 +115,9 @@ public final class AntiCheatSettings {
     private double movementFlyUpwardPerTick = 0.12D;
     private double movementNoFallMinDistance = 4.0D;
     private int movementNoFallMinAirTicks = 10;
+    private int movementWaterWalkTicks = 12;
+    private double movementWaterWalkMinHorizontalPerTick = 0.12D;
+    private int movementClipTicks = 8;
     private int movementAlertCooldownTicks = 100;
     private boolean combatChecksEnabled = true;
     private double combatMaxReachBlocks = 6.0D;
@@ -121,6 +134,8 @@ public final class AntiCheatSettings {
     private int combatUsingItemAttackBuffer = 4;
     private int combatCriticalBuffer = 3;
     private double combatCriticalMinFallDistance = 0.08D;
+    private double combatMaxDamageTaken = 45.0D;
+    private int combatDamageSpikeBuffer = 2;
     private int combatAlertCooldownTicks = 100;
     private boolean inventoryChecksEnabled = true;
     private int inventoryScanIntervalTicks = 20;
@@ -153,6 +168,11 @@ public final class AntiCheatSettings {
     private Set<String> clientBlockedBrands = Set.of();
     private Set<String> clientRequiredChannels = Set.of();
     private Set<String> clientDisallowedChannels = Set.of();
+    private boolean lifestealChecksEnabled = true;
+    private int lifestealScanIntervalTicks = 20;
+    private int lifestealAlertCooldownTicks = 200;
+    private boolean lifestealEndAccessRequiresEvent = false;
+    private String lifestealEndEventNameMarker = "end";
 
     public AntiCheatSettings(Path path) {
         this.path = path;
@@ -189,6 +209,9 @@ public final class AntiCheatSettings {
         movementFlyUpwardPerTick = doubleProperty(properties, MOVEMENT_FLY_UPWARD_PER_TICK, movementFlyUpwardPerTick);
         movementNoFallMinDistance = doubleProperty(properties, MOVEMENT_NO_FALL_MIN_DISTANCE, movementNoFallMinDistance);
         movementNoFallMinAirTicks = intProperty(properties, MOVEMENT_NO_FALL_MIN_AIR_TICKS, movementNoFallMinAirTicks);
+        movementWaterWalkTicks = intProperty(properties, MOVEMENT_WATER_WALK_TICKS, movementWaterWalkTicks);
+        movementWaterWalkMinHorizontalPerTick = doubleProperty(properties, MOVEMENT_WATER_WALK_MIN_HORIZONTAL_PER_TICK, movementWaterWalkMinHorizontalPerTick);
+        movementClipTicks = intProperty(properties, MOVEMENT_CLIP_TICKS, movementClipTicks);
         movementAlertCooldownTicks = intProperty(properties, MOVEMENT_ALERT_COOLDOWN_TICKS, movementAlertCooldownTicks);
         combatChecksEnabled = booleanProperty(properties, COMBAT_CHECKS_ENABLED, combatChecksEnabled);
         combatMaxReachBlocks = doubleProperty(properties, COMBAT_MAX_REACH_BLOCKS, combatMaxReachBlocks);
@@ -205,6 +228,8 @@ public final class AntiCheatSettings {
         combatUsingItemAttackBuffer = intProperty(properties, COMBAT_USING_ITEM_ATTACK_BUFFER, combatUsingItemAttackBuffer);
         combatCriticalBuffer = intProperty(properties, COMBAT_CRITICAL_BUFFER, combatCriticalBuffer);
         combatCriticalMinFallDistance = doubleProperty(properties, COMBAT_CRITICAL_MIN_FALL_DISTANCE, combatCriticalMinFallDistance);
+        combatMaxDamageTaken = doubleProperty(properties, COMBAT_MAX_DAMAGE_TAKEN, combatMaxDamageTaken);
+        combatDamageSpikeBuffer = intProperty(properties, COMBAT_DAMAGE_SPIKE_BUFFER, combatDamageSpikeBuffer);
         combatAlertCooldownTicks = intProperty(properties, COMBAT_ALERT_COOLDOWN_TICKS, combatAlertCooldownTicks);
         inventoryChecksEnabled = booleanProperty(properties, INVENTORY_CHECKS_ENABLED, inventoryChecksEnabled);
         inventoryScanIntervalTicks = intProperty(properties, INVENTORY_SCAN_INTERVAL_TICKS, inventoryScanIntervalTicks);
@@ -237,6 +262,11 @@ public final class AntiCheatSettings {
         clientBlockedBrands = setProperty(properties, CLIENT_BLOCKED_BRANDS, clientBlockedBrands);
         clientRequiredChannels = setProperty(properties, CLIENT_REQUIRED_CHANNELS, clientRequiredChannels);
         clientDisallowedChannels = setProperty(properties, CLIENT_DISALLOWED_CHANNELS, clientDisallowedChannels);
+        lifestealChecksEnabled = booleanProperty(properties, LIFESTEAL_CHECKS_ENABLED, lifestealChecksEnabled);
+        lifestealScanIntervalTicks = intProperty(properties, LIFESTEAL_SCAN_INTERVAL_TICKS, lifestealScanIntervalTicks);
+        lifestealAlertCooldownTicks = intProperty(properties, LIFESTEAL_ALERT_COOLDOWN_TICKS, lifestealAlertCooldownTicks);
+        lifestealEndAccessRequiresEvent = booleanProperty(properties, LIFESTEAL_END_ACCESS_REQUIRES_EVENT, lifestealEndAccessRequiresEvent);
+        lifestealEndEventNameMarker = stringProperty(properties, LIFESTEAL_END_EVENT_NAME_MARKER, lifestealEndEventNameMarker).toLowerCase(java.util.Locale.ROOT);
 
         categoryActions.clear();
         for (AntiCheatCategory category : AntiCheatCategory.values()) {
@@ -337,6 +367,18 @@ public final class AntiCheatSettings {
         return movementNoFallMinAirTicks;
     }
 
+    public int movementWaterWalkTicks() {
+        return movementWaterWalkTicks;
+    }
+
+    public double movementWaterWalkMinHorizontalPerTick() {
+        return movementWaterWalkMinHorizontalPerTick;
+    }
+
+    public int movementClipTicks() {
+        return movementClipTicks;
+    }
+
     public int movementAlertCooldownTicks() {
         return movementAlertCooldownTicks;
     }
@@ -399,6 +441,14 @@ public final class AntiCheatSettings {
 
     public double combatCriticalMinFallDistance() {
         return combatCriticalMinFallDistance;
+    }
+
+    public double combatMaxDamageTaken() {
+        return combatMaxDamageTaken;
+    }
+
+    public int combatDamageSpikeBuffer() {
+        return combatDamageSpikeBuffer;
     }
 
     public int combatAlertCooldownTicks() {
@@ -529,8 +579,28 @@ public final class AntiCheatSettings {
         return clientDisallowedChannels;
     }
 
+    public boolean lifestealChecksEnabled() {
+        return lifestealChecksEnabled;
+    }
+
+    public int lifestealScanIntervalTicks() {
+        return lifestealScanIntervalTicks;
+    }
+
+    public int lifestealAlertCooldownTicks() {
+        return lifestealAlertCooldownTicks;
+    }
+
+    public boolean lifestealEndAccessRequiresEvent() {
+        return lifestealEndAccessRequiresEvent;
+    }
+
+    public String lifestealEndEventNameMarker() {
+        return lifestealEndEventNameMarker;
+    }
+
     public String statusText() {
-        return "enabled=%s defaultAction=%s tempBanMinutes=%d appealUrl=%s history=%d checks[movement=%s combat=%s inventory=%s interaction=%s account=%s client=%s] movement=burst%.1f/%.1f sustained%.2f air%.2f hover%d nofall%.1f combat=reach%.1f/y%.1f/min%d/cd%.2f/multi%d:%d inventory=scan%d/maxStack%d/gain%d interaction=block%.1f/entity%.1f/min%d account=maxIp%d client=brand%s/requiredChannels%d overrides=%d".formatted(
+        return "enabled=%s defaultAction=%s tempBanMinutes=%d appealUrl=%s history=%d checks[movement=%s combat=%s inventory=%s interaction=%s account=%s client=%s lifesteal=%s] movement=burst%.1f/%.1f sustained%.2f air%.2f hover%d nofall%.1f waterWalk%d clip%d combat=reach%.1f/y%.1f/min%d/cd%.2f/multi%d:%d damage%.1f inventory=scan%d/maxStack%d/gain%d interaction=block%.1f/entity%.1f/min%d account=maxIp%d client=brand%s/requiredChannels%d lifestealScan=%d endGate=%s overrides=%d".formatted(
                 enabled,
                 defaultAction,
                 tempBanDuration.toMinutes(),
@@ -542,18 +612,22 @@ public final class AntiCheatSettings {
                 interactionChecksEnabled,
                 accountChecksEnabled,
                 clientChecksEnabled,
+                lifestealChecksEnabled,
                 movementMaxHorizontalPerTick,
                 movementMaxVerticalPerTick,
                 movementMaxSustainedHorizontalPerTick,
                 movementMaxAirHorizontalPerTick,
                 movementHoverTicks,
                 movementNoFallMinDistance,
+                movementWaterWalkTicks,
+                movementClipTicks,
                 combatMaxReachBlocks,
                 combatMaxVerticalReachBlocks,
                 combatMinAttackIntervalTicks,
                 combatLowCooldownThreshold,
                 combatMaxTargetsPerWindow,
                 combatMultiTargetWindowTicks,
+                combatMaxDamageTaken,
                 inventoryScanIntervalTicks,
                 inventoryMaxAllowedStackSize,
                 inventoryMaxSingleScanItemGain,
@@ -563,6 +637,8 @@ public final class AntiCheatSettings {
                 accountMaxAccountsPerIpHash,
                 clientRequireBrand ? "required" : "optional",
                 clientRequiredChannels.size(),
+                lifestealScanIntervalTicks,
+                lifestealEndAccessRequiresEvent,
                 categoryActions.size()
         );
     }
@@ -589,6 +665,9 @@ public final class AntiCheatSettings {
         properties.setProperty(MOVEMENT_FLY_UPWARD_PER_TICK, Double.toString(movementFlyUpwardPerTick));
         properties.setProperty(MOVEMENT_NO_FALL_MIN_DISTANCE, Double.toString(movementNoFallMinDistance));
         properties.setProperty(MOVEMENT_NO_FALL_MIN_AIR_TICKS, Integer.toString(movementNoFallMinAirTicks));
+        properties.setProperty(MOVEMENT_WATER_WALK_TICKS, Integer.toString(movementWaterWalkTicks));
+        properties.setProperty(MOVEMENT_WATER_WALK_MIN_HORIZONTAL_PER_TICK, Double.toString(movementWaterWalkMinHorizontalPerTick));
+        properties.setProperty(MOVEMENT_CLIP_TICKS, Integer.toString(movementClipTicks));
         properties.setProperty(MOVEMENT_ALERT_COOLDOWN_TICKS, Integer.toString(movementAlertCooldownTicks));
         properties.setProperty(COMBAT_CHECKS_ENABLED, Boolean.toString(combatChecksEnabled));
         properties.setProperty(COMBAT_MAX_REACH_BLOCKS, Double.toString(combatMaxReachBlocks));
@@ -605,6 +684,8 @@ public final class AntiCheatSettings {
         properties.setProperty(COMBAT_USING_ITEM_ATTACK_BUFFER, Integer.toString(combatUsingItemAttackBuffer));
         properties.setProperty(COMBAT_CRITICAL_BUFFER, Integer.toString(combatCriticalBuffer));
         properties.setProperty(COMBAT_CRITICAL_MIN_FALL_DISTANCE, Double.toString(combatCriticalMinFallDistance));
+        properties.setProperty(COMBAT_MAX_DAMAGE_TAKEN, Double.toString(combatMaxDamageTaken));
+        properties.setProperty(COMBAT_DAMAGE_SPIKE_BUFFER, Integer.toString(combatDamageSpikeBuffer));
         properties.setProperty(COMBAT_ALERT_COOLDOWN_TICKS, Integer.toString(combatAlertCooldownTicks));
         properties.setProperty(INVENTORY_CHECKS_ENABLED, Boolean.toString(inventoryChecksEnabled));
         properties.setProperty(INVENTORY_SCAN_INTERVAL_TICKS, Integer.toString(inventoryScanIntervalTicks));
@@ -637,6 +718,11 @@ public final class AntiCheatSettings {
         properties.setProperty(CLIENT_BLOCKED_BRANDS, joinSet(clientBlockedBrands));
         properties.setProperty(CLIENT_REQUIRED_CHANNELS, joinSet(clientRequiredChannels));
         properties.setProperty(CLIENT_DISALLOWED_CHANNELS, joinSet(clientDisallowedChannels));
+        properties.setProperty(LIFESTEAL_CHECKS_ENABLED, Boolean.toString(lifestealChecksEnabled));
+        properties.setProperty(LIFESTEAL_SCAN_INTERVAL_TICKS, Integer.toString(lifestealScanIntervalTicks));
+        properties.setProperty(LIFESTEAL_ALERT_COOLDOWN_TICKS, Integer.toString(lifestealAlertCooldownTicks));
+        properties.setProperty(LIFESTEAL_END_ACCESS_REQUIRES_EVENT, Boolean.toString(lifestealEndAccessRequiresEvent));
+        properties.setProperty(LIFESTEAL_END_EVENT_NAME_MARKER, lifestealEndEventNameMarker);
         for (Map.Entry<AntiCheatCategory, AntiCheatAction> entry : categoryActions.entrySet()) {
             properties.setProperty(CATEGORY_PREFIX + entry.getKey().name().toLowerCase(), entry.getValue().name());
         }

@@ -102,12 +102,13 @@ Owns:
 
 May depend on stable `shd-lifesteal.api` interfaces. It should avoid reaching into Lifesteal implementation internals unless we intentionally add a small API for missing state.
 
-Current source skeleton:
+Current source:
 
 - `com.shd.lifesteal.impl.anticheat.lifesteal.LifestealAntiCheatModule`
 - `com.shd.lifesteal.impl.anticheat.lifesteal.LifestealAntiCheatCheckDefinition`
+- `com.shd.lifesteal.impl.anticheat.lifesteal.LifestealIntegrityCheck`
 
-The skeleton is intentionally inactive and is not registered by `LifestealRuntime` yet. It only maps the future Lifesteal-specific check families so the next implementation pass has a clear home without mixing Season 1 logic into the reusable generic checks.
+The module definition maps the Lifesteal-specific check families. The first active Lifesteal-specific check is now registered by `LifestealRuntime` as an event-specific anti-cheat check, while the remaining Season 1 families are still being filled in without mixing that logic into the reusable generic checks.
 
 ### `shd-lifesteal`
 
@@ -190,12 +191,35 @@ Initial implementation status:
 - Staff can inspect and operate the foundation with `/lifesteal anticheat status`, `/lifesteal anticheat reload`, `/lifesteal anticheat clear`, `/lifesteal anticheat lookup <evidenceId|appealId>`, `/lifesteal anticheat recent [limit]`, `/lifesteal anticheat player <player> [limit]`, `/lifesteal anticheat open [limit]`, `/lifesteal anticheat mark <evidenceId|appealId> <status> [note]`, and `/lifesteal anticheat note <evidenceId|appealId> <note>`.
 - A generic check runner executes reusable server anti-cheat checks once per server tick.
 - The first generic check is `movement_anomaly`, a conservative audit-first movement signal controlled by `movement.maxHorizontalPerTick` and `movement.maxVerticalPerTick`.
-- Generic combat signals now cover unusual reach, rapid attack timing, multi-target hit bursts, and impossible spectator attacks.
+- Generic combat signals now cover unusual reach, rapid attack timing, multi-target hit bursts, line-of-sight anomalies, unusual damage spikes, and impossible spectator attacks.
 - Generic inventory/item integrity signals now cover impossible stacks, stack/damage component overrides, impossible durability, long item names, illegal enchantment levels, and unusually large item-count gains between scans.
 - Generic interaction signals now cover unusual block/entity reach, rapid interaction bursts, interactions while a non-player menu is open, and spectator interactions.
 - Generic account access signals now cover account name changes, name reuse across UUIDs, network-hash account clusters, and staff/operator logins.
 - Generic client integrity signals now cover client brand metadata, client brand changes, configured allowed/blocked brands, and configured required/disallowed networking channels.
 - Generic checks can be toggled with `movement.enabled`, `combat.enabled`, `inventory.enabled`, `interaction.enabled`, `account.enabled`, and `client.enabled`.
+- Lifesteal-specific integrity checks can be toggled with `lifesteal.enabled`, `lifesteal.scanIntervalTicks`, and `lifesteal.alertCooldownTicks`.
+
+Current Lifesteal-specific coverage:
+
+- online player has persisted Lifesteal state
+- non-eliminated player heart count remains within configured bounds
+- eliminated player heart display state remains zero
+- player applied max-health attribute matches stored Lifesteal hearts
+- eliminated player still active on the server
+- combat tag active during grace period
+- heart state changes while grace period is active
+- invalid non-event mace in a player inventory or cursor stack
+- invalid non-event mace hidden inside a bundle
+- protected Lifesteal items hidden inside bundles, including hearts, Dragon Egg, and tracked event maces
+- possible duplicate Dragon Eggs carried by one player
+- impossible count of tracked event maces carried by one player
+- custom event mace tampering for key, instance, name, and max-damage identity
+- active mace registry over-limit, duplicate active keys, and duplicate/blank instance IDs
+- loaded Dragon Egg objective duplication across carriers, dropped items, and item frames
+- Dragon Egg UI state mismatch when carried/absent state disagrees with loaded observations
+- optional End access gate through `lifesteal.endAccessRequiresEvent` and `lifesteal.endEventNameMarker`
+- active event timer sanity for blank names and invalid remaining time
+- combat logout evidence when a tagged disconnect triggers inventory drop and death resolution
 
 Persistent anti-cheat files:
 
@@ -224,6 +248,8 @@ Current generic movement coverage:
 - airborne hover/fly suspicion
 - repeated upward flight-style movement
 - suspicious no-fall/fall-distance reset patterns
+- sustained water-surface movement that resembles water-walk/Jesus behavior
+- sustained in-block/inside-wall movement that resembles clipping or phasing
 
 Movement checks currently exempt or soften around normal high-variance states:
 
@@ -254,6 +280,9 @@ Movement config keys:
 - `movement.flyUpwardPerTick`
 - `movement.noFallMinDistance`
 - `movement.noFallMinAirTicks`
+- `movement.waterWalkTicks`
+- `movement.waterWalkMinHorizontalPerTick`
+- `movement.clipTicks`
 - `movement.alertCooldownTicks`
 
 Current generic combat coverage:
@@ -268,6 +297,7 @@ Current generic combat coverage:
 - attacks while a non-player inventory/menu is open
 - attacks while using or blocking with an item
 - suspicious airborne hit/critical-style patterns
+- unusually large combat damage spikes
 - impossible spectator attacks
 - attacks while blinded
 
@@ -290,6 +320,8 @@ Combat config keys:
 - `combat.usingItemAttackBuffer`
 - `combat.criticalBuffer`
 - `combat.criticalMinFallDistance`
+- `combat.maxDamageTaken`
+- `combat.damageSpikeBuffer`
 - `combat.alertCooldownTicks`
 
 Current generic inventory/item integrity coverage:

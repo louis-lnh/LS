@@ -5,6 +5,7 @@ Backend-first Discord bot for the SHD guild, websites, support flows, and future
 ## Current Scope
 
 - Discord `/status` command.
+- Moderation commands for purge, ban, unban, kick, timeout, warn, channel locks, slowmode, user info, cases, and mod logs.
 - Discord `/panel ticket`, `/panel verify`, `/panel roles`, and `/setup check` commands.
 - Button-based SHD verification and public role panels.
 - Ticket panels for support, applications, appeals, reports, and partnerships.
@@ -24,6 +25,7 @@ Backend-first Discord bot for the SHD guild, websites, support flows, and future
 - Protected admin submission list/detail/claim/note/decision routes.
 - Local JSON data store at `data/shd-bot.json`.
 - Audit event logging.
+- Moderation case logging.
 - Staff/owner permission helpers.
 - Config structure for SHD roles, channels, websites, and API secrets.
 
@@ -64,10 +66,18 @@ npm run register
 - `/panel ticket type:<type>`: posts ticket panels for support, application, appeal, report, or partnership flows.
 - `/setup check`: reports missing role/channel config and intent-dependent features.
 - `/setup launch`: reports the launch readiness checklist for roles, channels, secrets, intents, URLs, and posted panels.
+- `/purge`: deletes recent messages in the current channel, optionally for one user.
+- `/ban`, `/unban`, `/kick`: member removal actions with moderation cases.
+- `/timeout`, `/untimeout`: Discord timeout controls with duration parsing like `10m`, `1h`, or `1d`.
+- `/warn`, `/warnings`, `/clear-warning`: warning case workflow.
+- `/modlogs`, `/case`: inspect stored moderation cases.
+- `/lock`, `/unlock`, `/slowmode`: channel controls.
+- `/userinfo`: quick member info and recent case count.
+- `/support`: member-facing support/ticket guidance.
 - `/site status`: checks the protected SHD website bot API.
-- `/site announce`, `/site match`, `/site result`, `/site clip`, `/site roster`, and `/site record`: send website-control payloads to `shd-site`.
-
-The `/site` commands are currently contract-ready scaffold commands. They verify auth, payload shape, and bot-to-site connectivity, but the website returns `persisted: false` until the database-backed content slice is added.
+- `/site list`: shows website content, useful IDs, and audit summaries.
+- `/site announce`, `/site match`, `/site result`, `/site clip`, `/site roster`, and `/site record`: create/update website content in SQLite.
+- `/site edit-match`, `/site edit-clip`, `/site edit-announce`, `/site vod`, and `/site delete`: fix existing website content without touching the database manually.
 
 ## Twitch Live Notifications
 
@@ -85,6 +95,26 @@ TWITCH_POLL_INTERVAL_MS=120000
 ```
 
 `SHD_LIVE_ROLE_ID` is optional for the monitor, but recommended. When configured, the role panel includes a `Live` button and live embeds ping only that role. The bot stores announced Twitch stream IDs in the local JSON data file, so restarts should not repost the same live stream.
+
+## Moderation
+
+Moderation commands create stored cases inside `data/shd-bot.json` and post staff audit embeds when `STAFF_AUDIT_CHANNEL_ID` or `SYSTEM_LOG_CHANNEL_ID` is configured.
+
+Common commands:
+
+```powershell
+/purge amount:25
+/ban user:@name reason:spam delete_days:1
+/timeout user:@name duration:1h reason:cooldown
+/warn user:@name reason:rule reminder
+/warnings user:@name
+/modlogs user:@name
+/case case_id:12
+/lock
+/slowmode seconds:10
+```
+
+Duration values support `s`, `m`, `h`, `d`, and `w`. Discord timeouts are capped at 28 days.
 
 Ticket keys look like `SHD-APP-1A2B3C4D`, `SHD-SUP-1A2B3C4D`, `SHD-RPT-1A2B3C4D`, `SHD-APL-1A2B3C4D`, or `SHD-CON-1A2B3C4D`. Users paste them inside a ticket thread to attach their website submission to the Discord review.
 
@@ -111,6 +141,15 @@ SHD_SITE_INTERNAL_API_BASE_URL=http://localhost:3000/api/internal/bot
 SHD_SITE_INTERNAL_TOKEN=use-the-same-secret-as-shd-site
 ```
 
+For external hosting, point the bot at the deployed site:
+
+```env
+SHD_SITE_INTERNAL_API_BASE_URL=https://shd-esports.com/api/internal/bot
+SHD_SITE_INTERNAL_TOKEN=use-the-same-secret-as-shd-site
+```
+
+The bot also accepts `SHD_SITE_INTERNAL_API_BASE_URL=https://shd-esports.com` and appends `/api/internal/bot` automatically.
+
 The website must expose the same token as:
 
 ```env
@@ -120,11 +159,19 @@ SHD_SITE_INTERNAL_TOKEN=use-the-same-secret-as-shd-site
 Implemented protected site contracts:
 
 - `GET /api/internal/bot/status`
+- `GET /api/internal/bot/content`
 - `POST /api/internal/bot/announcements`
+- `PATCH /api/internal/bot/announcements/:id`
+- `DELETE /api/internal/bot/announcements/:id`
 - `POST /api/internal/bot/roster`
+- `DELETE /api/internal/bot/roster/:id`
 - `POST /api/internal/bot/matches`
+- `PATCH /api/internal/bot/matches/:id`
+- `DELETE /api/internal/bot/matches/:id`
 - `POST /api/internal/bot/matches/:id/result`
 - `POST /api/internal/bot/clips`
+- `PATCH /api/internal/bot/clips/:id`
+- `DELETE /api/internal/bot/clips/:id`
 - `POST /api/internal/bot/vods`
 - `POST /api/internal/bot/premier-record`
 
