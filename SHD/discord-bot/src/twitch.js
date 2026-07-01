@@ -148,26 +148,31 @@ async function postLiveNotification(client, stream) {
   }
 
   const url = `https://www.twitch.tv/${stream.user_login}`;
+  const user = await fetchTwitchUser(stream.user_login).catch((error) => {
+    console.warn(`Could not fetch Twitch user profile for ${stream.user_login}: ${error.message}`);
+    return null;
+  });
   const thumbnail = String(stream.thumbnail_url ?? '')
     .replace('{width}', '1280')
     .replace('{height}', '720');
   const embed = new EmbedBuilder()
-    .setColor(0x9146ff)
-    .setAuthor({ name: `${stream.user_name} is live on Twitch` })
+    .setColor(0xead49f)
+    .setAuthor({
+      name: stream.user_name,
+      iconURL: user?.profile_image_url || undefined,
+      url
+    })
     .setTitle(stream.title || 'Live now')
     .setURL(url)
-    .setDescription(stream.game_name ? `Streaming **${stream.game_name}**` : 'Streaming now')
-    .addFields(
-      { name: 'Viewers', value: String(stream.viewer_count ?? 0), inline: true },
-      { name: 'Started', value: stream.started_at ? `<t:${Math.floor(new Date(stream.started_at).getTime() / 1000)}:R>` : 'now', inline: true }
-    )
+    .setDescription(stream.game_name ? `Category: **${stream.game_name}**` : 'Category: **Live**')
+    .setFooter({ text: 'SHD Live Notifications' })
     .setTimestamp(new Date());
 
   if (thumbnail) {
     embed.setImage(`${thumbnail}?shd=${encodeURIComponent(stream.id)}`);
   }
 
-  const content = config.roles.live ? `<@&${config.roles.live}>` : undefined;
+  const content = `${config.roles.live ? `<@&${config.roles.live}> ` : ''}**${stream.user_name} just went live!**`;
   await channel.send({
     content,
     embeds: [embed],
@@ -194,4 +199,20 @@ async function postLiveNotification(client, stream) {
     { name: 'Channel', value: `<#${config.channels.twitchLive}>`, inline: true },
     { name: 'Stream', value: url }
   ]);
+}
+
+async function fetchTwitchUser(login) {
+  const token = await getAppToken();
+  const params = new URLSearchParams({ login });
+  const response = await fetch(`https://api.twitch.tv/helix/users?${params.toString()}`, {
+    headers: {
+      'Client-ID': config.twitch.clientId,
+      Authorization: `Bearer ${token}`
+    }
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.message || `Twitch user request failed with ${response.status}.`);
+  }
+  return data.data?.[0] ?? null;
 }
