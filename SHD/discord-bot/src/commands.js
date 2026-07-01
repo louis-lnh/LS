@@ -208,6 +208,32 @@ const supportCommand = new SlashCommandBuilder()
   .setName('support')
   .setDescription('Show how to get help from SHD staff.');
 
+const notificationCommand = new SlashCommandBuilder()
+  .setName('notification')
+  .setDescription('Send a staff notification embed in this channel.')
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+  .addStringOption((option) =>
+    option.setName('title').setDescription('Notification title.').setRequired(true).setMaxLength(120)
+  )
+  .addStringOption((option) =>
+    option.setName('message').setDescription('Notification message.').setRequired(true).setMaxLength(2000)
+  )
+  .addStringOption((option) =>
+    option
+      .setName('style')
+      .setDescription('Notification style.')
+      .addChoices(
+        { name: 'Info', value: 'info' },
+        { name: 'Success', value: 'success' },
+        { name: 'Warning', value: 'warning' },
+        { name: 'Danger', value: 'danger' },
+        { name: 'Event', value: 'event' }
+      )
+  )
+  .addStringOption((option) =>
+    option.setName('footer').setDescription('Optional footer text.').setMaxLength(120)
+  );
+
 const siteCommand = new SlashCommandBuilder()
   .setName('site')
   .setDescription('Control SHD website content through the internal site API.')
@@ -407,6 +433,7 @@ export const commands = [
   slowmodeCommand.toJSON(),
   userInfoCommand.toJSON(),
   supportCommand.toJSON(),
+  notificationCommand.toJSON(),
   siteCommand.toJSON()
 ];
 
@@ -430,6 +457,11 @@ export async function handleInteraction(interaction) {
 
   if (interaction.commandName === 'setup') {
     await handleSetup(interaction);
+    return;
+  }
+
+  if (interaction.commandName === 'notification') {
+    await handleNotification(interaction);
     return;
   }
 
@@ -733,6 +765,59 @@ async function handleUtilityCommand(interaction) {
   if (interaction.commandName === 'slowmode') {
     await handleSlowmodeCommand(interaction);
   }
+}
+
+const notificationStyles = {
+  info: { color: 0x2f80ed, label: 'Info' },
+  success: { color: 0x2f7d67, label: 'Success' },
+  warning: { color: 0xffb020, label: 'Warning' },
+  danger: { color: 0xd94848, label: 'Danger' },
+  event: { color: 0x8b5cf6, label: 'Event' }
+};
+
+async function handleNotification(interaction) {
+  if (!hasStaffAccess(interaction)) {
+    await interaction.reply({ ephemeral: true, content: missingPermissionMessage('send notifications') });
+    return;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+  const channel = interaction.channel;
+  if (!channel?.isTextBased()) {
+    await interaction.editReply('This command must be used in a text channel.');
+    return;
+  }
+
+  const title = interaction.options.getString('title', true).trim();
+  const message = interaction.options.getString('message', true).trim();
+  const style = interaction.options.getString('style') ?? 'info';
+  const footer = interaction.options.getString('footer')?.trim();
+  const styleConfig = notificationStyles[style] ?? notificationStyles.info;
+
+  if (!title || !message) {
+    await interaction.editReply('Title and message cannot be empty.');
+    return;
+  }
+
+  const embed = new EmbedBuilder()
+    .setTitle(title)
+    .setDescription(message)
+    .setColor(styleConfig.color)
+    .setTimestamp(new Date())
+    .setFooter({ text: footer || `SHD - sent by ${interaction.user.tag}` });
+
+  await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
+  audit('notification.sent', {
+    actorId: interaction.user.id,
+    data: { channelId: channel.id, title, style }
+  });
+  await staffAuditLog(interaction.client, 'Notification Sent', [
+    { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true },
+    { name: 'Channel', value: `<#${channel.id}>`, inline: true },
+    { name: 'Style', value: styleConfig.label, inline: true },
+    { name: 'Title', value: title }
+  ]);
+  await interaction.editReply(`Notification sent in <#${channel.id}>.`);
 }
 
 async function handlePurgeCommand(interaction) {

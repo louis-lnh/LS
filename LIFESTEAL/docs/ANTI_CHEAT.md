@@ -185,6 +185,7 @@ Initial implementation status:
 
 - `config/shd-lifesteal/anticheat.properties` controls enabled state, default action, temp-ban duration, appeal URL, and per-category action overrides.
 - The first service scaffold writes detections into `lifesteal-audit.log` and generates evidence/appeal IDs.
+- Operators receive in-game anti-cheat chat alerts for detections at or above `opChatAlerts.minSeverity`, controlled by `opChatAlerts.enabled`, so staff can inspect cases without SSH access to server logs.
 - Kick actions produce the correct disconnect screen.
 - Temporary and permanent ban actions write to the real server user ban list, include appeal/evidence IDs in the ban reason, then disconnect the player with the same appeal details.
 - The service keeps a bounded loaded recent-alert history for staff review and reloads it from persistent JSONL evidence on startup.
@@ -220,6 +221,8 @@ Current Lifesteal-specific coverage:
 - optional End access gate through `lifesteal.endAccessRequiresEvent` and `lifesteal.endEventNameMarker`
 - active event timer sanity for blank names and invalid remaining time
 - combat logout evidence when a tagged disconnect triggers inventory drop and death resolution
+- mobility-assisted tracked mace kill review using current/recent gliding, recent fast falling, active combat mobility cooldown, fall distance, velocity, and attacker/victim positions
+- Discord/public gameplay sync HTTP failures, exceptions, and stale sync windows become anti-cheat consistency evidence when role sync is enabled
 
 Persistent anti-cheat files:
 

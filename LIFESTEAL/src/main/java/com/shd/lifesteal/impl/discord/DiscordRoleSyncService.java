@@ -5,6 +5,11 @@ import com.google.gson.JsonObject;
 import com.shd.lifesteal.ShdLifestealMod;
 import com.shd.lifesteal.api.GracePeriodSnapshot;
 import com.shd.lifesteal.api.GameplayRoleSnapshot;
+import com.shd.lifesteal.impl.anticheat.AntiCheatAction;
+import com.shd.lifesteal.impl.anticheat.AntiCheatCategory;
+import com.shd.lifesteal.impl.anticheat.AntiCheatDetection;
+import com.shd.lifesteal.impl.anticheat.AntiCheatService;
+import com.shd.lifesteal.impl.anticheat.AntiCheatSeverity;
 import com.shd.lifesteal.impl.config.LifestealConfig;
 import com.shd.lifesteal.impl.dragon.DragonEggGlowHandler;
 import com.shd.lifesteal.impl.heart.HeartService;
@@ -18,6 +23,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.network.ServerPlayerEntity;
 
 public final class DiscordRoleSyncService {
     private static final int SYNC_SCHEMA_VERSION = 2;
@@ -25,16 +31,20 @@ public final class DiscordRoleSyncService {
     private final LifestealConfig config;
     private final HeartService heartService;
     private final DragonEggGlowHandler dragonEggGlowHandler;
+    private final AntiCheatService antiCheatService;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(REQUEST_TIMEOUT)
             .build();
     private Instant nextSync = Instant.EPOCH;
     private CompletableFuture<?> pendingSync = CompletableFuture.completedFuture(null);
+    private Instant lastSuccessfulSync = Instant.EPOCH;
+    private Instant lastConsistencyAlert = Instant.EPOCH;
 
-    public DiscordRoleSyncService(LifestealConfig config, HeartService heartService, DragonEggGlowHandler dragonEggGlowHandler) {
+    public DiscordRoleSyncService(LifestealConfig config, HeartService heartService, DragonEggGlowHandler dragonEggGlowHandler, AntiCheatService antiCheatService) {
         this.config = config;
         this.heartService = heartService;
         this.dragonEggGlowHandler = dragonEggGlowHandler;
+        this.antiCheatService = antiCheatService;
     }
 
     public void register() {
@@ -50,6 +60,7 @@ public final class DiscordRoleSyncService {
     private void tick(MinecraftServer server) {
         Instant now = Instant.now();
         if (now.isBefore(nextSync) || !pendingSync.isDone()) {
+            checkStaleSync(server, now);
             return;
         }
 
@@ -75,6 +86,10 @@ public final class DiscordRoleSyncService {
                                 response.statusCode(),
                                 compactBody(response.body())
                         );
+                        alertSyncIssue(server, AntiCheatSeverity.HIGH, "lifesteal_discord_sync_http_failure", "Discord/public gameplay sync failed",
+                                "status=%d endpoint=%s body=\"%s\"".formatted(response.statusCode(), config.discordRoleSyncEndpoint(), compactBody(response.body())));
+                    } else {
+                        lastSuccessfulSync = Instant.now();
                     }
                 })
                 .exceptionally(exception -> {
@@ -85,8 +100,48 @@ public final class DiscordRoleSyncService {
                             cause.getClass().getSimpleName(),
                             cause.getMessage()
                     );
+                    alertSyncIssue(server, AntiCheatSeverity.HIGH, "lifesteal_discord_sync_exception", "Discord/public gameplay sync failed",
+                            "endpoint=%s exception=%s message=\"%s\"".formatted(config.discordRoleSyncEndpoint(), cause.getClass().getSimpleName(), cause.getMessage()));
                     return null;
                 });
+    }
+
+    private void checkStaleSync(MinecraftServer server, Instant now) {
+        if (lastSuccessfulSync.equals(Instant.EPOCH)) {
+            return;
+        }
+        Duration staleFor = Duration.between(lastSuccessfulSync, now);
+        Duration maxStale = config.discordRoleSyncInterval().multipliedBy(3);
+        if (staleFor.compareTo(maxStale) <= 0) {
+            return;
+        }
+        alertSyncIssue(server, AntiCheatSeverity.WARNING, "lifesteal_discord_sync_stale", "Discord/public gameplay sync is stale",
+                "lastSuccessfulSync=%s staleSeconds=%d maxExpectedSeconds=%d endpoint=%s".formatted(
+                        lastSuccessfulSync,
+                        staleFor.toSeconds(),
+                        maxStale.toSeconds(),
+                        config.discordRoleSyncEndpoint()
+                ));
+    }
+
+    private void alertSyncIssue(MinecraftServer server, AntiCheatSeverity severity, String reasonCode, String publicReason, String detail) {
+        Instant now = Instant.now();
+        if (Duration.between(lastConsistencyAlert, now).compareTo(config.discordRoleSyncInterval()) < 0) {
+            return;
+        }
+        lastConsistencyAlert = now;
+        ServerPlayerEntity subject = server.getPlayerManager().getPlayerList().stream().findFirst().orElse(null);
+        if (subject == null) {
+            return;
+        }
+        antiCheatService.handle(server, subject, new AntiCheatDetection(
+                AntiCheatCategory.PUBLIC_DATA_EXPOSURE,
+                severity,
+                reasonCode,
+                publicReason,
+                "check=lifesteal_external_sync %s onlinePlayers=%d".formatted(detail, server.getCurrentPlayerCount()),
+                AntiCheatAction.AUDIT_ONLY
+        ));
     }
 
     private static Throwable rootCause(Throwable throwable) {

@@ -18,6 +18,8 @@ public final class AntiCheatSettings {
     private static final String TEMP_BAN_MINUTES = "tempBanMinutes";
     private static final String APPEAL_URL = "appealUrl";
     private static final String MAX_HISTORY_ENTRIES = "maxHistoryEntries";
+    private static final String OP_CHAT_ALERTS_ENABLED = "opChatAlerts.enabled";
+    private static final String OP_CHAT_ALERTS_MIN_SEVERITY = "opChatAlerts.minSeverity";
     private static final String MOVEMENT_CHECKS_ENABLED = "movement.enabled";
     private static final String MOVEMENT_MAX_HORIZONTAL_PER_TICK = "movement.maxHorizontalPerTick";
     private static final String MOVEMENT_MAX_VERTICAL_PER_TICK = "movement.maxVerticalPerTick";
@@ -100,6 +102,8 @@ public final class AntiCheatSettings {
     private Duration tempBanDuration = Duration.ofDays(7);
     private String appealUrl = "https://shd.gg/appeal";
     private int maxHistoryEntries = 250;
+    private boolean opChatAlertsEnabled = true;
+    private AntiCheatSeverity opChatAlertsMinSeverity = AntiCheatSeverity.WARNING;
     private boolean movementChecksEnabled = true;
     private double movementMaxHorizontalPerTick = 16.0D;
     private double movementMaxVerticalPerTick = 8.0D;
@@ -194,6 +198,8 @@ public final class AntiCheatSettings {
         tempBanDuration = Duration.ofMinutes(longProperty(properties, TEMP_BAN_MINUTES, tempBanDuration.toMinutes()));
         appealUrl = stringProperty(properties, APPEAL_URL, appealUrl);
         maxHistoryEntries = intProperty(properties, MAX_HISTORY_ENTRIES, maxHistoryEntries);
+        opChatAlertsEnabled = booleanProperty(properties, OP_CHAT_ALERTS_ENABLED, opChatAlertsEnabled);
+        opChatAlertsMinSeverity = AntiCheatSeverity.parse(properties.getProperty(OP_CHAT_ALERTS_MIN_SEVERITY), opChatAlertsMinSeverity);
         movementChecksEnabled = booleanProperty(properties, MOVEMENT_CHECKS_ENABLED, movementChecksEnabled);
         movementMaxHorizontalPerTick = doubleProperty(properties, MOVEMENT_MAX_HORIZONTAL_PER_TICK, movementMaxHorizontalPerTick);
         movementMaxVerticalPerTick = doubleProperty(properties, MOVEMENT_MAX_VERTICAL_PER_TICK, movementMaxVerticalPerTick);
@@ -305,6 +311,14 @@ public final class AntiCheatSettings {
 
     public int maxHistoryEntries() {
         return maxHistoryEntries;
+    }
+
+    public boolean opChatAlertsEnabled() {
+        return opChatAlertsEnabled;
+    }
+
+    public AntiCheatSeverity opChatAlertsMinSeverity() {
+        return opChatAlertsMinSeverity;
     }
 
     public boolean movementChecksEnabled() {
@@ -600,12 +614,14 @@ public final class AntiCheatSettings {
     }
 
     public String statusText() {
-        return "enabled=%s defaultAction=%s tempBanMinutes=%d appealUrl=%s history=%d checks[movement=%s combat=%s inventory=%s interaction=%s account=%s client=%s lifesteal=%s] movement=burst%.1f/%.1f sustained%.2f air%.2f hover%d nofall%.1f waterWalk%d clip%d combat=reach%.1f/y%.1f/min%d/cd%.2f/multi%d:%d damage%.1f inventory=scan%d/maxStack%d/gain%d interaction=block%.1f/entity%.1f/min%d account=maxIp%d client=brand%s/requiredChannels%d lifestealScan=%d endGate=%s overrides=%d".formatted(
+        return "enabled=%s defaultAction=%s tempBanMinutes=%d appealUrl=%s history=%d opChat=%s/%s checks[movement=%s combat=%s inventory=%s interaction=%s account=%s client=%s lifesteal=%s] movement=burst%.1f/%.1f sustained%.2f air%.2f hover%d nofall%.1f waterWalk%d clip%d combat=reach%.1f/y%.1f/min%d/cd%.2f/multi%d:%d damage%.1f inventory=scan%d/maxStack%d/gain%d interaction=block%.1f/entity%.1f/min%d account=maxIp%d client=brand%s/requiredChannels%d lifestealScan=%d endGate=%s overrides=%d".formatted(
                 enabled,
                 defaultAction,
                 tempBanDuration.toMinutes(),
                 appealUrl,
                 maxHistoryEntries,
+                opChatAlertsEnabled,
+                opChatAlertsMinSeverity,
                 movementChecksEnabled,
                 combatChecksEnabled,
                 inventoryChecksEnabled,
@@ -650,6 +666,8 @@ public final class AntiCheatSettings {
         properties.setProperty(TEMP_BAN_MINUTES, Long.toString(tempBanDuration.toMinutes()));
         properties.setProperty(APPEAL_URL, appealUrl);
         properties.setProperty(MAX_HISTORY_ENTRIES, Integer.toString(maxHistoryEntries));
+        properties.setProperty(OP_CHAT_ALERTS_ENABLED, Boolean.toString(opChatAlertsEnabled));
+        properties.setProperty(OP_CHAT_ALERTS_MIN_SEVERITY, opChatAlertsMinSeverity.name());
         properties.setProperty(MOVEMENT_CHECKS_ENABLED, Boolean.toString(movementChecksEnabled));
         properties.setProperty(MOVEMENT_MAX_HORIZONTAL_PER_TICK, Double.toString(movementMaxHorizontalPerTick));
         properties.setProperty(MOVEMENT_MAX_VERTICAL_PER_TICK, Double.toString(movementMaxVerticalPerTick));

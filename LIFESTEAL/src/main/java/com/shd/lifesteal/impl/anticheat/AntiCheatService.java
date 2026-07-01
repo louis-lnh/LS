@@ -77,6 +77,7 @@ public final class AntiCheatService {
                 appealId.isBlank() ? "none" : appealId,
                 evidence.summary()
         ));
+        notifyOperators(server, player, detection, action, evidence);
 
         if (action == AntiCheatAction.TEMP_BAN || action == AntiCheatAction.PERMANENT_BAN) {
             banPlayer(server, player, enforcement);
@@ -87,6 +88,28 @@ public final class AntiCheatService {
         }
 
         return enforcement;
+    }
+
+    private void notifyOperators(
+            MinecraftServer server,
+            ServerPlayerEntity player,
+            AntiCheatDetection detection,
+            AntiCheatAction action,
+            AntiCheatEvidence evidence
+    ) {
+        if (!settings.opChatAlertsEnabled() || detection.severity().ordinal() < settings.opChatAlertsMinSeverity().ordinal()) {
+            return;
+        }
+
+        Text message = Text.literal("[SHD AC] ").formatted(formatting(detection.severity()), Formatting.BOLD)
+                .append(Text.literal("%s %s ".formatted(detection.severity(), detection.category())).formatted(formatting(detection.severity())))
+                .append(Text.literal(player.getName().getString()).formatted(Formatting.WHITE))
+                .append(Text.literal(" %s action=%s evidence=%s".formatted(detection.reasonCode(), action, evidence.evidenceId())).formatted(Formatting.GRAY));
+        server.getPlayerManager()
+                .getPlayerList()
+                .stream()
+                .filter(online -> server.getPlayerManager().isOperator(new PlayerConfigEntry(online.getGameProfile())))
+                .forEach(online -> online.sendMessage(message, false));
     }
 
     public String statusText() {
@@ -249,6 +272,15 @@ public final class AntiCheatService {
             case TEMP_BAN -> "Temporarily banned by SHD Anti-Cheat";
             case PERMANENT_BAN -> "Permanently banned by SHD Anti-Cheat";
             default -> "SHD Anti-Cheat";
+        };
+    }
+
+    private static Formatting formatting(AntiCheatSeverity severity) {
+        return switch (severity) {
+            case INFO -> Formatting.GRAY;
+            case WARNING -> Formatting.YELLOW;
+            case HIGH -> Formatting.RED;
+            case CRITICAL -> Formatting.DARK_RED;
         };
     }
 

@@ -110,14 +110,16 @@ public final class LifestealRuntime {
             combatTagService,
             modItems,
             uiBridgeManager,
-            soundService
+            soundService,
+            elytraCombatCooldownService,
+            antiCheatService
     );
     private final PlayerDeathHandler playerDeathHandler = new PlayerDeathHandler(playerHeartApplier, deathResolutionService, soundService, eliminatedPlayerAccess);
     private final CombatLogoutHandler combatLogoutHandler = new CombatLogoutHandler(combatTagService, deathResolutionService, uiBridgeManager, antiCheatService);
     private final DisabledFeatureHandler disabledFeatureHandler = new DisabledFeatureHandler(combatTagService, ruleSettings, elytraCombatCooldownService, uiBridgeManager);
     private final RestrictedStorageHandler restrictedStorageHandler = new RestrictedStorageHandler(modItems);
     private final DragonEggGlowHandler dragonEggGlowHandler = new DragonEggGlowHandler(config);
-    private final DiscordRoleSyncService discordRoleSyncService = new DiscordRoleSyncService(config, heartService, dragonEggGlowHandler);
+    private final DiscordRoleSyncService discordRoleSyncService = new DiscordRoleSyncService(config, heartService, dragonEggGlowHandler, antiCheatService);
     private final DragonEggBeaconEffectHandler dragonEggBeaconEffectHandler = new DragonEggBeaconEffectHandler(
             uiBridgeManager,
             configDirectory.resolve("dragon-egg-location.properties")
@@ -146,6 +148,7 @@ public final class LifestealRuntime {
         playerPlaytimeTracker.register();
         combatEventHandler.register();
         combatLogoutHandler.register();
+        elytraCombatCooldownService.register();
         graceProtectionHandler.register();
         disabledFeatureHandler.register();
         restrictedStorageHandler.register();

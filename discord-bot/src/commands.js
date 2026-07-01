@@ -273,6 +273,31 @@ export const commands = [
     .addUserOption((option) => option.setName('user').setDescription('Member to unlink').setRequired(true))
     .addStringOption((option) => option.setName('reason').setDescription('Reason')),
   new SlashCommandBuilder()
+    .setName('notification')
+    .setDescription('Send a staff notification embed in this channel')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+    .addStringOption((option) =>
+      option.setName('title').setDescription('Notification title').setRequired(true).setMaxLength(120)
+    )
+    .addStringOption((option) =>
+      option.setName('message').setDescription('Notification message').setRequired(true).setMaxLength(2000)
+    )
+    .addStringOption((option) =>
+      option
+        .setName('style')
+        .setDescription('Notification style')
+        .addChoices(
+          { name: 'Info', value: 'info' },
+          { name: 'Success', value: 'success' },
+          { name: 'Warning', value: 'warning' },
+          { name: 'Danger', value: 'danger' },
+          { name: 'Event', value: 'event' }
+        )
+    )
+    .addStringOption((option) =>
+      option.setName('footer').setDescription('Optional footer text').setMaxLength(120)
+    ),
+  new SlashCommandBuilder()
     .setName('data')
     .setDescription('Backup or export bot data')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)

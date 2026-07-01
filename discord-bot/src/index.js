@@ -52,6 +52,7 @@ const staffCommands = new Set([
   'kick',
   'ban',
   'unlink',
+  'notification',
   'data'
 ]);
 
@@ -168,6 +169,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
         break;
       case 'unlink':
         await handleUnlink(interaction);
+        break;
+      case 'notification':
+        await handleNotification(interaction);
         break;
       case 'data':
         await handleData(interaction);
@@ -1201,6 +1205,52 @@ async function handleUnlink(interaction) {
     { name: 'Reason', value: reason }
   ].filter(Boolean));
   await interaction.editReply(`Unlinked ${user.tag} from ${linked.minecraft_name}.${whitelistResult.ok ? '' : ` Staff warning: whitelist removal failed: ${whitelistResult.error}.`}`);
+}
+
+const notificationStyles = {
+  info: { color: 0x2f80ed, label: 'Info' },
+  success: { color: 0x2f7d67, label: 'Success' },
+  warning: { color: 0xffb020, label: 'Warning' },
+  danger: { color: 0xd94848, label: 'Danger' },
+  event: { color: 0x8b5cf6, label: 'Event' }
+};
+
+async function handleNotification(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const channel = interaction.channel;
+  if (!channel?.isTextBased()) {
+    return interaction.editReply('This command must be used in a text channel.');
+  }
+
+  const title = interaction.options.getString('title', true).trim();
+  const message = interaction.options.getString('message', true).trim();
+  const style = interaction.options.getString('style') ?? 'info';
+  const footer = interaction.options.getString('footer')?.trim();
+  const styleConfig = notificationStyles[style] ?? notificationStyles.info;
+
+  if (!title || !message) {
+    return interaction.editReply('Title and message cannot be empty.');
+  }
+
+  const embed = new EmbedBuilder()
+    .setTitle(title)
+    .setDescription(message)
+    .setColor(styleConfig.color)
+    .setTimestamp(new Date())
+    .setFooter({ text: footer || `SHD Lifesteal - sent by ${interaction.user.tag}` });
+
+  await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
+  audit('notification.sent', {
+    discordId: interaction.user.id,
+    data: { channelId: channel.id, title, style }
+  });
+  await staffAuditLog(client, 'Notification Sent', [
+    { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true },
+    { name: 'Channel', value: `<#${channel.id}>`, inline: true },
+    { name: 'Style', value: styleConfig.label, inline: true },
+    { name: 'Title', value: title }
+  ]);
+  await interaction.editReply(`Notification sent in <#${channel.id}>.`);
 }
 
 async function handleData(interaction) {

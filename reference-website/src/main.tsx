@@ -1036,9 +1036,9 @@ const legalPages: Record<string, LegalPageContent> = {
     sections: [
       { title: 'Project Owner', body: 'SHD Esports, represented by Louis Lenhartz.' },
       { title: 'Business Address', body: 'Louis Lenhartz, An der Burg Suelz 27a, 53797 Lohmar, Nordrhein-Westfalen, Germany.' },
-      { title: 'Website Purpose', body: 'This website provides public information about the Lifesteal season, including rules, players, events, support flows, and server information.' },
-      { title: 'External Services', body: 'The website and season flow may use Discord for community communication, Minecraft/Microsoft account information for player identity, and the SHD Support Portal at support.shd-esports.com for applications, appeals, and staff review.' },
-      { title: 'Contact', body: 'Preferred contact path: SHD Support Portal at support.shd-esports.com. Before public launch, activate support@shd-esports.com for direct email contact.' },
+      { title: 'Website Purpose', body: 'This website provides public information about the SHD Lifesteal season, including rules, player information, events, support flows, and server updates.' },
+      { title: 'External Services', body: 'The website and season flow may use Discord for community communication, Minecraft or Microsoft account identifiers for player identity, and the SHD Support Portal at support.shd-esports.com for applications, appeals, and staff review.' },
+      { title: 'Contact', body: 'For support requests, applications, appeals, or general questions, use the SHD Support Portal at support.shd-esports.com or contact support@shd-esports.com.' },
     ],
   },
   privacy: {
@@ -1049,11 +1049,11 @@ const legalPages: Record<string, LegalPageContent> = {
     sections: [
       { title: 'Controller', body: 'SHD Esports, represented by Louis Lenhartz, An der Burg Suelz 27a, 53797 Lohmar, Nordrhein-Westfalen, Germany.' },
       { title: 'Data We May Process', body: 'We may process Minecraft usernames, Minecraft UUIDs, Discord usernames or IDs, application IDs, appeal IDs, application answers, appeal text, submitted evidence, player statistics, objective holder data, punishment records, server logs, and website or support portal technical logs.' },
-      { title: 'Purpose of Processing', body: 'Data is used for server operation, whitelist and application review, ban appeals and support, moderation, anti-cheat review, leaderboard and season statistics, event organization, security, and abuse prevention.' },
-      { title: 'External Services', body: 'The project may use Discord, Minecraft/Microsoft account identifiers, SHD-owned support systems, server hosting, website hosting, and future database or form systems required for applications and appeals.' },
-      { title: 'Public Data', body: 'Public pages may show player names, hearts, kills, deaths, playtime, status labels, objective holders, event results, and online player counts. Internal OBS widgets are not intended as public data sources.' },
-      { title: 'Retention', body: 'Applications are generally kept for the relevant season, roughly 3 to 4 months. Server logs are generally kept for the season. Appeals and punishment records may be kept long-term so staff can review repeat cases and historical decisions.' },
-      { title: 'Requests and Rights', body: 'Players may request access, correction, or deletion through the SHD Support Portal at support.shd-esports.com. Before public launch, activate privacy@shd-esports.com for privacy requests and support@shd-esports.com for general support.' },
+      { title: 'Purpose of Processing', body: 'This data is used to operate the server, review whitelist applications, process appeals and support requests, moderate the community, review anti-cheat evidence, maintain leaderboards and season statistics, organize events, protect server security, and prevent abuse.' },
+      { title: 'External Services', body: 'The project may use Discord, Minecraft or Microsoft account identifiers, SHD-owned support systems, server hosting, website hosting, and database or form systems required for applications, appeals, and support workflows.' },
+      { title: 'Public Data', body: 'Public pages may display player names, hearts, kills, deaths, playtime, status labels, objective holders, event results, and online player counts. Internal OBS widgets and staff tools are not intended as public data sources.' },
+      { title: 'Retention', body: 'Applications are generally kept for the relevant season, usually around 3 to 4 months. Server logs are generally kept for the season. Appeals and punishment records may be kept longer so staff can review repeat cases, historical decisions, and security issues.' },
+      { title: 'Requests and Rights', body: 'Players may request access, correction, or deletion through the SHD Support Portal at support.shd-esports.com. Privacy requests can also be sent to privacy@shd-esports.com. General support requests can be sent to support@shd-esports.com.' },
     ],
   },
   terms: {
@@ -1062,13 +1062,13 @@ const legalPages: Record<string, LegalPageContent> = {
     title: 'Terms of Service',
     intro: 'Terms for using the SHD Lifesteal website, support portal references, and public season information.',
     sections: [
-      { title: 'Use of the Website', body: 'This website is intended for players and viewers of the SHD Lifesteal season. Abuse, scraping, impersonation, or attempts to disrupt services may be restricted.' },
-      { title: 'Server Participation', body: 'Joining the server may require application approval, rules acceptance, Discord verification, Minecraft account verification, and compliance with moderation decisions.' },
-      { title: 'Content Accuracy', body: 'Stats, holders, schedules, and support states may be delayed or corrected if backend data changes or staff review requires adjustments.' },
-      { title: 'Applications and Appeals', body: 'Applications and punishment appeals may be handled through support.shd-esports.com. Submitting false, abusive, duplicated, or spam content may result in denied requests or further restrictions.' },
+      { title: 'Use of the Website', body: 'This website is intended for players and viewers of the SHD Lifesteal season. Abuse, scraping, impersonation, spam, or attempts to disrupt the website, support systems, or server services may lead to restricted access.' },
+      { title: 'Server Participation', body: 'Joining the server may require application approval, rules acceptance, Discord verification, Minecraft account verification, and compliance with staff moderation decisions.' },
+      { title: 'Content Accuracy', body: 'Stats, objective holders, schedules, and support states may be delayed, corrected, or updated when backend data changes or staff review requires an adjustment.' },
+      { title: 'Applications and Appeals', body: 'Applications and punishment appeals may be handled through support.shd-esports.com. False, abusive, duplicated, or spam submissions may be denied and may result in further restrictions.' },
       { title: 'Moderation', body: 'Staff may warn, mute, kick, ban, remove items, reverse actions, or issue other moderation actions when rules, event integrity, or server security require it.' },
       { title: 'Third-Party Services', body: 'Discord, Minecraft, Microsoft, hosting providers, and other external services are operated by their respective providers and are not controlled by SHD Esports.' },
-      { title: 'Changes', body: 'Rules, features, website pages, support processes, event details, and public data displays may change during the season as the project evolves.' },
+      { title: 'Changes', body: 'Rules, features, website pages, support processes, event details, and public data displays may change during the season. Material updates will be reflected on the website or announced through official SHD channels where appropriate.' },
     ],
   },
   imprint: {
@@ -1079,8 +1079,8 @@ const legalPages: Record<string, LegalPageContent> = {
     sections: [
       { title: 'Responsible Entity', body: 'SHD Esports, represented by Louis Lenhartz.' },
       { title: 'Address', body: 'Louis Lenhartz, An der Burg Suelz 27a, 53797 Lohmar, Nordrhein-Westfalen, Germany.' },
-      { title: 'Contact', body: 'Preferred contact path: SHD Support Portal at support.shd-esports.com. Before public launch, activate support@shd-esports.com for email contact.' },
-      { title: 'Editorial Responsibility', body: 'Louis Lenhartz is responsible for the website content unless a different responsible editor is named later.' },
+      { title: 'Contact', body: 'For direct contact, use support@shd-esports.com. Support requests, applications, and appeals can also be submitted through the SHD Support Portal at support.shd-esports.com.' },
+      { title: 'Editorial Responsibility', body: 'Louis Lenhartz is responsible for the website content unless another responsible editor is expressly named.' },
     ],
   },
 }
@@ -1921,7 +1921,7 @@ function SignupPage() {
             <span>Portal</span>
             <strong>support.shd-esports.com</strong>
             <p>SHD support portal for applications, appeals, reports, and staff review.</p>
-            <a className="primary-action" href="https://support.shd-esports.com/signup">Open Support Portal</a>
+            <a className="primary-action" href="https://support.shd-esports.com">Open Support Portal</a>
           </div>
         </article>
 
@@ -2001,7 +2001,7 @@ function PunishmentsPage() {
             <span>Support Portal</span>
             <strong>support.shd-esports.com</strong>
             <p>One SHD portal for applications, ban appeals, reports, and support requests.</p>
-            <a className="primary-action" href="https://support.shd-esports.com/reports-appeals">Open Support Portal</a>
+            <a className="primary-action" href="https://support.shd-esports.com">Open Support Portal</a>
           </div>
         </article>
 
@@ -2077,8 +2077,8 @@ function LegalInfoPage({ page }: { page: PageId }) {
       </PageIntro>
       <article className="legal-document">
         <div className="legal-note">
-          <span>Draft Legal Copy</span>
-          <p>This page uses provided project data. Review it before public release and activate the listed contact emails first.</p>
+          <span>Legal Information</span>
+          <p>This page summarizes the current SHD Lifesteal legal, privacy, and contact information for players, applicants, and visitors.</p>
         </div>
         {content.sections.map((section) => (
           <section key={section.title}>
