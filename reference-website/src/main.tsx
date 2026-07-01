@@ -1895,7 +1895,7 @@ function WorldPage() {
       <div className="world-event-strip">
         <span>Event Starts In</span>
         <strong>{eventCountdown}</strong>
-        <p>July 1, 2026 - 12:00 CEST. The Season 1 launch is scheduled for this date.</p>
+        <p>July 20, 2026 - 18:00 CEST. The Season 1 launch is scheduled for this date.</p>
       </div>
     </section>
   )
