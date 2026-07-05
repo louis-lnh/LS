@@ -7,7 +7,6 @@ import com.shd.lifesteal.impl.anticheat.AntiCheatCategory;
 import com.shd.lifesteal.impl.anticheat.AntiCheatDetection;
 import com.shd.lifesteal.impl.anticheat.AntiCheatService;
 import com.shd.lifesteal.impl.anticheat.AntiCheatSeverity;
-import com.shd.lifesteal.impl.death.DeathResolutionService;
 import com.shd.lifesteal.impl.ui.UiBridgeManager;
 import com.shd.lifesteal.impl.ui.UiNotifier;
 import java.time.Instant;
@@ -15,16 +14,15 @@ import java.util.Optional;
 import java.util.UUID;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.world.ServerWorld;
 
 public final class CombatLogoutHandler {
     private final CombatTagService combatTagService;
-    private final DeathResolutionService deathResolutionService;
     private final UiBridgeManager uiBridgeManager;
     private final AntiCheatService antiCheatService;
 
-    public CombatLogoutHandler(CombatTagService combatTagService, DeathResolutionService deathResolutionService, UiBridgeManager uiBridgeManager, AntiCheatService antiCheatService) {
+    public CombatLogoutHandler(CombatTagService combatTagService, UiBridgeManager uiBridgeManager, AntiCheatService antiCheatService) {
         this.combatTagService = combatTagService;
-        this.deathResolutionService = deathResolutionService;
         this.uiBridgeManager = uiBridgeManager;
         this.antiCheatService = antiCheatService;
     }
@@ -55,7 +53,7 @@ public final class CombatLogoutHandler {
                     AntiCheatSeverity.HIGH,
                     "lifesteal_combat_logout",
                     "Combat logout while tagged detected",
-                    "check=lifesteal_combat_logout player=%s uuid=%s attacker=%s attackerUuid=%s pos=%.1f,%.1f,%.1f world=%s action=drop_inventory_and_resolve_death".formatted(
+                    "check=lifesteal_combat_logout player=%s uuid=%s attacker=%s attackerUuid=%s pos=%.1f,%.1f,%.1f world=%s action=generic_kill".formatted(
                             player.getName().getString(),
                             player.getUuidAsString(),
                             attackerName,
@@ -67,8 +65,9 @@ public final class CombatLogoutHandler {
                     ),
                     AntiCheatAction.AUDIT_ONLY
             ));
-            player.getInventory().dropAll();
-            deathResolutionService.resolve(player);
+            if (player.getEntityWorld() instanceof ServerWorld world) {
+                player.damage(world, player.getDamageSources().genericKill(), Float.MAX_VALUE);
+            }
         });
     }
 }

@@ -25,6 +25,7 @@ import com.shd.lifesteal.impl.kit.EventKitService;
 import com.shd.lifesteal.impl.player.ResolvedPlayer;
 import com.shd.lifesteal.impl.player.WhitelistPlayerResolver;
 import com.shd.lifesteal.impl.player.WhitelistedPlayerArgumentType;
+import com.shd.lifesteal.impl.revival.RevivalService;
 import com.shd.lifesteal.impl.restriction.MaceLimitRules;
 import com.shd.lifesteal.impl.ui.LifestealSoundService;
 import com.shd.lifesteal.impl.ui.LifestealUiSettings;
@@ -52,6 +53,7 @@ public final class LifestealCommandRegistrar {
     private final LifestealSoundService soundService;
     private final LifestealAuditLog auditLog;
     private final AntiCheatService antiCheatService;
+    private final RevivalService revivalService;
     private final EventKitService eventKitService = new EventKitService();
 
     public LifestealCommandRegistrar(
@@ -66,7 +68,8 @@ public final class LifestealCommandRegistrar {
             LifestealUiSettings uiSettings,
             LifestealSoundService soundService,
             LifestealAuditLog auditLog,
-            AntiCheatService antiCheatService
+            AntiCheatService antiCheatService,
+            RevivalService revivalService
     ) {
         this.heartService = heartService;
         this.playerHeartApplier = playerHeartApplier;
@@ -80,6 +83,7 @@ public final class LifestealCommandRegistrar {
         this.soundService = soundService;
         this.auditLog = auditLog;
         this.antiCheatService = antiCheatService;
+        this.revivalService = revivalService;
     }
 
     public void register() {
@@ -555,16 +559,23 @@ public final class LifestealCommandRegistrar {
     }
 
     private int revivePlayer(ServerCommandSource source, ResolvedPlayer player) {
-        PlayerHeartState state = heartService.revive(player.playerId());
-        player.onlinePlayer().ifPresent(onlinePlayer -> playerHeartApplier.applyHearts(onlinePlayer, state.hearts()));
-        soundService.playGlobal(source.getServer(), LifestealSoundService.REVIVAL);
+        RevivalService.RevivalResult result = revivalService.reviveByStaff(
+                source.getServer(),
+                player.playerId(),
+                player.name(),
+                source.getName()
+        );
+        if (!result.revived()) {
+            source.sendError(Text.literal(player.name() + " is not eliminated."));
+            return 0;
+        }
         String onlineSuffix = player.online() ? "" : " (offline, applies on next join)";
         source.sendFeedback(() -> Text.literal("%s revived with %d hearts%s".formatted(
                 player.name(),
-                state.hearts(),
+                result.hearts(),
                 onlineSuffix
         )), true);
-        return state.hearts();
+        return result.hearts();
     }
 
     private int resetPlayer(ServerCommandSource source, ResolvedPlayer player) {

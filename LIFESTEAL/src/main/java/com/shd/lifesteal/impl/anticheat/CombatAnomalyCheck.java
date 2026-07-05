@@ -78,6 +78,8 @@ public final class CombatAnomalyCheck implements AntiCheatCheck {
 
         CombatSample sample = CombatSample.capture(playerAttacker, entity, baseDamageTaken, damageTaken, blocked);
         pendingSamples.computeIfAbsent(playerAttacker.getUuid(), ignored -> new ArrayDeque<>()).add(sample);
+        MacroActionBurstCheck.recordCombat(playerAttacker, sample.targetName());
+        VisibilityExploitCheck.recordDistantInteraction(playerAttacker, "attack", sample.targetName(), sample.eyeToTargetBoxDistance(), sample.hasLineOfSight());
     }
 
     private void checkReach(AntiCheatCheckContext context, CombatState state, CombatSample sample) {

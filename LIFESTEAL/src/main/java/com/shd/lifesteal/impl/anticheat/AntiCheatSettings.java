@@ -170,7 +170,7 @@ public final class AntiCheatSettings {
     private boolean clientTrackBrandChanges = true;
     private Set<String> clientAllowedBrands = Set.of();
     private Set<String> clientBlockedBrands = Set.of();
-    private Set<String> clientRequiredChannels = Set.of();
+    private Set<String> clientRequiredChannels = Set.of("shd-lifesteal-client:integrity");
     private Set<String> clientDisallowedChannels = Set.of();
     private boolean lifestealChecksEnabled = true;
     private int lifestealScanIntervalTicks = 20;

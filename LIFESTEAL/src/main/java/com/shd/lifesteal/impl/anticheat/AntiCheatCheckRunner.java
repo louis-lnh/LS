@@ -29,6 +29,8 @@ public final class AntiCheatCheckRunner {
         registerCheck(new CombatAnomalyCheck());
         registerCheck(new InventoryAnomalyCheck());
         registerCheck(new InteractionAnomalyCheck());
+        registerCheck(new MacroActionBurstCheck());
+        registerCheck(new VisibilityExploitCheck());
         for (AntiCheatCheck check : eventChecks) {
             registerCheck(check);
         }

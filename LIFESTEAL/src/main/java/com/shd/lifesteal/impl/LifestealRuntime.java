@@ -33,6 +33,7 @@ import com.shd.lifesteal.impl.heart.PlayerHeartApplier;
 import com.shd.lifesteal.impl.item.ModItems;
 import com.shd.lifesteal.impl.player.WhitelistPlayerResolver;
 import com.shd.lifesteal.impl.player.PlayerPlaytimeTracker;
+import com.shd.lifesteal.impl.revival.RevivalService;
 import com.shd.lifesteal.impl.restriction.DisabledFeatureHandler;
 import com.shd.lifesteal.impl.restriction.ElytraCombatCooldownService;
 import com.shd.lifesteal.impl.restriction.MaceLimitRules;
@@ -80,11 +81,19 @@ public final class LifestealRuntime {
     private final HeartService heartService = new HeartService(config, repository, eliminationService, gracePeriodService, uiBridgeManager);
     private final EliminatedPlayerAccess eliminatedPlayerAccess = new EliminatedPlayerAccess(heartService);
     private final PlayerHeartApplier playerHeartApplier = new PlayerHeartApplier(heartService);
+    private final RevivalService revivalService = new RevivalService(
+            heartService,
+            playerHeartApplier,
+            soundService,
+            auditLog,
+            uiBridgeManager,
+            configDirectory.resolve("revival-spawn-pending.properties")
+    );
     private final CombatTagService combatTagService = new CombatTagService(config, uiBridgeManager);
     private final ElytraCombatCooldownService elytraCombatCooldownService = new ElytraCombatCooldownService();
     private final CombatEventHandler combatEventHandler = new CombatEventHandler(combatTagService, gracePeriodService, ruleSettings, elytraCombatCooldownService, uiBridgeManager);
     private final RestrictedItemPolicy restrictedItemPolicy = new RestrictedItemPolicy();
-    private final ModItems modItems = new ModItems(heartService, playerHeartApplier);
+    private final ModItems modItems = new ModItems(heartService, playerHeartApplier, revivalService);
     private final DragonEggTracker dragonEggTracker = new DragonEggTracker(restrictedItemPolicy);
     private final WhitelistPlayerResolver playerResolver = new WhitelistPlayerResolver();
     private final PlayerPlaytimeTracker playerPlaytimeTracker = new PlayerPlaytimeTracker(heartService);
@@ -100,7 +109,8 @@ public final class LifestealRuntime {
             uiSettings,
             soundService,
             auditLog,
-            antiCheatService
+            antiCheatService,
+            revivalService
     );
     private final PlayerConnectionHooks playerConnectionHooks = new PlayerConnectionHooks(heartService, playerHeartApplier, eliminatedPlayerAccess);
     private final JoinLeaveMessageHandler joinLeaveMessageHandler = new JoinLeaveMessageHandler(uiBridgeManager);
@@ -115,7 +125,7 @@ public final class LifestealRuntime {
             antiCheatService
     );
     private final PlayerDeathHandler playerDeathHandler = new PlayerDeathHandler(playerHeartApplier, deathResolutionService, soundService, eliminatedPlayerAccess);
-    private final CombatLogoutHandler combatLogoutHandler = new CombatLogoutHandler(combatTagService, deathResolutionService, uiBridgeManager, antiCheatService);
+    private final CombatLogoutHandler combatLogoutHandler = new CombatLogoutHandler(combatTagService, uiBridgeManager, antiCheatService);
     private final DisabledFeatureHandler disabledFeatureHandler = new DisabledFeatureHandler(combatTagService, ruleSettings, elytraCombatCooldownService, uiBridgeManager);
     private final RestrictedStorageHandler restrictedStorageHandler = new RestrictedStorageHandler(modItems);
     private final DragonEggGlowHandler dragonEggGlowHandler = new DragonEggGlowHandler(config);
@@ -137,11 +147,13 @@ public final class LifestealRuntime {
         antiCheatService.load();
         antiCheatIdentityStore.load();
         eventTimerService.load();
+        revivalService.load();
         repository.initialize();
         uiBridgeManager.loadEntrypoints();
         MaceLimitRules.initialize(configDirectory);
         modItems.register();
         commandRegistrar.register();
+        revivalService.register();
         playerConnectionHooks.register();
         joinLeaveMessageHandler.register();
         playerDeathHandler.register();

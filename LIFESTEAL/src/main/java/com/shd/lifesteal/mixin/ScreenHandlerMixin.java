@@ -2,9 +2,11 @@ package com.shd.lifesteal.mixin;
 
 import com.shd.lifesteal.api.LifestealApi;
 import com.shd.lifesteal.api.LifestealService;
+import com.shd.lifesteal.impl.anticheat.MacroActionBurstCheck;
 import com.shd.lifesteal.impl.item.HeartItem;
 import com.shd.lifesteal.impl.restriction.DisabledFeatureRules;
 import com.shd.lifesteal.impl.restriction.MaceLimitRules;
+import net.minecraft.registry.Registries;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.screen.AbstractCraftingScreenHandler;
 import net.minecraft.screen.ForgingScreenHandler;
@@ -28,6 +30,12 @@ public abstract class ScreenHandlerMixin {
         }
 
         ScreenHandler handler = (ScreenHandler) (Object) this;
+        if (slotIndex < handler.slots.size()) {
+            Slot clickedSlot = handler.getSlot(slotIndex);
+            String itemId = clickedSlot.getStack().isEmpty() ? "empty" : Registries.ITEM.getId(clickedSlot.getStack().getItem()).toString();
+            MacroActionBurstCheck.recordInventoryClick(serverPlayer, slotIndex, button, actionType.name(), itemId);
+        }
+
         if (!isResultSlot(handler, slotIndex)) {
             return;
         }

@@ -125,6 +125,10 @@ public final class InteractionAnomalyCheck implements AntiCheatCheck {
 
     private void addSample(ServerPlayerEntity player, InteractionSample sample) {
         pendingSamples.computeIfAbsent(player.getUuid(), ignored -> new ArrayDeque<>()).add(sample);
+        MacroActionBurstCheck.recordInteraction(player, sample.action(), sample.itemId());
+        if (sample.targetType() != TargetType.NONE) {
+            VisibilityExploitCheck.recordDistantInteraction(player, sample.action(), sample.targetName(), sample.distance(), true);
+        }
     }
 
     private void checkReach(AntiCheatCheckContext context, InteractionState state, InteractionSample sample) {

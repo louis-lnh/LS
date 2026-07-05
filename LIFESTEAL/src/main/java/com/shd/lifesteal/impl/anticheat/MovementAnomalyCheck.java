@@ -96,6 +96,12 @@ public final class MovementAnomalyCheck implements AntiCheatCheck {
             return;
         }
 
+        if (delta.horizontalPerTick() > context.settings().movementMaxSustainedHorizontalPerTick()
+                || delta.verticalPerTickAbs() > context.settings().movementFlyUpwardPerTick()
+                || Math.abs(delta.velocityY()) > context.settings().movementFlyUpwardPerTick()) {
+            MacroActionBurstCheck.recordMovementBurst(context.player(), delta.horizontalPerTick(), delta.verticalPerTick(), delta.velocityY());
+        }
+
         if (delta.horizontalPerTick() > context.settings().movementMaxHorizontalPerTick()) {
             alert(context, state, AntiCheatSeverity.WARNING, "movement_horizontal_burst", "Unusual horizontal movement detected", current, previous, delta,
                     "horizontalPerTick=%.2f max=%.2f".formatted(delta.horizontalPerTick(), context.settings().movementMaxHorizontalPerTick()));

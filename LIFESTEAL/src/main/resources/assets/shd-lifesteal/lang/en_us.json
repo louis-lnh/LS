@@ -1,5 +1,6 @@
 {
   "item.shd-lifesteal.heart": "Heart",
+  "item.shd-lifesteal.revival_beacon": "Revival Beacon",
   "text.shd-lifesteal.eliminated": "You have been eliminated.",
   "text.shd-lifesteal.grace_active": "Grace period is active."
 }

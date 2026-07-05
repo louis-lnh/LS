@@ -1,0 +1,20 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "B": "minecraft:beacon",
+    "D": "minecraft:diamond_block",
+    "H": "shd-lifesteal:heart",
+    "N": "minecraft:nether_star",
+    "T": "minecraft:totem_of_undying"
+  },
+  "pattern": [
+    "HTH",
+    "DBD",
+    "HNH"
+  ],
+  "result": {
+    "count": 1,
+    "id": "shd-lifesteal:revival_beacon"
+  }
+}

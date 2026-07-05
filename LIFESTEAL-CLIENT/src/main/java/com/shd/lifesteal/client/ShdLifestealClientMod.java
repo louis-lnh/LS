@@ -1,7 +1,12 @@
 package com.shd.lifesteal.client;
 
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.api.ModInitializer;
 import net.minecraft.item.Item;
+import net.minecraft.network.RegistryByteBuf;
+import net.minecraft.network.codec.PacketCodec;
+import net.minecraft.network.packet.CustomPayload;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.Registry;
 import net.minecraft.registry.RegistryKey;
@@ -11,10 +16,16 @@ import net.minecraft.util.Rarity;
 public final class ShdLifestealClientMod implements ModInitializer {
     public static final String LIFESTEAL_MOD_ID = "shd-lifesteal";
     public static final Identifier HEART_ID = Identifier.of(LIFESTEAL_MOD_ID, "heart");
+    public static final Identifier INTEGRITY_CHANNEL_ID = Identifier.of("shd-lifesteal-client", "integrity");
     public static final RegistryKey<Item> HEART_KEY = RegistryKey.of(Registries.ITEM.getKey(), HEART_ID);
 
     @Override
     public void onInitialize() {
+        registerIntegrityChannel();
+        registerHeartItem();
+    }
+
+    private void registerHeartItem() {
         if (Registries.ITEM.containsId(HEART_ID)) {
             return;
         }
@@ -28,5 +39,24 @@ public final class ShdLifestealClientMod implements ModInitializer {
                         .rarity(Rarity.RARE)
                         .fireproof())
         );
+    }
+
+    private void registerIntegrityChannel() {
+        PayloadTypeRegistry.playS2C().register(IntegrityPayload.ID, IntegrityPayload.CODEC);
+        ClientPlayNetworking.registerGlobalReceiver(IntegrityPayload.ID, (payload, context) -> {
+            // Channel declaration is enough for server-side client-integrity checks.
+        });
+    }
+
+    public record IntegrityPayload() implements CustomPayload {
+        public static final IntegrityPayload INSTANCE = new IntegrityPayload();
+        public static final Id<IntegrityPayload> ID = new Id<>(INTEGRITY_CHANNEL_ID);
+        public static final PacketCodec<RegistryByteBuf, IntegrityPayload> CODEC = PacketCodec.of((payload, buffer) -> {
+        }, buffer -> INSTANCE);
+
+        @Override
+        public Id<? extends CustomPayload> getId() {
+            return ID;
+        }
     }
 }
