@@ -16,13 +16,16 @@ import net.minecraft.util.Rarity;
 public final class ShdLifestealClientMod implements ModInitializer {
     public static final String LIFESTEAL_MOD_ID = "shd-lifesteal";
     public static final Identifier HEART_ID = Identifier.of(LIFESTEAL_MOD_ID, "heart");
+    public static final Identifier REVIVAL_BEACON_ID = Identifier.of(LIFESTEAL_MOD_ID, "revival_beacon");
     public static final Identifier INTEGRITY_CHANNEL_ID = Identifier.of("shd-lifesteal-client", "integrity");
     public static final RegistryKey<Item> HEART_KEY = RegistryKey.of(Registries.ITEM.getKey(), HEART_ID);
+    public static final RegistryKey<Item> REVIVAL_BEACON_KEY = RegistryKey.of(Registries.ITEM.getKey(), REVIVAL_BEACON_ID);
 
     @Override
     public void onInitialize() {
         registerIntegrityChannel();
         registerHeartItem();
+        registerRevivalBeaconItem();
     }
 
     private void registerHeartItem() {
@@ -37,6 +40,22 @@ public final class ShdLifestealClientMod implements ModInitializer {
                         .registryKey(HEART_KEY)
                         .maxCount(16)
                         .rarity(Rarity.RARE)
+                        .fireproof())
+        );
+    }
+
+    private void registerRevivalBeaconItem() {
+        if (Registries.ITEM.containsId(REVIVAL_BEACON_ID)) {
+            return;
+        }
+
+        Registry.register(
+                Registries.ITEM,
+                REVIVAL_BEACON_ID,
+                new Item(new Item.Settings()
+                        .registryKey(REVIVAL_BEACON_KEY)
+                        .maxCount(1)
+                        .rarity(Rarity.EPIC)
                         .fireproof())
         );
     }
