@@ -191,15 +191,7 @@ public final class LifestealCommandRegistrar {
                         .then(maceCommand(MaceLimitRules.MACE_TWO)))
                 .then(CommandManager.literal("rules")
                         .then(CommandManager.literal("status")
-                                .executes(context -> rulesStatus(context.getSource())))
-                        .then(CommandManager.literal("spearcombat")
-                                .requires(CommandManager.requirePermissionLevel(CommandManager.GAMEMASTERS_CHECK))
-                                .then(CommandManager.literal("status")
-                                        .executes(context -> spearCombatStatus(context.getSource())))
-                                .then(CommandManager.literal("on")
-                                        .executes(context -> setSpearCombatBan(context.getSource(), true)))
-                                .then(CommandManager.literal("off")
-                                        .executes(context -> setSpearCombatBan(context.getSource(), false)))))
+                                .executes(context -> rulesStatus(context.getSource()))))
                 .then(CommandManager.literal("anticheat")
                         .requires(CommandManager.requirePermissionLevel(CommandManager.GAMEMASTERS_CHECK))
                         .then(CommandManager.literal("status")
@@ -757,17 +749,6 @@ public final class LifestealCommandRegistrar {
             source.sendFeedback(() -> Text.literal(record.compactSummary()), false);
         }
         return records.size();
-    }
-
-    private int spearCombatStatus(ServerCommandSource source) {
-        source.sendFeedback(() -> Text.literal("Spear combat ban: " + (ruleSettings.spearCombatBan() ? "on" : "off")), false);
-        return 1;
-    }
-
-    private int setSpearCombatBan(ServerCommandSource source, boolean enabled) {
-        ruleSettings.setSpearCombatBan(enabled);
-        source.sendFeedback(() -> Text.literal("Spear combat ban is now " + (enabled ? "on" : "off")), true);
-        return 1;
     }
 
     private int uiStatus(ServerCommandSource source) {

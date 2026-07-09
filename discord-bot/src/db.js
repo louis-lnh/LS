@@ -34,6 +34,11 @@ const initialState = {
   notification_previews: [],
   app_settings: {},
   overlay_lifesteal_player: null,
+  server_status: {
+    latest: null,
+    history: [],
+    alert_state: {}
+  },
   public_lifesteal_snapshot: {
     schema_version: 2,
     status: {
@@ -1244,6 +1249,31 @@ export const statements = {
         season: row.season,
         updated_at: row.updatedAt
       };
+      persist();
+    }
+  },
+  upsertServerHeartbeat: {
+    run(row) {
+      state.server_status ??= { latest: null, history: [], alert_state: {} };
+      const heartbeat = structuredClone(row.heartbeat);
+      state.server_status.latest = heartbeat;
+      state.server_status.history.unshift(heartbeat);
+      state.server_status.history = state.server_status.history.slice(0, row.maxHistory);
+      persist();
+      return structuredClone(state.server_status.latest);
+    }
+  },
+  getServerStatus: {
+    get() {
+      state.server_status ??= { latest: null, history: [], alert_state: {} };
+      return structuredClone(state.server_status);
+    }
+  },
+  setServerAlertState: {
+    run(key, value) {
+      state.server_status ??= { latest: null, history: [], alert_state: {} };
+      state.server_status.alert_state ??= {};
+      state.server_status.alert_state[key] = value;
       persist();
     }
   }

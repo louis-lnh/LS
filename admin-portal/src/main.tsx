@@ -1175,6 +1175,7 @@ function GlobalOverviewPage({ overview, state, submissions, onNavigate }: {
     adminApi: { status: 'online' as const, detail: 'Protected routes responding' },
     lifestealBot: { status: 'online' as const, detail: 'Minecraft guild and API bridge' },
     supportPortal: { status: 'online' as const, detail: `${metrics.openWork} open intake records` },
+    lifestealServer: { status: 'waiting' as const, detail: 'Server helper heartbeat unavailable in demo mode' },
     minecraftBridge: { status: 'waiting' as const, detail: 'Gameplay sync state unavailable in demo mode' },
     shdBot: { status: 'pending' as const, detail: 'General Support and Valorant bot not connected' },
   }
@@ -1215,6 +1216,7 @@ function GlobalOverviewPage({ overview, state, submissions, onNavigate }: {
             <HealthRow label="Admin API" detail={services.adminApi.detail} status={serviceStatus(services.adminApi.status)} muted={services.adminApi.status !== 'online'} />
             <HealthRow label="Lifesteal bot" detail={services.lifestealBot.detail} status={serviceStatus(services.lifestealBot.status)} muted={services.lifestealBot.status !== 'online'} />
             <HealthRow label="Support portal" detail={services.supportPortal.detail} status={serviceStatus(services.supportPortal.status)} muted={services.supportPortal.status !== 'online'} />
+            <HealthRow label="Lifesteal server" detail={formatServiceDetail(services.lifestealServer?.detail ?? 'No server helper heartbeat received')} status={serviceStatus(services.lifestealServer?.status ?? 'waiting')} muted={services.lifestealServer?.status !== 'online'} />
             <HealthRow label="Minecraft bridge" detail={formatServiceDetail(services.minecraftBridge.detail)} status={serviceStatus(services.minecraftBridge.status)} muted={services.minecraftBridge.status !== 'online'} />
             <HealthRow label="SHD bot" detail={services.shdBot.detail} status={serviceStatus(services.shdBot.status)} muted />
           </div>

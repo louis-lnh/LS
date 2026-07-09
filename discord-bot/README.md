@@ -199,6 +199,41 @@ Responses:
 - `allowed: false` when unlinked, banned, under review, high risk, missing current rules acceptance, or IP lock mismatches.
 - If a manual admin entry has no UUID yet, the first matching Minecraft join replaces the `manual:<name>` placeholder with the real UUID before normal join checks continue.
 
+Server helper heartbeat:
+
+```http
+POST /api/v1/server/heartbeat
+Authorization: Bearer <API_SHARED_SECRET>
+Content-Type: application/json
+
+{
+  "serverId": "lifesteal-g17",
+  "system": {
+    "cpuPercent": 24,
+    "ramUsedGb": 9.8,
+    "ramTotalGb": 31.1,
+    "diskUsedGb": 218,
+    "diskTotalGb": 930,
+    "tempC": 67
+  },
+  "minecraft": {
+    "serviceActive": true,
+    "processRunning": true,
+    "online": true,
+    "playersOnline": 0,
+    "maxPlayers": 35,
+    "crashDetected": false
+  }
+}
+```
+
+Read latest server helper status:
+
+```http
+GET /api/v1/server/status
+Authorization: Bearer <API_SHARED_SECRET>
+```
+
 ## Security Workflow Commands
 
 - `/risk` and `/risklist` show scored account risk with reasons.

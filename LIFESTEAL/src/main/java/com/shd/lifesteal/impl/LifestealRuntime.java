@@ -91,7 +91,7 @@ public final class LifestealRuntime {
     );
     private final CombatTagService combatTagService = new CombatTagService(config, uiBridgeManager);
     private final ElytraCombatCooldownService elytraCombatCooldownService = new ElytraCombatCooldownService();
-    private final CombatEventHandler combatEventHandler = new CombatEventHandler(combatTagService, gracePeriodService, ruleSettings, elytraCombatCooldownService, uiBridgeManager);
+    private final CombatEventHandler combatEventHandler = new CombatEventHandler(combatTagService, gracePeriodService, elytraCombatCooldownService);
     private final RestrictedItemPolicy restrictedItemPolicy = new RestrictedItemPolicy();
     private final ModItems modItems = new ModItems(heartService, playerHeartApplier, revivalService);
     private final DragonEggTracker dragonEggTracker = new DragonEggTracker(restrictedItemPolicy);
@@ -126,7 +126,7 @@ public final class LifestealRuntime {
     );
     private final PlayerDeathHandler playerDeathHandler = new PlayerDeathHandler(playerHeartApplier, deathResolutionService, soundService, eliminatedPlayerAccess);
     private final CombatLogoutHandler combatLogoutHandler = new CombatLogoutHandler(combatTagService, uiBridgeManager, antiCheatService);
-    private final DisabledFeatureHandler disabledFeatureHandler = new DisabledFeatureHandler(combatTagService, ruleSettings, elytraCombatCooldownService, uiBridgeManager);
+    private final DisabledFeatureHandler disabledFeatureHandler = new DisabledFeatureHandler(combatTagService, elytraCombatCooldownService, uiBridgeManager);
     private final RestrictedStorageHandler restrictedStorageHandler = new RestrictedStorageHandler(modItems);
     private final DragonEggGlowHandler dragonEggGlowHandler = new DragonEggGlowHandler(config);
     private final DiscordRoleSyncService discordRoleSyncService = new DiscordRoleSyncService(config, heartService, dragonEggGlowHandler, antiCheatService);

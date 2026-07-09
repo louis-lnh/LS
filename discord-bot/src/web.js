@@ -81,6 +81,42 @@ const minecraftEventSchema = z.object({
   data: z.record(z.unknown()).optional()
 });
 
+const serverHeartbeatSchema = z.object({
+  serverId: z.string().min(1).max(80),
+  hostname: z.string().max(120).optional().nullable(),
+  agentVersion: z.string().max(40).optional().nullable(),
+  sentAt: z.string().max(80).optional().nullable(),
+  system: z.object({
+    cpuPercent: z.number().min(0).max(100).nullable().optional(),
+    ramUsedGb: z.number().min(0).nullable().optional(),
+    ramTotalGb: z.number().min(0).nullable().optional(),
+    diskUsedGb: z.number().min(0).nullable().optional(),
+    diskTotalGb: z.number().min(0).nullable().optional(),
+    tempC: z.number().min(-50).max(130).nullable().optional(),
+    uptimeSeconds: z.number().min(0).nullable().optional()
+  }).default({}),
+  minecraft: z.object({
+    serviceActive: z.boolean().nullable().optional(),
+    processRunning: z.boolean().nullable().optional(),
+    logFresh: z.boolean().nullable().optional(),
+    online: z.boolean().nullable().optional(),
+    playersOnline: z.number().int().min(0).nullable().optional(),
+    maxPlayers: z.number().int().min(0).nullable().optional(),
+    rconAvailable: z.boolean().nullable().optional(),
+    rconError: z.string().max(240).nullable().optional(),
+    latestWarning: z.string().max(500).nullable().optional(),
+    cantKeepUpCount: z.number().int().min(0).nullable().optional(),
+    crashDetected: z.boolean().nullable().optional()
+  }).default({}),
+  backup: z.object({
+    lastBackupAt: z.string().max(80).nullable().optional(),
+    ageSeconds: z.number().min(0).nullable().optional(),
+    count: z.number().int().min(0).nullable().optional(),
+    sizeGb: z.number().min(0).nullable().optional()
+  }).default({}),
+  issues: z.array(z.string().min(1).max(160)).max(20).default([])
+});
+
 const supportRulesAckSchema = z.object({
   project: z.enum(['lifesteal']).default('lifesteal')
 });
@@ -1347,6 +1383,103 @@ async function syncGameplayRoles(client, snapshots) {
   return stats;
 }
 
+function percent(used, total) {
+  if (!Number.isFinite(used) || !Number.isFinite(total) || total <= 0) return null;
+  return Math.round((used / total) * 1000) / 10;
+}
+
+function normalizeServerHeartbeat(body) {
+  const receivedAt = Date.now();
+  const ramPercent = percent(body.system.ramUsedGb, body.system.ramTotalGb);
+  const diskPercent = percent(body.system.diskUsedGb, body.system.diskTotalGb);
+  return {
+    schemaVersion: 1,
+    serverId: body.serverId,
+    hostname: body.hostname ?? null,
+    agentVersion: body.agentVersion ?? null,
+    sentAt: body.sentAt ?? null,
+    receivedAt,
+    system: {
+      ...body.system,
+      ramPercent,
+      diskPercent
+    },
+    minecraft: body.minecraft,
+    backup: body.backup,
+    issues: body.issues
+  };
+}
+
+function serverHealth(status = statements.getServerStatus.get(), now = Date.now()) {
+  const latest = status.latest;
+  if (!latest) {
+    return { state: 'waiting', ageSeconds: null, latest: null, history: status.history ?? [] };
+  }
+
+  const ageSeconds = Math.max(0, Math.floor((now - latest.receivedAt) / 1000));
+  const stale = ageSeconds > config.serverAgent.staleSeconds;
+  const minecraftDown = latest.minecraft.serviceActive === false || latest.minecraft.processRunning === false || latest.minecraft.online === false;
+  const critical = stale || latest.minecraft.crashDetected === true || minecraftDown;
+  return {
+    state: critical ? 'offline' : latest.issues?.length ? 'warning' : 'online',
+    ageSeconds,
+    latest,
+    history: status.history ?? []
+  };
+}
+
+function serverAlertCandidates(health) {
+  const latest = health.latest;
+  if (!latest) {
+    return health.state === 'waiting' ? [] : [['server_waiting', 'Server Helper Waiting', 'No heartbeat has been received yet.']];
+  }
+
+  const alerts = [];
+  if (health.ageSeconds != null && health.ageSeconds > config.serverAgent.staleSeconds) {
+    alerts.push(['stale', 'Lifesteal Server Heartbeat Stale', `Last heartbeat was ${health.ageSeconds}s ago.`]);
+  }
+  if (latest.minecraft.serviceActive === false || latest.minecraft.processRunning === false || latest.minecraft.online === false) {
+    alerts.push(['minecraft_down', 'Minecraft Service Down', 'The agent reports the Minecraft service/process is not healthy.']);
+  }
+  if (latest.minecraft.crashDetected) {
+    alerts.push(['crash_detected', 'Minecraft Crash Detected', 'The agent detected a crash report or crash marker.']);
+  }
+  if (Number.isFinite(latest.system.tempC) && latest.system.tempC >= config.serverAgent.maxTempC) {
+    alerts.push(['high_temp', 'Lifesteal Server Temperature High', `CPU temperature is ${latest.system.tempC}C.`]);
+  }
+  if (Number.isFinite(latest.system.ramPercent) && latest.system.ramPercent >= config.serverAgent.maxRamPercent) {
+    alerts.push(['high_ram', 'Lifesteal Server RAM High', `RAM usage is ${latest.system.ramPercent}%.`]);
+  }
+  if (Number.isFinite(latest.system.diskPercent) && latest.system.diskPercent >= config.serverAgent.maxDiskPercent) {
+    alerts.push(['high_disk', 'Lifesteal Server Disk High', `Disk usage is ${latest.system.diskPercent}%.`]);
+  }
+  if (Number.isFinite(latest.backup.ageSeconds) && latest.backup.ageSeconds >= config.serverAgent.maxBackupAgeHours * 60 * 60) {
+    alerts.push(['backup_stale', 'Lifesteal Backup Stale', `Last backup is ${Math.floor(latest.backup.ageSeconds / 3600)}h old.`]);
+  }
+  if (Number.isFinite(latest.minecraft.cantKeepUpCount) && latest.minecraft.cantKeepUpCount >= 3) {
+    alerts.push(['cant_keep_up', "Minecraft Can't Keep Up Warnings", `${latest.minecraft.cantKeepUpCount} warning(s) found in the recent log window.`]);
+  }
+  return alerts;
+}
+
+async function maybeSendServerAlerts(client, health) {
+  const status = statements.getServerStatus.get();
+  const alertState = status.alert_state ?? {};
+  const now = Date.now();
+  const cooldownMs = config.serverAgent.alertCooldownSeconds * 1000;
+  for (const [key, title, message] of serverAlertCandidates(health)) {
+    const lastSent = alertState[key]?.lastSentAt ?? 0;
+    if (now - lastSent < cooldownMs) continue;
+    statements.setServerAlertState.run(key, { lastSentAt: now, message });
+    await minecraftLog(client, title, [
+      { name: 'Server', value: health.latest?.serverId ?? 'lifesteal-g17', inline: true },
+      { name: 'State', value: health.state, inline: true },
+      { name: 'Detail', value: message },
+      health.latest?.minecraft.latestWarning ? { name: 'Latest Warning', value: health.latest.minecraft.latestWarning } : null
+    ].filter(Boolean));
+  }
+}
+
 export function startWebServer(client) {
   const app = express();
   app.set('trust proxy', true);
@@ -1363,6 +1496,12 @@ export function startWebServer(client) {
   app.get('/health', (_req, res) => {
     res.json({ ok: true });
   });
+
+  setInterval(() => {
+    maybeSendServerAlerts(client, serverHealth()).catch((error) => {
+      console.warn(`Server helper stale alert check failed: ${error.message}`);
+    });
+  }, 60_000).unref?.();
 
   app.get('/verify/:token', verificationRateLimit, (req, res) => {
     const token = req.params.token;
@@ -1412,6 +1551,35 @@ export function startWebServer(client) {
   app.get('/api/v1/link/discord/:discordId', protectedApiRateLimit, requireApiSecret, (req, res) => {
     const linked = statements.findLinkedByDiscord.get(req.params.discordId);
     res.json({ linked: linked ?? null });
+  });
+
+  app.post('/api/v1/server/heartbeat', protectedApiRateLimit, requireApiSecret, async (req, res) => {
+    try {
+      const body = serverHeartbeatSchema.parse(req.body ?? {});
+      const heartbeat = statements.upsertServerHeartbeat.run({
+        heartbeat: normalizeServerHeartbeat(body),
+        maxHistory: config.serverAgent.maxHistory
+      });
+      const health = serverHealth(statements.getServerStatus.get());
+      audit('server.heartbeat', {
+        data: {
+          serverId: heartbeat.serverId,
+          state: health.state,
+          issues: heartbeat.issues,
+          minecraftOnline: heartbeat.minecraft.online,
+          minecraftServiceActive: heartbeat.minecraft.serviceActive
+        }
+      });
+      await maybeSendServerAlerts(client, health);
+      res.json({ ok: true, health: health.state, ageSeconds: health.ageSeconds, receivedAt: heartbeat.receivedAt });
+    } catch (error) {
+      res.status(400).json({ ok: false, error: validationErrorMessage(error) });
+    }
+  });
+
+  app.get('/api/v1/server/status', protectedApiRateLimit, requireApiSecret, (_req, res) => {
+    const health = serverHealth(statements.getServerStatus.get());
+    res.json({ ok: true, ...health, generatedAt: Date.now() });
   });
 
   app.get('/api/v1/overlays/lifesteal/player', publicReadRateLimit, requireOverlayToken, (_req, res) => {

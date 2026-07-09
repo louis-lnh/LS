@@ -1,7 +1,6 @@
 package com.shd.lifesteal.impl.restriction;
 
 import com.shd.lifesteal.impl.combat.CombatTagService;
-import com.shd.lifesteal.impl.config.LifestealRuleSettings;
 import com.shd.lifesteal.impl.ui.UiBridgeManager;
 import com.shd.lifesteal.impl.ui.UiNotifier;
 import com.shd.lifesteal.mixin.ZombieVillagerEntityInvoker;
@@ -17,24 +16,22 @@ import net.minecraft.item.Items;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.util.ActionResult;
+import net.minecraft.util.Hand;
 
 public final class DisabledFeatureHandler {
     private static final int MIN_ZOMBIE_VILLAGER_CONVERSION_TICKS = 3600;
     private static final int MAX_ZOMBIE_VILLAGER_CONVERSION_TICKS = 6000;
 
     private final CombatTagService combatTagService;
-    private final LifestealRuleSettings ruleSettings;
     private final ElytraCombatCooldownService elytraCombatCooldownService;
     private final UiBridgeManager uiBridgeManager;
 
     public DisabledFeatureHandler(
             CombatTagService combatTagService,
-            LifestealRuleSettings ruleSettings,
             ElytraCombatCooldownService elytraCombatCooldownService,
             UiBridgeManager uiBridgeManager
     ) {
         this.combatTagService = combatTagService;
-        this.ruleSettings = ruleSettings;
         this.elytraCombatCooldownService = elytraCombatCooldownService;
         this.uiBridgeManager = uiBridgeManager;
     }
@@ -48,7 +45,7 @@ public final class DisabledFeatureHandler {
             ItemStack stack = player.getStackInHand(hand);
             boolean inCombat = inCombat(serverPlayer);
             boolean escapeLocked = escapeLocked(serverPlayer);
-            if (DisabledFeatureRules.isUseBlocked(stack, inCombat || escapeLocked, ruleSettings.spearCombatBan() && escapeLocked)) {
+            if (DisabledFeatureRules.isUseBlocked(stack, inCombat || escapeLocked)) {
                 warn(serverPlayer, DisabledFeatureRules.blockedReason(stack, inCombat || escapeLocked).orElse("This feature is disabled."));
                 return ActionResult.FAIL;
             }
@@ -64,7 +61,7 @@ public final class DisabledFeatureHandler {
             ItemStack stack = player.getStackInHand(hand);
             boolean inCombat = inCombat(serverPlayer);
             boolean escapeLocked = escapeLocked(serverPlayer);
-            if (DisabledFeatureRules.isUseBlocked(stack, inCombat || escapeLocked, ruleSettings.spearCombatBan() && escapeLocked)) {
+            if (DisabledFeatureRules.isUseBlocked(stack, inCombat || escapeLocked)) {
                 warn(serverPlayer, DisabledFeatureRules.blockedReason(stack, inCombat || escapeLocked).orElse("This feature is disabled."));
                 return ActionResult.FAIL;
             }
@@ -121,6 +118,12 @@ public final class DisabledFeatureHandler {
     private void sanitizePlayers(MinecraftServer server) {
         for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
             boolean changed = false;
+            boolean movementLocked = inCombat(player) || escapeLocked(player);
+
+            if (movementLocked && moveCursorStackIfBlocked(player)) {
+                changed = true;
+            }
+
             for (int slot = 0; slot < player.getInventory().size(); slot++) {
                 ItemStack stack = player.getInventory().getStack(slot);
                 if (stack.isEmpty()) {
@@ -150,6 +153,14 @@ public final class DisabledFeatureHandler {
                     continue;
                 }
 
+                if (movementLocked && slot == EquipmentSlot.CHEST && stack.isOf(Items.ELYTRA)) {
+                    player.equipStack(slot, ItemStack.EMPTY);
+                    player.giveOrDropStack(stack);
+                    warn(player, "Elytra cannot be equipped while combat tagged.");
+                    changed = true;
+                    continue;
+                }
+
                 if (DisabledFeatureRules.isInventoryBlocked(stack, inCombat(player))) {
                     player.equipStack(slot, ItemStack.EMPTY);
                     warn(player, DisabledFeatureRules.blockedReason(stack, inCombat(player)).orElse(stack.getName().getString() + " was removed."));
@@ -166,6 +177,35 @@ public final class DisabledFeatureHandler {
             if (changed) {
                 player.getInventory().markDirty();
             }
+
+            if (movementLocked) {
+                stopBlockedMovementUse(player);
+            }
+        }
+    }
+
+    private boolean moveCursorStackIfBlocked(ServerPlayerEntity player) {
+        ItemStack cursorStack = player.currentScreenHandler.getCursorStack();
+        if (cursorStack.isEmpty() || !cursorStack.isOf(Items.ELYTRA)) {
+            return false;
+        }
+
+        player.currentScreenHandler.setCursorStack(ItemStack.EMPTY);
+        player.giveOrDropStack(cursorStack);
+        warn(player, "Elytra cannot be equipped while combat tagged.");
+        return true;
+    }
+
+    private void stopBlockedMovementUse(ServerPlayerEntity player) {
+        for (Hand hand : Hand.values()) {
+            ItemStack stack = player.getStackInHand(hand);
+            if (!DisabledFeatureRules.isUseBlocked(stack, true)) {
+                continue;
+            }
+
+            player.clearActiveItem();
+            warn(player, DisabledFeatureRules.blockedReason(stack, true).orElse("This movement item is disabled while combat tagged."));
+            return;
         }
     }
 

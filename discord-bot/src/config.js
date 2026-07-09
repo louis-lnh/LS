@@ -140,6 +140,15 @@ export const config = {
     port: int('MINECRAFT_RCON_PORT', 25575),
     password: process.env.MINECRAFT_RCON_PASSWORD ?? ''
   },
+  serverAgent: {
+    staleSeconds: int('SERVER_AGENT_STALE_SECONDS', 45),
+    alertCooldownSeconds: int('SERVER_AGENT_ALERT_COOLDOWN_SECONDS', 300),
+    maxHistory: int('SERVER_AGENT_HISTORY_LIMIT', 120),
+    maxTempC: int('SERVER_AGENT_MAX_TEMP_C', 90),
+    maxDiskPercent: int('SERVER_AGENT_MAX_DISK_PERCENT', 90),
+    maxRamPercent: int('SERVER_AGENT_MAX_RAM_PERCENT', 92),
+    maxBackupAgeHours: int('SERVER_AGENT_MAX_BACKUP_AGE_HOURS', 30)
+  },
   apiSharedSecret: process.env.API_SHARED_SECRET ?? '',
   admin: {
     portalUrl: (process.env.ADMIN_PORTAL_URL ?? 'http://127.0.0.1:4177').replace(/\/+$/, ''),

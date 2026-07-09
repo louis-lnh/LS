@@ -53,6 +53,20 @@ npm run register
 npm start
 ```
 
+### `shd-agent/`
+
+Lightweight outbound-only server helper intended to run next to the Lifesteal Minecraft server on the G17.
+
+It collects basic host/service/log/backup status and posts heartbeats to the Lifesteal bot API. It does not expose a local web API, require RCON, run shell commands from the portal, or perform remote actions.
+
+Run:
+
+```powershell
+cd shd-agent
+copy .env.example .env
+npm start
+```
+
 ### `SHD/discord-bot/`
 
 General SHD Discord bot and backend.
@@ -186,4 +200,3 @@ The workspace is best understood as several connected but independently built pa
 - Public support/signup pages live in `support-website/`.
 - Local mod staging and manual validation helpers live in `integration-test/`.
 - Planning and historical notes live in `.notes/`, `.archive/`, and `IMPORTANT_PROJECT_REMAINING_WORK.md`.
-

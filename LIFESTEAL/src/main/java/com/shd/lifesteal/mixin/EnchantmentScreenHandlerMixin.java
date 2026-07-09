@@ -36,7 +36,14 @@ public abstract class EnchantmentScreenHandlerMixin {
         for (int index = 0; index < generated.size(); index++) {
             EnchantmentLevelEntry entry = generated.get(index);
             int maxAllowed = DisabledFeatureRules.maxAllowedLevel(entry.enchantment());
-            if (maxAllowed <= 0 || entry.level() <= maxAllowed) {
+            if (maxAllowed == 0) {
+                if (capped == null) {
+                    capped = new ArrayList<>(generated.subList(0, index));
+                }
+                continue;
+            }
+
+            if (maxAllowed < 0 || entry.level() <= maxAllowed) {
                 if (capped != null) {
                     capped.add(entry);
                 }

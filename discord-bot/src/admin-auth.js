@@ -630,6 +630,7 @@ export async function buildBootstrapPayload(client, session) {
       adminApi: { status: 'online', detail: 'Protected routes responding' },
       lifestealBot: { status: 'online', detail: `Connected as ${client.user?.tag || 'Discord bot'}` },
       supportPortal: { status: 'online', detail: `${openApplications + openSupport} open intake records` },
+      lifestealServer: serverHelperService(),
       minecraftBridge: {
         status: publicSnapshot.updated_at ? 'online' : 'waiting',
         detail: publicSnapshot.updated_at ? `Last gameplay sync ${publicSnapshot.updated_at}` : 'No gameplay snapshot received'
@@ -1022,6 +1023,26 @@ function buildAdminLifestealEvents() {
   return (snapshot.lifesteal_events ?? [])
     .map(serializeLifestealEvent)
     .sort((left, right) => left.startsAt - right.startsAt || left.priority - right.priority || left.id - right.id);
+}
+
+function serverHelperService() {
+  const status = statements.getServerStatus.get();
+  const latest = status.latest;
+  if (!latest) return { status: 'waiting', detail: 'No server helper heartbeat received' };
+  const ageSeconds = Math.max(0, Math.floor((Date.now() - latest.receivedAt) / 1000));
+  const stale = ageSeconds > config.serverAgent.staleSeconds;
+  const minecraftDown = latest.minecraft?.serviceActive === false || latest.minecraft?.processRunning === false || latest.minecraft?.online === false;
+  const state = stale || minecraftDown || latest.minecraft?.crashDetected ? 'waiting' : 'online';
+  const parts = [
+    `${latest.serverId} heartbeat ${ageSeconds}s ago`,
+    latest.minecraft?.playersOnline != null && latest.minecraft?.maxPlayers != null
+      ? `${latest.minecraft.playersOnline}/${latest.minecraft.maxPlayers} players`
+      : null,
+    latest.system?.tempC != null ? `${latest.system.tempC}C` : null,
+    latest.system?.ramPercent != null ? `${latest.system.ramPercent}% RAM` : null,
+    latest.system?.diskPercent != null ? `${latest.system.diskPercent}% disk` : null
+  ].filter(Boolean);
+  return { status: state, detail: parts.join(' / ') };
 }
 
 async function announceLifestealEvent(client, event, options = {}) {

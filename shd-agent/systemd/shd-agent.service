@@ -1,0 +1,16 @@
+[Unit]
+Description=SHD Lifesteal Server Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=lifesteal
+WorkingDirectory=/opt/shd-agent
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node src/index.js
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

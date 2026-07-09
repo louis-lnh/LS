@@ -152,7 +152,6 @@ public final class EventKitService {
                 enchant(Enchantments.UNBREAKING, 3),
                 enchant(Enchantments.MENDING, 1),
                 enchant(Enchantments.SHARPNESS, 4),
-                enchant(Enchantments.LUNGE, 3),
                 enchant(Enchantments.KNOCKBACK, 2),
                 enchant(Enchantments.FIRE_ASPECT, 2)
         ));

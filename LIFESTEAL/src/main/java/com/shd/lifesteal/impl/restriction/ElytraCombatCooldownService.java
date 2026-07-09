@@ -18,9 +18,6 @@ public final class ElytraCombatCooldownService {
     private static final Duration RECENT_MOBILITY_DURATION = Duration.ofSeconds(12);
     private static final ItemStack ELYTRA_STACK = new ItemStack(Items.ELYTRA);
     private static final ItemStack ENDER_PEARL_STACK = new ItemStack(Items.ENDER_PEARL);
-    private static final ItemStack TRIDENT_STACK = new ItemStack(Items.TRIDENT);
-    private static final ItemStack DIAMOND_SPEAR_STACK = new ItemStack(Items.DIAMOND_SPEAR);
-    private static final ItemStack NETHERITE_SPEAR_STACK = new ItemStack(Items.NETHERITE_SPEAR);
     private final Map<UUID, Instant> cooldowns = new ConcurrentHashMap<>();
     private final Map<UUID, Instant> recentGliding = new ConcurrentHashMap<>();
     private final Map<UUID, Instant> recentFastFall = new ConcurrentHashMap<>();
@@ -29,15 +26,10 @@ public final class ElytraCombatCooldownService {
         ServerTickEvents.END_SERVER_TICK.register(this::tick);
     }
 
-    public void apply(ServerPlayerEntity player, boolean spearCombatBan, Instant now) {
+    public void apply(ServerPlayerEntity player, Instant now) {
         cooldowns.put(player.getUuid(), now.plus(COOLDOWN_DURATION));
         player.getItemCooldownManager().set(ELYTRA_STACK, COOLDOWN_TICKS);
         player.getItemCooldownManager().set(ENDER_PEARL_STACK, COOLDOWN_TICKS);
-        player.getItemCooldownManager().set(TRIDENT_STACK, COOLDOWN_TICKS);
-        if (spearCombatBan) {
-            player.getItemCooldownManager().set(DIAMOND_SPEAR_STACK, COOLDOWN_TICKS);
-            player.getItemCooldownManager().set(NETHERITE_SPEAR_STACK, COOLDOWN_TICKS);
-        }
     }
 
     public boolean isActive(UUID playerId, Instant now) {

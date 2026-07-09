@@ -1,0 +1,13 @@
+{
+  "name": "shd-lifesteal-server-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "heartbeat:fake": "node src/fake-heartbeat.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

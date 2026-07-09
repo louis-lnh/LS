@@ -3,7 +3,6 @@ package com.shd.lifesteal.impl.restriction;
 import java.util.Optional;
 import java.util.Set;
 import net.minecraft.component.DataComponentTypes;
-import net.minecraft.component.type.FireworksComponent;
 import net.minecraft.component.type.ItemEnchantmentsComponent;
 import net.minecraft.component.type.PotionContentsComponent;
 import net.minecraft.enchantment.Enchantment;
@@ -14,15 +13,14 @@ import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
-import net.minecraft.registry.Registries;
 import net.minecraft.potion.Potions;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.entry.RegistryEntry;
 
 public final class DisabledFeatureRules {
-    private static final int MAX_FIREWORK_EXPLOSIONS = 7;
     private static final Set<Item> ALWAYS_DISABLED_ITEMS = Set.of(
             Items.END_CRYSTAL,
+            Items.FIREWORK_ROCKET,
             Items.RESPAWN_ANCHOR,
             Items.TIPPED_ARROW,
             Items.TOTEM_OF_UNDYING,
@@ -40,10 +38,6 @@ public final class DisabledFeatureRules {
     }
 
     public static boolean isUseBlocked(ItemStack stack, boolean inCombat) {
-        return isUseBlocked(stack, inCombat, false);
-    }
-
-    public static boolean isUseBlocked(ItemStack stack, boolean inCombat, boolean spearCombatBan) {
         if (stack.isEmpty()) {
             return false;
         }
@@ -56,15 +50,7 @@ public final class DisabledFeatureRules {
             return true;
         }
 
-        if (isForbiddenFirework(stack)) {
-            return true;
-        }
-
         if (inCombat && isRiptideTrident(stack)) {
-            return true;
-        }
-
-        if (inCombat && spearCombatBan && isSpear(stack)) {
             return true;
         }
 
@@ -77,10 +63,6 @@ public final class DisabledFeatureRules {
         }
 
         if (isForbiddenPotion(stack, inCombat)) {
-            return true;
-        }
-
-        if (isForbiddenFirework(stack)) {
             return true;
         }
 
@@ -99,14 +81,8 @@ public final class DisabledFeatureRules {
         if (isForbiddenPotion(stack, inCombat)) {
             return Optional.of(name + " is restricted by the Lifesteal rules.");
         }
-        if (isForbiddenFirework(stack)) {
-            return Optional.of("Fireworks with more than " + MAX_FIREWORK_EXPLOSIONS + " explosions are disabled.");
-        }
         if (inCombat && isRiptideTrident(stack)) {
             return Optional.of("Riptide tridents are disabled while combat tagged.");
-        }
-        if (inCombat && isSpear(stack)) {
-            return Optional.of("Spears are disabled while combat tagged.");
         }
         if (inCombat && stack.isOf(Items.ENDER_PEARL)) {
             return Optional.of("Ender pearls are disabled while combat tagged.");
@@ -116,7 +92,7 @@ public final class DisabledFeatureRules {
 
     public static boolean isRestrictedOutput(ItemStack stack) {
         return !stack.isEmpty()
-                && (isAlwaysDisabled(stack) || isForbiddenFirework(stack) || hasRestrictedEnchantments(stack));
+                && (isAlwaysDisabled(stack) || hasRestrictedEnchantments(stack));
     }
 
     public static boolean clampRestrictedEnchantments(ItemStack stack) {
@@ -132,6 +108,9 @@ public final class DisabledFeatureRules {
         }
         if (matches(enchantment, Enchantments.SHARPNESS)) {
             return 4;
+        }
+        if (matches(enchantment, Enchantments.LUNGE)) {
+            return 0;
         }
         return -1;
     }
@@ -205,15 +184,6 @@ public final class DisabledFeatureRules {
                 || entry.equals(Potions.STRONG_TURTLE_MASTER)).isPresent();
     }
 
-    private static boolean isForbiddenFirework(ItemStack stack) {
-        if (!stack.isOf(Items.FIREWORK_ROCKET)) {
-            return false;
-        }
-
-        FireworksComponent fireworks = stack.get(DataComponentTypes.FIREWORKS);
-        return fireworks != null && fireworks.explosions().size() > MAX_FIREWORK_EXPLOSIONS;
-    }
-
     private static boolean hasRestrictedEnchantments(ItemStack stack) {
         return hasRestrictedEnchantments(stack, DataComponentTypes.ENCHANTMENTS)
                 || hasRestrictedEnchantments(stack, DataComponentTypes.STORED_ENCHANTMENTS);
@@ -226,7 +196,8 @@ public final class DisabledFeatureRules {
         }
 
         for (RegistryEntry<Enchantment> enchantment : enchantments.getEnchantments()) {
-            if (isRestrictedEnchantmentLevel(enchantment, enchantments.getLevel(enchantment))) {
+            int maxAllowed = maxAllowedLevel(enchantment);
+            if (maxAllowed == 0 || (maxAllowed > 0 && enchantments.getLevel(enchantment) > maxAllowed)) {
                 return true;
             }
         }
@@ -242,10 +213,6 @@ public final class DisabledFeatureRules {
         return enchantments != null && enchantments.getEnchantments().stream().anyMatch(enchantment -> matches(enchantment, Enchantments.RIPTIDE));
     }
 
-    public static boolean isSpear(ItemStack stack) {
-        return !stack.isEmpty() && Registries.ITEM.getId(stack.getItem()).getPath().endsWith("_spear");
-    }
-
     private static boolean clampEnchantments(ItemStack stack, net.minecraft.component.ComponentType<ItemEnchantmentsComponent> componentType) {
         ItemEnchantmentsComponent enchantments = stack.get(componentType);
         if (enchantments == null || enchantments.getSize() == 0) {
@@ -257,7 +224,10 @@ public final class DisabledFeatureRules {
         for (RegistryEntry<Enchantment> enchantment : enchantments.getEnchantments()) {
             int level = enchantments.getLevel(enchantment);
             int maxAllowed = maxAllowedLevel(enchantment);
-            if (maxAllowed > 0 && level > maxAllowed) {
+            if (maxAllowed == 0) {
+                builder.set(enchantment, 0);
+                changed = true;
+            } else if (maxAllowed > 0 && level > maxAllowed) {
                 builder.set(enchantment, maxAllowed);
                 changed = true;
             }
