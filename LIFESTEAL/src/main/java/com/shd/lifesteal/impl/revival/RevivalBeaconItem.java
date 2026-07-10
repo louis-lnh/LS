@@ -2,11 +2,15 @@ package com.shd.lifesteal.impl.revival;
 
 import com.shd.lifesteal.api.GameplayRoleSnapshot;
 import java.util.List;
+import net.fabricmc.fabric.api.event.player.UseBlockCallback;
+import net.fabricmc.fabric.api.event.player.UseItemCallback;
+import net.minecraft.component.DataComponentTypes;
+import net.minecraft.component.type.NbtComponent;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.inventory.SimpleInventory;
-import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
+import net.minecraft.nbt.NbtCompound;
 import net.minecraft.screen.GenericContainerScreenHandler;
 import net.minecraft.screen.ScreenHandlerType;
 import net.minecraft.screen.SimpleNamedScreenHandlerFactory;
@@ -14,23 +18,36 @@ import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Hand;
-import net.minecraft.world.World;
 
-public final class RevivalBeaconItem extends Item {
+public final class RevivalBeaconItem {
+    private static final String REVIVAL_BEACON_KEY = "shd_lifesteal_revival_beacon";
     private static final int ROWS = 6;
     private static final int SIZE = ROWS * 9;
 
-    private final RevivalService revivalService;
-
-    public RevivalBeaconItem(RevivalService revivalService, Settings settings) {
-        super(settings);
-        this.revivalService = revivalService;
+    private RevivalBeaconItem() {
     }
 
-    @Override
-    public ActionResult use(World world, PlayerEntity user, Hand hand) {
-        if (world.isClient() || !(user instanceof ServerPlayerEntity player)) {
-            return ActionResult.SUCCESS;
+    public static void register(RevivalService revivalService) {
+        UseItemCallback.EVENT.register((user, world, hand) -> {
+            if (!(user instanceof ServerPlayerEntity player)) {
+                return ActionResult.PASS;
+            }
+
+            return openRevivalMenu(player, hand, revivalService);
+        });
+        UseBlockCallback.EVENT.register((user, world, hand, hitResult) -> {
+            if (!(user instanceof ServerPlayerEntity player)) {
+                return ActionResult.PASS;
+            }
+
+            return openRevivalMenu(player, hand, revivalService);
+        });
+    }
+
+    private static ActionResult openRevivalMenu(ServerPlayerEntity player, Hand hand, RevivalService revivalService) {
+        ItemStack stack = player.getStackInHand(hand);
+        if (!isRevivalBeacon(stack)) {
+            return ActionResult.PASS;
         }
 
         if (!revivalService.hasEliminatedPlayers(player.getEntityWorld().getServer())) {
@@ -39,17 +56,42 @@ public final class RevivalBeaconItem extends Item {
         }
 
         player.openHandledScreen(new SimpleNamedScreenHandlerFactory(
-                (syncId, inventory, ignored) -> createScreenHandler(syncId, inventory, player, hand),
+                (syncId, inventory, ignored) -> createScreenHandler(syncId, inventory, player, hand, revivalService),
                 Text.literal("Revival Beacon")
         ));
         return ActionResult.SUCCESS_SERVER;
     }
 
-    private GenericContainerScreenHandler createScreenHandler(
+    public static boolean isRevivalBeacon(ItemStack stack) {
+        if (!stack.isOf(Items.BEACON)) {
+            return false;
+        }
+
+        NbtComponent customData = stack.get(DataComponentTypes.CUSTOM_DATA);
+        if (customData == null) {
+            return false;
+        }
+
+        NbtCompound nbt = customData.copyNbt();
+        return nbt.getBoolean(REVIVAL_BEACON_KEY, false);
+    }
+
+    public static void markRevivalBeacon(ItemStack stack) {
+        if (!stack.isOf(Items.BEACON)) {
+            return;
+        }
+
+        NbtComponent.set(DataComponentTypes.CUSTOM_DATA, stack, nbt -> nbt.putBoolean(REVIVAL_BEACON_KEY, true));
+        stack.set(DataComponentTypes.CUSTOM_NAME, Text.literal("Revival Beacon"));
+        stack.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+    }
+
+    private static GenericContainerScreenHandler createScreenHandler(
             int syncId,
             net.minecraft.entity.player.PlayerInventory inventory,
             ServerPlayerEntity player,
-            Hand hand
+            Hand hand,
+            RevivalService revivalService
     ) {
         List<GameplayRoleSnapshot> eliminatedPlayers = revivalService.eliminatedPlayers(player.getEntityWorld().getServer());
         SimpleInventory menu = new SimpleInventory(SIZE);
@@ -97,7 +139,7 @@ public final class RevivalBeaconItem extends Item {
             }
 
             ItemStack stack = serverPlayer.getStackInHand(hand);
-            if (!(stack.getItem() instanceof RevivalBeaconItem)) {
+            if (!RevivalBeaconItem.isRevivalBeacon(stack)) {
                 serverPlayer.sendMessage(Text.literal("Hold the Revival Beacon to finish the revive."), true);
                 serverPlayer.closeHandledScreen();
                 return;

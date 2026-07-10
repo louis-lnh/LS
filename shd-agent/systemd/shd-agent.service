@@ -1,14 +1,15 @@
 [Unit]
 Description=SHD Lifesteal Server Agent
-After=network-online.target
+After=network-online.target lifesteal.service
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=lifesteal
-WorkingDirectory=/opt/shd-agent
-Environment=NODE_ENV=production
-ExecStart=/usr/bin/node src/index.js
+User=shd-agent
+Group=shd-agent
+WorkingDirectory=/opt/shd/agent/app
+EnvironmentFile=/opt/shd/agent/app/.env
+ExecStart=/usr/bin/node /opt/shd/agent/app/src/index.js
 Restart=always
 RestartSec=10
 

@@ -573,7 +573,7 @@ function statusDetail(player: Player, status: string) {
   }
 
   if (status === 'Most Wanted') {
-    return `${player.kills} kills this season`
+    return `${player.kills} kills in beta`
   }
 
   if (status === 'Most Feared') {
@@ -585,7 +585,7 @@ function statusDetail(player: Player, status: string) {
   }
 
   if (status === 'Kill Streak x5+') {
-    return `${player.kills} kills this season`
+    return `${player.kills} kills in beta`
   }
 
   if (status === 'On Last Heart') {
@@ -593,10 +593,10 @@ function statusDetail(player: Player, status: string) {
   }
 
   if (status === 'Eliminated') {
-    return 'Out of the season until revived'
+    return 'Out of the beta until revived'
   }
 
-  return 'Season status'
+  return 'Beta status'
 }
 
 function playerSearchText(player: Player) {
@@ -666,7 +666,7 @@ function profileStatsFor(player: Player): ProfileStatGroup[] {
       stats: [
         { label: 'Current Hearts', value: String(player.hearts) },
         { label: 'Highest Known Hearts', value: String(Math.max(player.hearts, 10)) },
-        { label: 'Season Rank', value: `#${player.rank}` },
+        { label: 'Beta Rank', value: `#${player.rank}` },
         { label: 'Previous Rank', value: `#${player.previousRank}` },
         { label: 'Rank Movement', value: movement },
         { label: 'Last Updated', value: player.lastUpdated },
@@ -817,7 +817,7 @@ const rules = [
     number: 5,
     title: 'Revival System',
     subsections: [
-      { title: 'Crafting', body: ['Revival Items can only be crafted by players below 10 hearts.'] },
+      { title: 'Crafting', body: ['Revival Beacons are crafted vanilla Beacons tagged by the server. Renaming a normal Beacon does not make it a Revival Beacon.'] },
       { title: 'Cooldowns', body: ['Revival crafting is subject to server cooldowns.'] },
       { title: 'Revival Result', body: ['Revived players return with 3 hearts.'] },
       { title: 'Abuse', body: ['Any attempt to bypass revival restrictions is prohibited.'] },
@@ -994,9 +994,9 @@ const events: EventItem[] = [
     startsAt: seasonStartTimestamp,
     priority: 0,
     type: 'Server Start',
-    reward: 'Season 1 begins',
-    objective: 'The server opens for the first public Season 1 session.',
-    summary: 'The countdown to Season 1. We are looking forward to starting the server together at this time.',
+    reward: 'Closed beta begins',
+    objective: 'The server opens for the first beta season session.',
+    summary: 'The countdown to the beta season. We are looking forward to starting the server together at this time.',
   },
   {
     title: 'Grace Period',
@@ -1004,8 +1004,8 @@ const events: EventItem[] = [
     priority: 1,
     type: 'Protection Window',
     reward: 'Safe first hour',
-    objective: 'PvP, combat tags, lifesteal, heart loss, eliminations, and revivals stay disabled for the first hour.',
-    summary: 'The first hour gives players time to spread out, prepare, and settle into the season before combat turns on.',
+    objective: 'PvP, combat tags, lifesteal, heart loss, eliminations, and heart drops stay disabled for the first hour.',
+    summary: 'The first hour gives players time to spread out, prepare, and settle into the beta before combat turns on.',
   },
   {
     title: 'End Opening',
@@ -1022,8 +1022,8 @@ const events: EventItem[] = [
     priority: 1,
     type: 'Objective Challenge',
     reward: 'Mace conversion',
-    objective: 'Survive the End fight, carry the egg out of the End, and stay alive for 48 hours.',
-    summary: 'Survive the End fight, carry the egg out of the End, and stay alive for 48 hours!',
+    objective: 'Survive the End fight, carry the egg out of the End, and stay alive for 12 hours.',
+    summary: 'Survive the End fight, carry the egg out of the End, and stay alive for 12 hours!',
   },
 ]
 
@@ -1032,12 +1032,12 @@ const legalPages: Record<string, LegalPageContent> = {
     id: 'legal',
     label: 'Legal',
     title: 'Legal Notice',
-    intro: 'Legal information for the SHD Lifesteal website and related Season 1 support flows.',
+    intro: 'Legal information for the SHD Lifesteal website and related beta season support flows.',
     sections: [
       { title: 'Project Owner', body: 'SHD Esports, represented by Louis Lenhartz.' },
       { title: 'Business Address', body: 'Louis Lenhartz, An der Burg Suelz 27a, 53797 Lohmar, Nordrhein-Westfalen, Germany.' },
-      { title: 'Website Purpose', body: 'This website provides public information about the SHD Lifesteal season, including rules, player information, events, support flows, and server updates.' },
-      { title: 'External Services', body: 'The website and season flow may use Discord for community communication, Minecraft or Microsoft account identifiers for player identity, and the SHD Support Portal at support.shd-esports.com for applications, appeals, and staff review.' },
+      { title: 'Website Purpose', body: 'This website provides public information about the SHD Lifesteal beta, including rules, player information, events, support flows, and server updates.' },
+      { title: 'External Services', body: 'The website and beta flow may use Discord for community communication, Minecraft or Microsoft account identifiers for player identity, and the SHD Support Portal at support.shd-esports.com for applications, appeals, and staff review.' },
       { title: 'Contact', body: 'For support requests, applications, appeals, or general questions, use the SHD Support Portal at support.shd-esports.com or contact support@shd-esports.com.' },
     ],
   },
@@ -1045,14 +1045,14 @@ const legalPages: Record<string, LegalPageContent> = {
     id: 'privacy',
     label: 'Privacy Policy',
     title: 'Privacy Policy',
-    intro: 'Privacy information for the SHD Lifesteal website, server systems, applications, appeals, and public season statistics.',
+    intro: 'Privacy information for the SHD Lifesteal website, server systems, applications, appeals, and public beta statistics.',
     sections: [
       { title: 'Controller', body: 'SHD Esports, represented by Louis Lenhartz, An der Burg Suelz 27a, 53797 Lohmar, Nordrhein-Westfalen, Germany.' },
       { title: 'Data We May Process', body: 'We may process Minecraft usernames, Minecraft UUIDs, Discord usernames or IDs, application IDs, appeal IDs, application answers, appeal text, submitted evidence, player statistics, objective holder data, punishment records, server logs, and website or support portal technical logs.' },
-      { title: 'Purpose of Processing', body: 'This data is used to operate the server, review whitelist applications, process appeals and support requests, moderate the community, review anti-cheat evidence, maintain leaderboards and season statistics, organize events, protect server security, and prevent abuse.' },
+      { title: 'Purpose of Processing', body: 'This data is used to operate the server, review whitelist applications, process appeals and support requests, moderate the community, review anti-cheat evidence, maintain leaderboards and beta statistics, organize events, protect server security, and prevent abuse.' },
       { title: 'External Services', body: 'The project may use Discord, Minecraft or Microsoft account identifiers, SHD-owned support systems, server hosting, website hosting, and database or form systems required for applications, appeals, and support workflows.' },
       { title: 'Public Data', body: 'Public pages may display player names, hearts, kills, deaths, playtime, status labels, objective holders, event results, and online player counts. Internal OBS widgets and staff tools are not intended as public data sources.' },
-      { title: 'Retention', body: 'Applications are generally kept for the relevant season, usually around 3 to 4 months. Server logs are generally kept for the season. Appeals and punishment records may be kept longer so staff can review repeat cases, historical decisions, and security issues.' },
+      { title: 'Retention', body: 'Applications are generally kept for the relevant beta period, usually around 3 to 4 months. Server logs are generally kept for the beta. Appeals and punishment records may be kept longer so staff can review repeat cases, historical decisions, and security issues.' },
       { title: 'Requests and Rights', body: 'Players may request access, correction, or deletion through the SHD Support Portal at support.shd-esports.com. Privacy requests can also be sent to privacy@shd-esports.com. General support requests can be sent to support@shd-esports.com.' },
     ],
   },
@@ -1060,15 +1060,15 @@ const legalPages: Record<string, LegalPageContent> = {
     id: 'terms',
     label: 'Terms of Service',
     title: 'Terms of Service',
-    intro: 'Terms for using the SHD Lifesteal website, support portal references, and public season information.',
+    intro: 'Terms for using the SHD Lifesteal website, support portal references, and public beta information.',
     sections: [
-      { title: 'Use of the Website', body: 'This website is intended for players and viewers of the SHD Lifesteal season. Abuse, scraping, impersonation, spam, or attempts to disrupt the website, support systems, or server services may lead to restricted access.' },
+      { title: 'Use of the Website', body: 'This website is intended for players and viewers of the SHD Lifesteal beta. Abuse, scraping, impersonation, spam, or attempts to disrupt the website, support systems, or server services may lead to restricted access.' },
       { title: 'Server Participation', body: 'Joining the server may require application approval, rules acceptance, Discord verification, Minecraft account verification, and compliance with staff moderation decisions.' },
       { title: 'Content Accuracy', body: 'Stats, objective holders, schedules, and support states may be delayed, corrected, or updated when backend data changes or staff review requires an adjustment.' },
       { title: 'Applications and Appeals', body: 'Applications and punishment appeals may be handled through support.shd-esports.com. False, abusive, duplicated, or spam submissions may be denied and may result in further restrictions.' },
       { title: 'Moderation', body: 'Staff may warn, mute, kick, ban, remove items, reverse actions, or issue other moderation actions when rules, event integrity, or server security require it.' },
       { title: 'Third-Party Services', body: 'Discord, Minecraft, Microsoft, hosting providers, and other external services are operated by their respective providers and are not controlled by SHD Esports.' },
-      { title: 'Changes', body: 'Rules, features, website pages, support processes, event details, and public data displays may change during the season. Material updates will be reflected on the website or announced through official SHD channels where appropriate.' },
+      { title: 'Changes', body: 'Rules, features, website pages, support processes, event details, and public data displays may change during the beta. Material updates will be reflected on the website or announced through official SHD channels where appropriate.' },
     ],
   },
   imprint: {
@@ -1184,7 +1184,7 @@ function Landing({ liveHealth, liveLoaded, liveStatus, onNavigate }: { liveHealt
         ? 'Live status unavailable'
         : 'Loading live data'
   const populationNote = !seasonStarted
-    ? 'July 1, 2026 - 12:00 CEST. Registered players are listed on the Players page until Season 1 begins.'
+    ? 'July 20, 2026 - 18:00 CEST. Registered players are listed on the Players page until the beta season begins.'
     : hasLivePopulation
       ? `Updated ${relativeTime(liveStatus.updated_at)}`
       : liveLoaded
@@ -1203,9 +1203,9 @@ function Landing({ liveHealth, liveLoaded, liveStatus, onNavigate }: { liveHealt
         <img className="landing-logo" src={shdTextLogo} alt="SHD" />
         <span className="chip">SHD LIFESTEAL</span>
         <h1>SHD LIFESTEAL</h1>
-        <p className="season-line">Season 1</p>
+        <p className="season-line">Beta Season</p>
         <div className="landing-live-card" aria-label="Current server population">
-          <span>{seasonStarted ? 'Online Now' : 'Event Starts In'}</span>
+          <span>{seasonStarted ? 'Online Now' : 'Beta Starts In'}</span>
           <strong>{population}</strong>
           {seasonStarted && liveHealth && <em className={`sync-pill ${liveHealth.state}`}>{syncHealthLabel(liveHealth)}</em>}
           <p>{populationNote}</p>
@@ -1236,7 +1236,7 @@ function RulesPage() {
   return (
     <section className="content-page rules-page page-frame">
       <PageIntro label="Rules" title={parsedRules.title}>
-        Official rules for the SHD Lifesteal event.
+        Official rules for the SHD Lifesteal beta season.
       </PageIntro>
       <aside className="rules-key-info">
         <strong>Applying?</strong>
@@ -1426,13 +1426,13 @@ function PlayersPage({ liveHealth, liveLoaded, liveObjectives, livePlayers, live
     return (
       <section className="content-page page-frame">
         <PageIntro label="Players" title="Registered Players">
-          Take a look at all registered players for Season 1. Want to be part of the event? Sign up now! More information can be found on the Apply page or through the SHD Support Portal.
+          Take a look at all registered players for the beta season. Want to be part of the beta? Sign up now. More information can be found on the Apply page or through the SHD Support Portal.
         </PageIntro>
         <div className="leaderboard-tools pre-season-tools">
           <div>
-            <span>Pre-Season Roster</span>
+            <span>Beta Roster</span>
             <strong>{liveLoaded ? `${players.length} Public Roster Entries` : 'Loading Public Roster'}</strong>
-            <div className="leaderboard-counts" aria-label="Pre-season player counts">
+            <div className="leaderboard-counts" aria-label="Beta player counts">
               <span>{players.filter((player) => preSeasonStatus(player) === 'Whitelisted').length} Whitelisted</span>
               <span>{players.filter((player) => preSeasonStatus(player) === 'Registered').length} Registered</span>
               <span>{players.filter((player) => preSeasonStatus(player) === 'Applied').length} Applied</span>
@@ -1457,7 +1457,7 @@ function PlayersPage({ liveHealth, liveLoaded, liveObjectives, livePlayers, live
     <section className="content-page page-frame">
       <div className={selectedPlayer ? 'players-content is-muted' : 'players-content'}>
         <PageIntro label="Players" title="Player List">
-          Follow the progress of all active players throughout Season 1. Track hearts, kills, deaths, rankings, and see who survives until the very end.
+          Follow the progress of all active beta players. Track hearts, kills, deaths, rankings, and see who survives until the very end.
         </PageIntro>
         <div className="objective-row player-objectives">
           <Objective title="Dragon Egg" owner={dragonEggOwner ?? 'Unclaimed'} detail={dragonEggDetail} />
@@ -1468,14 +1468,14 @@ function PlayersPage({ liveHealth, liveLoaded, liveObjectives, livePlayers, live
         <div className="objective-row player-highlights">
           <Objective title="Most Kills" owner={mostKills?.name ?? 'Pending'} detail={`${mostKills?.kills ?? 0} confirmed kills`} />
           <Objective title="Top Hearts" owner={topPlayer?.name ?? 'Pending'} detail={`${topPlayer?.hearts ?? 0} current hearts`} />
-          <Objective title="Most Playtime" owner={mostPlaytime?.name ?? 'Pending'} detail={`${mostPlaytime?.playtime ?? 'Hidden'} active this season`} />
+          <Objective title="Most Playtime" owner={mostPlaytime?.name ?? 'Pending'} detail={`${mostPlaytime?.playtime ?? 'Hidden'} active in beta`} />
           <Objective title="Bounty Target" owner="Pending" detail="Reward pool opens during public bounty windows" />
         </div>
         <div className="leaderboard-tools">
           <div>
             <span>{livePlayers.length > 0 ? 'Live Leaderboard' : 'Loading Leaderboard'}</span>
             <strong>{normalizedQuery ? `${filteredPlayers.length} Matching Players` : liveLoaded ? `${players.length} Total Players` : 'Loading Players'}</strong>
-            <div className="leaderboard-counts" aria-label="Season player counts">
+            <div className="leaderboard-counts" aria-label="Beta player counts">
               <span>{activePlayers} Active</span>
               <span>{eliminatedPlayers} Eliminated</span>
               {!liveLoaded && <span>Connecting to live API</span>}
@@ -1666,7 +1666,7 @@ function PlayerProfileModal({ player, onClose }: { player: Player; onClose: () =
             <img className="profile-head" src={playerHeadUrl(player)} alt={`${player.name} Minecraft skin head`} />
           </div>
           <div>
-            <span className="profile-eyebrow">Season 1 Profile</span>
+            <span className="profile-eyebrow">Beta Profile</span>
             <h2>{player.name}</h2>
             <div className="profile-badges">
               <PrestigeList player={player} expanded />
@@ -1793,7 +1793,7 @@ function EventsPage() {
   const featuredEvent = upcomingEvents[0] ?? [...scheduleEvents].sort((first, second) => second.startsAt - first.startsAt || first.priority - second.priority)[0]
   const eventVisibleItems = Math.max(1, Math.min(4, upcomingEvents.length))
   const eventPanelHeight = `${7.2 + eventVisibleItems * 8.35 + Math.max(0, eventVisibleItems - 1) * 0.8}rem`
-  const nextEventCountdown = featuredEvent ? countdownTo(featuredEvent.startsAt) : 'Season live'
+  const nextEventCountdown = featuredEvent ? countdownTo(featuredEvent.startsAt) : 'Beta live'
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 1000)
@@ -1802,8 +1802,8 @@ function EventsPage() {
 
   return (
     <section className="content-page page-frame">
-      <PageIntro label="Events" title="Season Events">
-        Stay up to date with Season 1 schedules, server milestones, public events, and important gameplay phases.
+      <PageIntro label="Events" title="Beta Events">
+        Stay up to date with beta schedules, server milestones, public events, and important gameplay phases.
       </PageIntro>
       <div className="events-dashboard">
         <article className="featured-event">
@@ -1871,7 +1871,7 @@ function WorldPage() {
   return (
     <section className="content-page page-frame">
       <PageIntro label="World" title="Map / World Info">
-        Explore the Season 1 world setup, including map boundaries, dimension information, progression rules, objective restrictions, and core server settings.
+        Explore the beta world setup, including map boundaries, dimension information, progression rules, objective restrictions, and core server settings.
       </PageIntro>
       <div className="info-grid world-grid">
         <article className="info-card">
@@ -1891,7 +1891,7 @@ function WorldPage() {
         </article>
         <article className="info-card">
           <span>Server Settings</span>
-          <h2>Season Config</h2>
+          <h2>Beta Config</h2>
           <ul>
             <li>Difficulty: Normal</li>
             <li>Version: 1.21.11</li>
@@ -1907,13 +1907,13 @@ function WorldPage() {
         <article className="info-card">
           <span>Grace Period</span>
           <h2>60 Minutes</h2>
-          <p>PvP, combat tags, lifesteal, heart loss, eliminations, and revivals stay disabled during grace.</p>
+          <p>PvP, combat tags, lifesteal, heart loss, eliminations, and heart drops stay disabled during grace.</p>
         </article>
       </div>
       <div className="world-event-strip">
-        <span>Event Starts In</span>
+        <span>Beta Starts In</span>
         <strong>{eventCountdown}</strong>
-        <p>July 20, 2026 - 18:00 CEST. The Season 1 launch is scheduled for this date.</p>
+        <p>July 20, 2026 - 18:00 CEST. The beta season launch is scheduled for this date.</p>
       </div>
     </section>
   )
@@ -1922,8 +1922,8 @@ function WorldPage() {
 function SignupPage() {
   return (
     <section className="content-page page-frame">
-      <PageIntro label="Apply" title="Season 1 Applications">
-        Ready to join Season 1? Learn how the application process works, complete your registration, and secure your spot through the SHD Support Portal.
+      <PageIntro label="Apply" title="Beta Season Applications">
+        Ready to join the beta? Learn how the application process works, complete your registration, and secure your spot through the SHD Support Portal.
       </PageIntro>
       <div className="apply-page">
         <article className="apply-hero">
@@ -2061,7 +2061,7 @@ function PunishmentsPage() {
             <span>Anti-Cheat</span>
             <h2>Evidence First</h2>
             <p>
-              Season 1 anti-cheat should collect useful evidence, alert staff, and avoid rushed automatic bans wherever possible.
+              Beta anti-cheat should collect useful evidence, alert staff, and avoid rushed automatic bans wherever possible.
             </p>
           </article>
           <article className="apply-card">
@@ -2113,7 +2113,7 @@ function Footer({ current, onNavigate }: { current: string; onNavigate: (page: P
   return (
     <footer className="footer">
       <strong>SHD LIFESTEAL</strong>
-      <p>© 2026 SHD Esports. Public Lifesteal season website. Current page: {current}.</p>
+      <p>© 2026 SHD Esports. Public Lifesteal beta website. Current page: {current}.</p>
       <nav aria-label="Legal navigation">
         {footerLegalItems.map((item) => (
           <button key={item.id} onClick={() => onNavigate(item.id)} type="button">

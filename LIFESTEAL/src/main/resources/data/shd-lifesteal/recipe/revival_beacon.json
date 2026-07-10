@@ -14,7 +14,14 @@
     "HNH"
   ],
   "result": {
+    "components": {
+      "minecraft:custom_data": {
+        "shd_lifesteal_revival_beacon": true
+      },
+      "minecraft:custom_name": "{\"text\":\"Revival Beacon\",\"color\":\"gold\",\"italic\":false}",
+      "minecraft:enchantment_glint_override": true
+    },
     "count": 1,
-    "id": "shd-lifesteal:revival_beacon"
+    "id": "minecraft:beacon"
   }
 }

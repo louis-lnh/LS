@@ -96,7 +96,7 @@ Expected:
 - Manually trying to assign `mace` or `egg` should fail with a message saying Lifesteal assigns it automatically.
 - Tab rows show a heart suffix like `❤ 12`.
 - Tab header shows `SHD Lifesteal`, event timer, and egg status.
-- Tab footer shows online count, staff count, and season label.
+- Tab footer shows online count, staff count, and beta label.
 
 ### Toggleable Scoreboard
 

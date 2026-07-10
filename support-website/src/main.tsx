@@ -588,7 +588,7 @@ function sectionLabel(section: SectionId) {
 
 function formDescription(page: PageId) {
   const descriptions: Partial<Record<PageId, string>> = {
-    signup: 'Apply for the SHD Lifesteal Minecraft season.',
+    signup: 'Apply for the SHD Lifesteal Minecraft closed beta.',
     'minecraft-support': 'Request help for Minecraft access, account, or server issues.',
     'general-support': 'Request help for access, account, or server issues.',
     'ban-appeal': 'Submit a Minecraft punishment appeal with staff-readable context.',
@@ -745,7 +745,7 @@ function SignupPage({ onNavigate }: { onNavigate: (page: PageId) => void }) {
   return (
     <section className="content-page page-frame">
       <PageIntro label="Minecraft Application" title="Lifesteal Signup" backTo="minecraft" onNavigate={onNavigate}>
-        Apply for the SHD Lifesteal season. Your answers are saved for Discord verification and staff review.
+        Apply for the SHD Lifesteal closed beta. Your answers are saved for Discord verification and staff review.
       </PageIntro>
       <form className="signup-form" onSubmit={submit}>
         <div className="form-section">
@@ -1106,14 +1106,14 @@ const legalSections = {
     { title: 'Data We Process', body: 'Support forms may process Discord usernames or IDs, Minecraft usernames or UUIDs, application answers, appeal text, report evidence, staff review notes, and technical logs.' },
     { title: 'Use of Data', body: 'Submitted data is used to review applications, handle support requests, enforce rules, protect community safety, and operate SHD Esports services.' },
     { title: 'Application Approval', body: 'If a Lifesteal application is approved, the bot may link the approved Minecraft username to the applicant Discord account, prepare server access, and enable public gameplay stats for the Lifesteal leaderboard.' },
-    { title: 'Retention', body: 'Applications are generally kept for the relevant season, usually around 3 to 4 months. Appeals, reports, support requests, and moderation records may be kept longer when needed for repeat-case review, security, or rule enforcement.' },
+    { title: 'Retention', body: 'Applications are generally kept for the relevant beta period, usually around 3 to 4 months. Appeals, reports, support requests, and moderation records may be kept longer when needed for repeat-case review, security, or rule enforcement.' },
     { title: 'Requests', body: 'Players may request access, correction, or deletion of support data through support@shd-esports.com.' },
   ],
   terms: [
     { title: 'Use of the Portal', body: 'The portal is intended for legitimate SHD Esports support requests. Spam, impersonation, false reports, or abuse may lead to denied requests or server restrictions.' },
     { title: 'Applications and Appeals', body: 'Submitting a form does not guarantee acceptance, appeal approval, or access to any SHD service. Staff decisions may depend on server rules, safety, and available capacity.' },
     { title: 'Approved Access', body: 'Approved Lifesteal applications may be processed automatically by the Discord bot. If automation cannot prepare Minecraft access, staff may finish the setup manually in the Discord ticket.' },
-    { title: 'Changes', body: 'Support workflows, rules, portal pages, and staff processes may change during the Lifesteal season. Material updates will be reflected on the portal or announced through official SHD channels where appropriate.' },
+    { title: 'Changes', body: 'Support workflows, rules, portal pages, and staff processes may change during the Lifesteal beta. Material updates will be reflected on the portal or announced through official SHD channels where appropriate.' },
   ],
   imprint: [
     { title: 'Responsible Entity', body: 'SHD Esports, represented by Louis Lenhartz.' },

@@ -33,11 +33,16 @@ export const config = {
   apiUrl: (process.env.API_URL || 'http://127.0.0.1:3000').replace(/\/+$/, ''),
   apiSharedSecret: process.env.API_SHARED_SECRET || '',
   heartbeatIntervalSeconds: int('HEARTBEAT_INTERVAL_SECONDS', 15),
+  actionPollIntervalSeconds: int('ACTION_POLL_INTERVAL_SECONDS', 20),
+  diskPath: process.env.DISK_PATH || '/opt/shd',
+  actionsEnabled: bool('ACTIONS_ENABLED', false),
   minecraft: {
     serviceName: process.env.MINECRAFT_SERVICE_NAME || 'lifesteal',
     processMatch: process.env.MINECRAFT_PROCESS_MATCH || 'fabric-server-launch.jar',
+    serverDir: process.env.MINECRAFT_SERVER_DIR || '/opt/shd/lifesteal/server',
     logPath: process.env.MINECRAFT_LOG_PATH || '',
     crashDir: process.env.MINECRAFT_CRASH_DIR || '',
+    queryEnabled: bool('MINECRAFT_QUERY_ENABLED', true),
     queryHost: process.env.MINECRAFT_QUERY_HOST || '127.0.0.1',
     queryPort: int('MINECRAFT_QUERY_PORT', 25565)
   },

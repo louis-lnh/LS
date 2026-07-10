@@ -9,6 +9,10 @@ import com.shd.lifesteal.impl.event.EventTimerService;
 import com.shd.lifesteal.impl.grace.GracePeriodService;
 import com.shd.lifesteal.impl.heart.HeartService;
 import com.shd.lifesteal.impl.objective.PlayerObjectiveInventoryScanner;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -27,6 +31,16 @@ import net.minecraft.util.Formatting;
 public final class LifestealTabListService {
     private static final long UPDATE_INTERVAL_TICKS = 10L;
     private static final String TEAM_PREFIX = "shd_ls_";
+    private static final Instant BETA_START = ZonedDateTime.of(
+            2026,
+            7,
+            20,
+            18,
+            0,
+            0,
+            0,
+            ZoneId.of("Europe/Berlin")
+    ).toInstant();
 
     private final HeartService heartService;
     private final GracePeriodService gracePeriodService;
@@ -73,11 +87,12 @@ public final class LifestealTabListService {
     private void updateHeaderFooter(MinecraftServer server) {
         GracePeriodSnapshot grace = gracePeriodService.snapshot();
         EventTimerService.Snapshot event = eventTimerService.snapshot();
+        Instant now = Instant.now();
         String phase = event.active()
                 ? (event.paused() ? event.name() + " Paused " : event.name() + " ") + TimeText.compact(event.remaining())
                 : grace.active()
                 ? (grace.paused() ? "Grace Paused " : "Grace ") + TimeText.compact(grace.remaining())
-                : "Season Active";
+                : betaPhase(now);
         String egg = dragonEggText(server);
         int online = server.getPlayerManager().getCurrentPlayerCount();
         int max = server.getMaxPlayerCount();
@@ -98,6 +113,13 @@ public final class LifestealTabListService {
 
         PlayerListHeaderS2CPacket packet = new PlayerListHeaderS2CPacket(header, footer);
         server.getPlayerManager().getPlayerList().forEach(player -> player.networkHandler.sendPacket(packet));
+    }
+
+    private String betaPhase(Instant now) {
+        if (now.isBefore(BETA_START)) {
+            return "Beta starts in: " + TimeText.compact(Duration.between(now, BETA_START));
+        }
+        return "Beta Active";
     }
 
     private void updateTeams(MinecraftServer server, Map<UUID, GameplayRoleSnapshot> roles) {

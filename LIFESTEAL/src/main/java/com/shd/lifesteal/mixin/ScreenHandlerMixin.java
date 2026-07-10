@@ -4,8 +4,10 @@ import com.shd.lifesteal.api.LifestealApi;
 import com.shd.lifesteal.api.LifestealService;
 import com.shd.lifesteal.impl.anticheat.MacroActionBurstCheck;
 import com.shd.lifesteal.impl.item.HeartItem;
+import com.shd.lifesteal.impl.revival.RevivalBeaconItem;
 import com.shd.lifesteal.impl.restriction.DisabledFeatureRules;
 import com.shd.lifesteal.impl.restriction.MaceLimitRules;
+import net.minecraft.item.Items;
 import net.minecraft.registry.Registries;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.screen.AbstractCraftingScreenHandler;
@@ -63,6 +65,10 @@ public abstract class ScreenHandlerMixin {
             HeartItem.markCrafted(slot.getStack());
         }
 
+        if (slot.getStack().isOf(Items.BEACON) && isRevivalBeaconRecipeResult(handler)) {
+            RevivalBeaconItem.markRevivalBeacon(slot.getStack());
+        }
+
         if (!DisabledFeatureRules.isRestrictedOutput(slot.getStack())) {
             return;
         }
@@ -97,6 +103,20 @@ public abstract class ScreenHandlerMixin {
         }
         if (handler instanceof GrindstoneScreenHandler) {
             return slotIndex == 2;
+        }
+        return false;
+    }
+
+    private boolean isRevivalBeaconRecipeResult(ScreenHandler handler) {
+        if (!(handler instanceof AbstractCraftingScreenHandler)) {
+            return false;
+        }
+
+        AbstractCraftingScreenHandler craftingHandler = (AbstractCraftingScreenHandler) handler;
+        for (Slot slot : craftingHandler.getInputSlots()) {
+            if (slot.getStack().getItem() instanceof HeartItem) {
+                return true;
+            }
         }
         return false;
     }

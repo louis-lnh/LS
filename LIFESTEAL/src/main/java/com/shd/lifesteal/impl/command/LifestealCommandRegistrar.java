@@ -21,7 +21,6 @@ import com.shd.lifesteal.impl.grace.GracePeriodService;
 import com.shd.lifesteal.impl.heart.HeartService;
 import com.shd.lifesteal.impl.heart.PlayerHeartApplier;
 import com.shd.lifesteal.impl.item.ModItems;
-import com.shd.lifesteal.impl.kit.EventKitService;
 import com.shd.lifesteal.impl.player.ResolvedPlayer;
 import com.shd.lifesteal.impl.player.WhitelistPlayerResolver;
 import com.shd.lifesteal.impl.player.WhitelistedPlayerArgumentType;
@@ -54,7 +53,6 @@ public final class LifestealCommandRegistrar {
     private final LifestealAuditLog auditLog;
     private final AntiCheatService antiCheatService;
     private final RevivalService revivalService;
-    private final EventKitService eventKitService = new EventKitService();
 
     public LifestealCommandRegistrar(
             HeartService heartService,
@@ -261,81 +259,6 @@ public final class LifestealCommandRegistrar {
                                                         WhitelistedPlayerArgumentType.getPlayer(context, "player", playerResolver),
                                                         IntegerArgumentType.getInteger(context, "limit")
                                                 ))))))
-                .then(CommandManager.literal("kit")
-                        .requires(CommandManager.requirePermissionLevel(CommandManager.OWNERS_CHECK))
-                        .then(CommandManager.literal("Wemmbu")
-                                .executes(context -> eventKitService.give(
-                                        context.getSource(),
-                                        "Wemmbu",
-                                        false
-                                ))
-                                .then(CommandManager.literal("unbreakable")
-                                        .executes(context -> eventKitService.give(
-                                                context.getSource(),
-                                                "Wemmbu",
-                                                true
-                                        ))))
-                        .then(CommandManager.literal("FlameFrags")
-                                .executes(context -> eventKitService.give(
-                                        context.getSource(),
-                                        "FlameFrags",
-                                        false
-                                ))
-                                .then(CommandManager.literal("unbreakable")
-                                        .executes(context -> eventKitService.give(
-                                                context.getSource(),
-                                                "FlameFrags",
-                                                true
-                                        ))))
-                        .then(CommandManager.literal("Shared")
-                                .executes(context -> eventKitService.give(
-                                        context.getSource(),
-                                        "Shared",
-                                        false
-                                ))
-                                .then(CommandManager.literal("unbreakable")
-                                        .executes(context -> eventKitService.give(
-                                                context.getSource(),
-                                                "Shared",
-                                                true
-                                        ))))
-                        .then(CommandManager.literal("Tools")
-                                .executes(context -> eventKitService.give(
-                                        context.getSource(),
-                                        "Tools",
-                                        false
-                                ))
-                                .then(CommandManager.literal("unbreakable")
-                                        .executes(context -> eventKitService.give(
-                                                context.getSource(),
-                                                "Tools",
-                                                true
-                                        ))))
-                        .then(CommandManager.literal("Items")
-                                .executes(context -> eventKitService.give(
-                                        context.getSource(),
-                                        "Items",
-                                        false
-                                )))
-                        .then(CommandManager.literal("Potions")
-                                .executes(context -> eventKitService.give(
-                                        context.getSource(),
-                                        "Potions",
-                                        false
-                                )))
-                        .then(CommandManager.literal("Potion")
-                                .then(CommandManager.literal("Stack")
-                                        .executes(context -> eventKitService.give(
-                                                context.getSource(),
-                                                "Potion Stack",
-                                                false
-                                        )))
-                                .then(CommandManager.literal("Mix")
-                                        .executes(context -> eventKitService.give(
-                                                context.getSource(),
-                                                "Potion Mix",
-                                                false
-                                        )))))
                 .then(CommandManager.literal("ui")
                         .then(CommandManager.literal("status")
                                 .executes(context -> uiStatus(context.getSource())))

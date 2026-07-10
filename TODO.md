@@ -10,6 +10,22 @@ Completed foundation:
 - Added Minecraft service/process/port/log/crash checks without requiring RCON.
 - Added optional RCON TCP probe only.
 - Added backup detection for latest timestamp, age, count, and size.
+- Expanded the heartbeat payload with load averages, local IPs, disk/RAM percentages, service state, log error summary, backup stale state, and agent mode.
+- Updated the bot heartbeat receiver to retain the expanded monitoring payload while preserving existing health alerts.
+- Aligned the agent `.env.example` and `systemd` template with the planned `/opt/shd/agent/app` and `/opt/shd/lifesteal/server` G17 layout.
+- Added server-specific status/history API reads for the helper data.
+- Added active/resolved Discord alert state for server-helper issues.
+- Added a read-only admin API endpoint for detailed Lifesteal server status.
+- Added a read-only Lifesteal admin portal G17 health card.
+- Added protected server log-event ingest endpoint for future normalized evidence/audit events.
+- Added disabled-by-default safe action queue scaffolding:
+  - agent poll endpoint
+  - agent result endpoint
+  - agent poller
+  - no real restart/backup/deploy/RCON execution yet.
+- Added G17 script templates for backup, mods deploy, config deploy, healthcheck, and narrow sudoers.
+- Added Minecraft status ping parsing for online/max players and server version.
+- Added log summary fields for server start/stop, join/leave counts, and Chunky progress/completion.
 - Added bot endpoints:
   - `POST /api/v1/server/heartbeat`
   - `GET /api/v1/server/status`
@@ -28,22 +44,27 @@ Remaining server-helper work:
 4. Send a fake heartbeat to production/staging API before deploying the real agent.
 5. Verify live heartbeat appears in the admin portal.
 6. Verify Discord alert routing uses the right staff/Minecraft log channel.
-7. Tune alert thresholds after the G17 is running:
+7. Validate script templates on Ubuntu with `bash -n` and manual dry runs before using them:
+   - backup script
+   - mods deploy script
+   - config deploy script
+   - healthcheck script
+8. Tune alert thresholds after the G17 is running:
    - stale heartbeat seconds
    - max CPU temperature
    - max RAM percentage
    - max disk percentage
    - max backup age
-8. Test stale/offline alert by stopping the agent briefly.
-9. Test Minecraft down alert by stopping only the Minecraft service.
-10. Test backup stale detection with an old/missing backup folder.
-11. Decide whether to keep RCON probe disabled or enable TCP-only probe.
-12. Add real player online/max parsing later if simple TCP reachability is not enough.
+9. Test stale/offline alert by stopping the agent briefly.
+10. Test Minecraft down alert by stopping only the Minecraft service.
+11. Test backup stale detection with an old/missing backup folder.
+12. Decide whether to keep RCON probe disabled or enable TCP-only probe.
 13. Keep remote actions out until after launch:
     - no restart button
     - no shell commands
     - no web terminal
     - no required RCON.
+14. After launch, only if needed, implement real allowlisted actions behind auth, audit, cooldowns, locks, sudoers, and manual backup/restore validation.
 
 ## Lifesteal Project Remaining Work
 
@@ -65,10 +86,12 @@ This excludes the full real dedicated-server validation pass, but keeps targeted
    - test Riptide trident behavior during combat lock
    - test slow falling potion rules
    - test Turtle Master/event potion rules
+   - test tagged vanilla beacon revival workflow
+   - test tab/playerlist beta countdown and beta version footer
 4. Finish revival system polish:
-   - decide final revive beacon behavior
-   - player-facing revive flow or postpone clearly
-   - consume/reuse/transform decision
+   - tagged vanilla beacon behavior is implemented for beta
+   - recipe output uses server-owned custom data, custom name, and glint
+   - revival menu consumes one tagged beacon on successful revive
 5. Finish Discord bot production hardening:
    - full VPS reinstall/rebuild for `verify.shd-esports.com`
    - restore DNS for `verify.shd-esports.com` to the VPS
@@ -107,9 +130,10 @@ This excludes the full real dedicated-server validation pass, but keeps targeted
     - placed egg persistence edge cases
     - item frame behavior
     - popup/message behavior
-    - 48-hour glow/status presentation.
+    - 12-hour dragon egg glow/status presentation.
 11. UI polish in the mod:
     - actionbar priority
+    - tab/playerlist beta countdown and beta version footer are implemented
     - bossbar/tab consistency
     - timer overlap cleanup
     - temporary notice behavior.
@@ -117,30 +141,30 @@ This excludes the full real dedicated-server validation pass, but keeps targeted
     - make sure alerts are review-focused, not auto-ban
     - surface important evidence to staff
     - avoid noisy/low-confidence alerts.
-    - add SHD client mod-list report on join
-    - store latest reported client mod list per player UUID
-    - alert staff for blocked/suspicious client mod IDs
-    - alert or block when required SHD client integrity channel/report is missing
-    - configure blocked/suspicious mod ID lists for minimaps, freecam, xray, Baritone, and known hacked clients
+    - SHD client mod-list report on join is implemented
+    - latest reported client mod list is stored per player UUID
+    - blocked/suspicious client mod ID alerts are implemented as audit-only detections
+    - missing required SHD client integrity channel/report alerts are implemented
+    - review and tune blocked/suspicious mod ID lists for minimaps, freecam, xray, Baritone, and known hacked clients
     - add DrexHD AntiXray to the server mod pack
     - configure DrexHD AntiXray for overworld and nether valuable ores
     - test AntiXray performance and visual behavior during the dedicated-server pass
     - keep ore-mining behavior alerts as backup evidence, not auto-ban logic
 13. Update public rules/content after final behavior decisions:
-    - remove "Lifesteal Season 1" framing across public/admin/player-facing surfaces
-    - replace launch copy with "closed beta" / "join the beta" wording
-    - update event countdown and schedule language away from Season 1 launch framing
-    - revival beacon
-    - heart withdrawals/crafted hearts
-    - movement items
-    - combat-banned items
-    - potion wording
-    - Netherite wording
-    - fireworks/crossbow wording.
+    - public/support rules updated for closed beta wording
+    - public/support rules updated for tagged vanilla Revival Beacon
+    - public/support rules updated for `/withdraw`, crafted hearts, and heart storage
+    - public/support rules updated for movement restrictions, Riptide-only tridents, Elytra, and combat pearls
+    - public/support rules updated for banned items, Firework Rockets, Netherite, Spears, Lunge, potions, Protection, and Sharpness
+    - final rules pass after dedicated-server validation if tests reveal behavior changes.
 14. Release hygiene:
-    - decide whether `LIFESTEAL-CLIENT/` ships
-    - add it deliberately or mark experimental
+    - package `LIFESTEAL-CLIENT/` for closed beta
     - final env examples
     - final deployment notes
     - final backup notes
     - final build artifacts/checklist.
+
+---
+1. Client Download Page (optional - this would be either on the website or in discord)
+    - the page should get another page or link to download a full modpack for the beta
+         - players would have the option to choose between just a zip for all mods or a modrinth/curseforge zip folder

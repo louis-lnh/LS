@@ -88,6 +88,9 @@ public final class AntiCheatSettings {
     private static final String CLIENT_BLOCKED_BRANDS = "client.blockedBrands";
     private static final String CLIENT_REQUIRED_CHANNELS = "client.requiredChannels";
     private static final String CLIENT_DISALLOWED_CHANNELS = "client.disallowedChannels";
+    private static final String CLIENT_REQUIRE_MOD_REPORT = "client.requireModReport";
+    private static final String CLIENT_SUSPICIOUS_MOD_IDS = "client.suspiciousModIds";
+    private static final String CLIENT_BLOCKED_MOD_IDS = "client.blockedModIds";
     private static final String LIFESTEAL_CHECKS_ENABLED = "lifesteal.enabled";
     private static final String LIFESTEAL_SCAN_INTERVAL_TICKS = "lifesteal.scanIntervalTicks";
     private static final String LIFESTEAL_ALERT_COOLDOWN_TICKS = "lifesteal.alertCooldownTicks";
@@ -172,6 +175,21 @@ public final class AntiCheatSettings {
     private Set<String> clientBlockedBrands = Set.of();
     private Set<String> clientRequiredChannels = Set.of("shd-lifesteal-client:integrity");
     private Set<String> clientDisallowedChannels = Set.of();
+    private boolean clientRequireModReport = true;
+    private Set<String> clientSuspiciousModIds = Set.of(
+            "xaerominimap",
+            "xaeroworldmap",
+            "journeymap",
+            "voxelmap",
+            "freecam",
+            "baritone"
+    );
+    private Set<String> clientBlockedModIds = Set.of(
+            "advanced-xray",
+            "xray",
+            "meteor-client",
+            "wurst"
+    );
     private boolean lifestealChecksEnabled = true;
     private int lifestealScanIntervalTicks = 20;
     private int lifestealAlertCooldownTicks = 200;
@@ -268,6 +286,9 @@ public final class AntiCheatSettings {
         clientBlockedBrands = setProperty(properties, CLIENT_BLOCKED_BRANDS, clientBlockedBrands);
         clientRequiredChannels = setProperty(properties, CLIENT_REQUIRED_CHANNELS, clientRequiredChannels);
         clientDisallowedChannels = setProperty(properties, CLIENT_DISALLOWED_CHANNELS, clientDisallowedChannels);
+        clientRequireModReport = booleanProperty(properties, CLIENT_REQUIRE_MOD_REPORT, clientRequireModReport);
+        clientSuspiciousModIds = setProperty(properties, CLIENT_SUSPICIOUS_MOD_IDS, clientSuspiciousModIds);
+        clientBlockedModIds = setProperty(properties, CLIENT_BLOCKED_MOD_IDS, clientBlockedModIds);
         lifestealChecksEnabled = booleanProperty(properties, LIFESTEAL_CHECKS_ENABLED, lifestealChecksEnabled);
         lifestealScanIntervalTicks = intProperty(properties, LIFESTEAL_SCAN_INTERVAL_TICKS, lifestealScanIntervalTicks);
         lifestealAlertCooldownTicks = intProperty(properties, LIFESTEAL_ALERT_COOLDOWN_TICKS, lifestealAlertCooldownTicks);
@@ -593,6 +614,18 @@ public final class AntiCheatSettings {
         return clientDisallowedChannels;
     }
 
+    public boolean clientRequireModReport() {
+        return clientRequireModReport;
+    }
+
+    public Set<String> clientSuspiciousModIds() {
+        return clientSuspiciousModIds;
+    }
+
+    public Set<String> clientBlockedModIds() {
+        return clientBlockedModIds;
+    }
+
     public boolean lifestealChecksEnabled() {
         return lifestealChecksEnabled;
     }
@@ -614,7 +647,7 @@ public final class AntiCheatSettings {
     }
 
     public String statusText() {
-        return "enabled=%s defaultAction=%s tempBanMinutes=%d appealUrl=%s history=%d opChat=%s/%s checks[movement=%s combat=%s inventory=%s interaction=%s account=%s client=%s lifesteal=%s] movement=burst%.1f/%.1f sustained%.2f air%.2f hover%d nofall%.1f waterWalk%d clip%d combat=reach%.1f/y%.1f/min%d/cd%.2f/multi%d:%d damage%.1f inventory=scan%d/maxStack%d/gain%d interaction=block%.1f/entity%.1f/min%d account=maxIp%d client=brand%s/requiredChannels%d lifestealScan=%d endGate=%s overrides=%d".formatted(
+        return "enabled=%s defaultAction=%s tempBanMinutes=%d appealUrl=%s history=%d opChat=%s/%s checks[movement=%s combat=%s inventory=%s interaction=%s account=%s client=%s lifesteal=%s] movement=burst%.1f/%.1f sustained%.2f air%.2f hover%d nofall%.1f waterWalk%d clip%d combat=reach%.1f/y%.1f/min%d/cd%.2f/multi%d:%d damage%.1f inventory=scan%d/maxStack%d/gain%d interaction=block%.1f/entity%.1f/min%d account=maxIp%d client=brand%s/requiredChannels%d/modReport%s/suspiciousMods%d/blockedMods%d lifestealScan=%d endGate=%s overrides=%d".formatted(
                 enabled,
                 defaultAction,
                 tempBanDuration.toMinutes(),
@@ -653,6 +686,9 @@ public final class AntiCheatSettings {
                 accountMaxAccountsPerIpHash,
                 clientRequireBrand ? "required" : "optional",
                 clientRequiredChannels.size(),
+                clientRequireModReport ? "required" : "optional",
+                clientSuspiciousModIds.size(),
+                clientBlockedModIds.size(),
                 lifestealScanIntervalTicks,
                 lifestealEndAccessRequiresEvent,
                 categoryActions.size()
@@ -736,6 +772,9 @@ public final class AntiCheatSettings {
         properties.setProperty(CLIENT_BLOCKED_BRANDS, joinSet(clientBlockedBrands));
         properties.setProperty(CLIENT_REQUIRED_CHANNELS, joinSet(clientRequiredChannels));
         properties.setProperty(CLIENT_DISALLOWED_CHANNELS, joinSet(clientDisallowedChannels));
+        properties.setProperty(CLIENT_REQUIRE_MOD_REPORT, Boolean.toString(clientRequireModReport));
+        properties.setProperty(CLIENT_SUSPICIOUS_MOD_IDS, joinSet(clientSuspiciousModIds));
+        properties.setProperty(CLIENT_BLOCKED_MOD_IDS, joinSet(clientBlockedModIds));
         properties.setProperty(LIFESTEAL_CHECKS_ENABLED, Boolean.toString(lifestealChecksEnabled));
         properties.setProperty(LIFESTEAL_SCAN_INTERVAL_TICKS, Integer.toString(lifestealScanIntervalTicks));
         properties.setProperty(LIFESTEAL_ALERT_COOLDOWN_TICKS, Integer.toString(lifestealAlertCooldownTicks));

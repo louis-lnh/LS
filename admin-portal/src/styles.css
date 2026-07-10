@@ -1656,6 +1656,10 @@ body.resizing-layout {
   font-size: 0.68rem;
 }
 
+.health-label.warning {
+  color: var(--gold);
+}
+
 .health-list>div {
   display: grid;
   grid-template-columns: 0.6rem 1fr auto;
@@ -1688,6 +1692,41 @@ body.resizing-layout {
 .health-list b {
   color: var(--green);
   font-size: 0.68rem;
+}
+
+.server-agent-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.server-agent-grid>div {
+  min-height: 4.1rem;
+  padding: 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.server-agent-grid span {
+  color: rgba(244, 242, 237, 0.42);
+  font-size: 0.58rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.server-agent-grid strong {
+  display: block;
+  margin-top: 0.4rem;
+  overflow-wrap: anywhere;
+  font-size: 0.82rem;
+}
+
+.server-agent-notes {
+  display: grid;
+  gap: 0.8rem;
+  margin-top: 1rem;
 }
 
 .compact-activity {
@@ -4416,6 +4455,7 @@ body.resizing-layout {
   .staff-access-layout,
   .staff-detail-actions,
   .staff-detail-facts,
+  .server-agent-grid,
   .role-policy-grid,
   .workspace-access-matrix article,
   .invite-workspace-list,
@@ -4451,6 +4491,10 @@ body.resizing-layout {
 
   .dashboard-panel.wide {
     grid-column: auto;
+  }
+
+  .server-agent-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .table-toolbar {

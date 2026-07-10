@@ -23,7 +23,7 @@ public record LifestealConfig(
                 env("LIFESTEAL_DISCORD_ROLE_SYNC_ENDPOINT", ""),
                 env("LIFESTEAL_DISCORD_API_SHARED_SECRET", ""),
                 Duration.ofSeconds(envLong("LIFESTEAL_DISCORD_ROLE_SYNC_INTERVAL_SECONDS", 60)),
-                Duration.ofHours(envLong("LIFESTEAL_DRAGON_EGG_GLOW_HOURS", 48))
+                Duration.ofHours(envLong("LIFESTEAL_DRAGON_EGG_GLOW_HOURS", 12))
         );
     }
 

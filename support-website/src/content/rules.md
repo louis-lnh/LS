@@ -1,6 +1,6 @@
 # SHD Lifesteal Rules
 
-Welcome to SHD Lifesteal.
+Welcome to the SHD Lifesteal closed beta.
 
 These rules exist to keep the event competitive, fair, and enjoyable for everyone. Attempting to bypass the spirit of the rules through loopholes, technicalities, or exploit abuse may still result in punishment.
 
@@ -46,6 +46,8 @@ Examples include:
 * Gameplay Automation Macros
 
 If you are unsure whether something is allowed, ask staff before using it.
+
+The SHD client mod may report the active client mod list on join. Staff may use those reports, anti-cheat alerts, server logs, and gameplay evidence when reviewing suspicious clients.
 
 ---
 
@@ -104,10 +106,14 @@ A player may only return through the official revival system.
 Heart Items may be obtained through:
 
 * Player kills
-* Heart withdrawals
+* The `/withdraw <amount>` command
 * Official recipes
 
 Heart Items can be consumed to gain Hearts up to the maximum limit of 20.
+
+Withdrawals must leave the player with at least 1 Heart.
+
+Crafted Hearts may only be crafted and used while below 10 Hearts and outside Grace Period.
 
 ---
 
@@ -151,8 +157,6 @@ The following are disabled:
 * Heart Loss
 * Eliminations
 * Heart Drops
-* Revival Crafting
-* Revival Usage
 
 Deaths during Grace Period do not remove Hearts.
 
@@ -195,13 +199,25 @@ Combat must be escaped through normal gameplay.
 
 Elytras receive a combat cooldown after PvP interactions.
 
+Elytras may not be equipped or used while combat locked.
+
 Attempting to bypass combat flight restrictions is prohibited.
 
 ---
 
 ## Riptide Tridents
 
+Only Tridents with Riptide are restricted by the combat system.
+
 Riptide Tridents may not be used while combat tagged.
+
+Channeling Tridents and Tridents without Riptide are not banned by this rule.
+
+---
+
+## Ender Pearls
+
+Ender Pearls may not be used while combat tagged.
 
 ---
 
@@ -227,7 +243,13 @@ Staff may treat suspicious mobility-assisted kills as anti-cheat or rules cases 
 
 Eliminated players may only return through the official revival system.
 
+The player-facing revival item is a crafted vanilla Beacon tagged by the server as a Revival Beacon.
+
+Renaming a normal Beacon does not make it a Revival Beacon.
+
 Revived players return with 3 Hearts.
+
+Successful player revivals consume one Revival Beacon.
 
 ---
 
@@ -307,6 +329,7 @@ The following are disabled or restricted:
 * End Crystals
 * Respawn Anchors
 * TNT Minecarts
+* Firework Rockets
 
 ---
 
@@ -323,6 +346,7 @@ The following Netherite equipment is disabled:
 
 * Netherite Sword
 * Netherite Axe
+* Netherite Spear
 * Netherite Helmet
 * Netherite Chestplate
 * Netherite Leggings
@@ -332,9 +356,19 @@ Netherite tools such as pickaxes, shovels, and hoes remain allowed.
 
 ---
 
+## Spears
+
+Spears themselves are allowed.
+
+The Lunge enchantment is banned at every level.
+
+Spears or books with Lunge may have the enchantment removed or reduced by the server.
+
+---
+
 ## Maces
 
-Only two custom Maces exist for the season.
+Only two custom Maces exist for the beta.
 
 These Maces are event rewards and cannot be obtained through normal crafting.
 
@@ -348,8 +382,9 @@ Maximum allowed enchantments:
 
 * Protection III
 * Sharpness IV
+* Lunge is banned
 
-Anything above these limits is not permitted.
+Anything above these limits is not permitted and may be reduced or removed by the server.
 
 ---
 
@@ -380,7 +415,7 @@ The following effects are prohibited:
 
 Normal Weakness Potions may be used for curing Zombie Villagers.
 
-Splash and Lingering Weakness Potions are prohibited.
+Splash Weakness, Lingering Weakness, and other non-normal Weakness variants are prohibited.
 
 ---
 

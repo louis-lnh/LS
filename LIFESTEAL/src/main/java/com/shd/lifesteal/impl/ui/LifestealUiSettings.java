@@ -29,7 +29,7 @@ public final class LifestealUiSettings {
     private String eliminationSound = "wither_death";
     private String revivalSound = "beacon_activate";
     private String tabTitle = "SHD Lifesteal";
-    private String tabSeason = "Season 1";
+    private String tabSeason = "Beta Version";
     private String tabAd = "";
     private Set<String> owners = Set.of();
     private Set<String> admins = Set.of();
@@ -60,6 +60,9 @@ public final class LifestealUiSettings {
         revivalSound = properties.getProperty("revivalSound", revivalSound);
         tabTitle = properties.getProperty("tabTitle", tabTitle);
         tabSeason = properties.getProperty("tabSeason", tabSeason);
+        if ("Season 1".equalsIgnoreCase(tabSeason.trim())) {
+            tabSeason = "Beta Version";
+        }
         tabAd = properties.getProperty("tabAd", tabAd);
         owners = names(properties.getProperty("owners", ""));
         admins = names(properties.getProperty("admins", ""));

@@ -86,35 +86,113 @@ const serverHeartbeatSchema = z.object({
   hostname: z.string().max(120).optional().nullable(),
   agentVersion: z.string().max(40).optional().nullable(),
   sentAt: z.string().max(80).optional().nullable(),
+  timestamp: z.string().max(80).optional().nullable(),
+  host: z.object({
+    hostname: z.string().max(120).optional().nullable(),
+    uptimeSeconds: z.number().min(0).nullable().optional(),
+    localIps: z.array(z.string().max(80)).max(20).optional(),
+    networkOnline: z.boolean().nullable().optional()
+  }).passthrough().optional(),
   system: z.object({
     cpuPercent: z.number().min(0).max(100).nullable().optional(),
+    load1: z.number().min(0).nullable().optional(),
+    load5: z.number().min(0).nullable().optional(),
+    load15: z.number().min(0).nullable().optional(),
     ramUsedGb: z.number().min(0).nullable().optional(),
     ramTotalGb: z.number().min(0).nullable().optional(),
+    ramFreeGb: z.number().min(0).nullable().optional(),
+    ramPercent: z.number().min(0).max(100).nullable().optional(),
+    diskPath: z.string().max(240).nullable().optional(),
     diskUsedGb: z.number().min(0).nullable().optional(),
     diskTotalGb: z.number().min(0).nullable().optional(),
+    diskFreeGb: z.number().min(0).nullable().optional(),
+    diskPercent: z.number().min(0).max(100).nullable().optional(),
     tempC: z.number().min(-50).max(130).nullable().optional(),
     uptimeSeconds: z.number().min(0).nullable().optional()
-  }).default({}),
+  }).passthrough().default({}),
   minecraft: z.object({
+    serviceName: z.string().max(120).nullable().optional(),
+    serviceState: z.string().max(80).nullable().optional(),
     serviceActive: z.boolean().nullable().optional(),
     processRunning: z.boolean().nullable().optional(),
     logFresh: z.boolean().nullable().optional(),
     online: z.boolean().nullable().optional(),
+    queryOnline: z.boolean().nullable().optional(),
     playersOnline: z.number().int().min(0).nullable().optional(),
     maxPlayers: z.number().int().min(0).nullable().optional(),
+    versionName: z.string().max(120).nullable().optional(),
+    pingError: z.string().max(240).nullable().optional(),
     rconAvailable: z.boolean().nullable().optional(),
     rconError: z.string().max(240).nullable().optional(),
     latestWarning: z.string().max(500).nullable().optional(),
+    latestError: z.string().max(500).nullable().optional(),
     cantKeepUpCount: z.number().int().min(0).nullable().optional(),
-    crashDetected: z.boolean().nullable().optional()
-  }).default({}),
+    errorCount: z.number().int().min(0).nullable().optional(),
+    crashDetected: z.boolean().nullable().optional(),
+    serverStarted: z.boolean().nullable().optional(),
+    serverStopping: z.boolean().nullable().optional(),
+    joinCount: z.number().int().min(0).nullable().optional(),
+    leaveCount: z.number().int().min(0).nullable().optional(),
+    chunky: z.object({
+      active: z.boolean().nullable().optional(),
+      progressPercent: z.number().min(0).max(100).nullable().optional(),
+      latestLine: z.string().max(500).nullable().optional(),
+      completed: z.boolean().nullable().optional()
+    }).passthrough().optional()
+  }).passthrough().default({}),
+  logs: z.object({
+    latestWarning: z.string().max(500).nullable().optional(),
+    latestError: z.string().max(500).nullable().optional(),
+    cantKeepUpCountLast10Min: z.number().int().min(0).nullable().optional(),
+    errorCountLast10Min: z.number().int().min(0).nullable().optional(),
+    crashDetected: z.boolean().nullable().optional(),
+    lastCrashReport: z.string().max(240).nullable().optional(),
+    serverStarted: z.boolean().nullable().optional(),
+    serverStopping: z.boolean().nullable().optional(),
+    joinCount: z.number().int().min(0).nullable().optional(),
+    leaveCount: z.number().int().min(0).nullable().optional(),
+    chunky: z.object({
+      active: z.boolean().nullable().optional(),
+      progressPercent: z.number().min(0).max(100).nullable().optional(),
+      latestLine: z.string().max(500).nullable().optional(),
+      completed: z.boolean().nullable().optional()
+    }).passthrough().optional()
+  }).passthrough().optional(),
   backup: z.object({
     lastBackupAt: z.string().max(80).nullable().optional(),
     ageSeconds: z.number().min(0).nullable().optional(),
+    ageHours: z.number().min(0).nullable().optional(),
     count: z.number().int().min(0).nullable().optional(),
-    sizeGb: z.number().min(0).nullable().optional()
-  }).default({}),
+    sizeGb: z.number().min(0).nullable().optional(),
+    stale: z.boolean().nullable().optional()
+  }).passthrough().default({}),
+  agent: z.object({
+    version: z.string().max(40).optional().nullable(),
+    mode: z.enum(['monitoring', 'actions-enabled']).optional(),
+    actionsEnabled: z.boolean().optional()
+  }).passthrough().optional(),
   issues: z.array(z.string().min(1).max(160)).max(20).default([])
+});
+
+const serverActionResultSchema = z.object({
+  actionId: z.string().min(1).max(120),
+  serverId: z.string().min(1).max(80),
+  type: z.string().min(2).max(80),
+  status: z.enum(['success', 'failed', 'skipped']),
+  startedAt: z.string().max(80),
+  finishedAt: z.string().max(80),
+  message: z.string().min(1).max(1000),
+  details: z.record(z.unknown()).optional()
+});
+
+const serverLogEventSchema = z.object({
+  serverId: z.string().min(1).max(80),
+  type: z.string().min(2).max(80),
+  severity: z.enum(['info', 'warning', 'critical']).default('info'),
+  message: z.string().min(1).max(1000),
+  occurredAt: z.string().max(80).optional().nullable(),
+  minecraftName: z.string().min(1).max(32).optional().nullable(),
+  data: z.record(z.unknown()).optional()
 });
 
 const supportRulesAckSchema = z.object({
@@ -1398,14 +1476,18 @@ function normalizeServerHeartbeat(body) {
     hostname: body.hostname ?? null,
     agentVersion: body.agentVersion ?? null,
     sentAt: body.sentAt ?? null,
+    timestamp: body.timestamp ?? body.sentAt ?? null,
     receivedAt,
+    host: body.host ?? null,
     system: {
       ...body.system,
-      ramPercent,
-      diskPercent
+      ramPercent: Number.isFinite(body.system.ramPercent) ? body.system.ramPercent : ramPercent,
+      diskPercent: Number.isFinite(body.system.diskPercent) ? body.system.diskPercent : diskPercent
     },
     minecraft: body.minecraft,
+    logs: body.logs ?? null,
     backup: body.backup,
+    agent: body.agent ?? null,
     issues: body.issues
   };
 }
@@ -1428,38 +1510,65 @@ function serverHealth(status = statements.getServerStatus.get(), now = Date.now(
   };
 }
 
+function serverStatusFor(serverId) {
+  const status = statements.getServerStatus.get();
+  const latest = status.latest?.serverId === serverId ? status.latest : null;
+  const history = (status.history ?? []).filter((entry) => entry.serverId === serverId);
+  return serverHealth({ latest, history, alert_state: status.alert_state ?? {} });
+}
+
 function serverAlertCandidates(health) {
   const latest = health.latest;
   if (!latest) {
-    return health.state === 'waiting' ? [] : [['server_waiting', 'Server Helper Waiting', 'No heartbeat has been received yet.']];
+    return health.state === 'waiting' ? [] : [{ key: 'server_waiting', title: 'Server Helper Waiting', message: 'No heartbeat has been received yet.', severity: 'warning' }];
   }
 
   const alerts = [];
   if (health.ageSeconds != null && health.ageSeconds > config.serverAgent.staleSeconds) {
-    alerts.push(['stale', 'Lifesteal Server Heartbeat Stale', `Last heartbeat was ${health.ageSeconds}s ago.`]);
+    alerts.push({ key: 'stale', title: 'Lifesteal Server Heartbeat Stale', message: `Last heartbeat was ${health.ageSeconds}s ago.`, severity: 'critical' });
   }
   if (latest.minecraft.serviceActive === false || latest.minecraft.processRunning === false || latest.minecraft.online === false) {
-    alerts.push(['minecraft_down', 'Minecraft Service Down', 'The agent reports the Minecraft service/process is not healthy.']);
+    alerts.push({ key: 'minecraft_down', title: 'Minecraft Service Down', message: 'The agent reports the Minecraft service/process is not healthy.', severity: 'critical' });
   }
   if (latest.minecraft.crashDetected) {
-    alerts.push(['crash_detected', 'Minecraft Crash Detected', 'The agent detected a crash report or crash marker.']);
+    alerts.push({ key: 'crash_detected', title: 'Minecraft Crash Detected', message: 'The agent detected a crash report or crash marker.', severity: 'critical' });
   }
   if (Number.isFinite(latest.system.tempC) && latest.system.tempC >= config.serverAgent.maxTempC) {
-    alerts.push(['high_temp', 'Lifesteal Server Temperature High', `CPU temperature is ${latest.system.tempC}C.`]);
+    alerts.push({ key: 'high_temp', title: 'Lifesteal Server Temperature High', message: `CPU temperature is ${latest.system.tempC}C.`, severity: 'warning' });
   }
   if (Number.isFinite(latest.system.ramPercent) && latest.system.ramPercent >= config.serverAgent.maxRamPercent) {
-    alerts.push(['high_ram', 'Lifesteal Server RAM High', `RAM usage is ${latest.system.ramPercent}%.`]);
+    alerts.push({ key: 'high_ram', title: 'Lifesteal Server RAM High', message: `RAM usage is ${latest.system.ramPercent}%.`, severity: 'warning' });
   }
   if (Number.isFinite(latest.system.diskPercent) && latest.system.diskPercent >= config.serverAgent.maxDiskPercent) {
-    alerts.push(['high_disk', 'Lifesteal Server Disk High', `Disk usage is ${latest.system.diskPercent}%.`]);
+    alerts.push({ key: 'high_disk', title: 'Lifesteal Server Disk High', message: `Disk usage is ${latest.system.diskPercent}%.`, severity: 'warning' });
   }
   if (Number.isFinite(latest.backup.ageSeconds) && latest.backup.ageSeconds >= config.serverAgent.maxBackupAgeHours * 60 * 60) {
-    alerts.push(['backup_stale', 'Lifesteal Backup Stale', `Last backup is ${Math.floor(latest.backup.ageSeconds / 3600)}h old.`]);
+    alerts.push({ key: 'backup_stale', title: 'Lifesteal Backup Stale', message: `Last backup is ${Math.floor(latest.backup.ageSeconds / 3600)}h old.`, severity: 'warning' });
   }
   if (Number.isFinite(latest.minecraft.cantKeepUpCount) && latest.minecraft.cantKeepUpCount >= 3) {
-    alerts.push(['cant_keep_up', "Minecraft Can't Keep Up Warnings", `${latest.minecraft.cantKeepUpCount} warning(s) found in the recent log window.`]);
+    alerts.push({ key: 'cant_keep_up', title: "Minecraft Can't Keep Up Warnings", message: `${latest.minecraft.cantKeepUpCount} warning(s) found in the recent log window.`, severity: 'warning' });
+  }
+  if (Number.isFinite(latest.minecraft.errorCount) && latest.minecraft.errorCount >= 3) {
+    alerts.push({ key: 'log_errors', title: 'Minecraft Log Errors', message: `${latest.minecraft.errorCount} error/exception line(s) found in the recent log window.`, severity: 'warning' });
   }
   return alerts;
+}
+
+function serverAlertFields(health, message) {
+  const latest = health.latest;
+  return [
+    { name: 'Server', value: latest?.serverId ?? 'lifesteal-g17', inline: true },
+    { name: 'State', value: health.state, inline: true },
+    latest?.minecraft?.playersOnline != null && latest?.minecraft?.maxPlayers != null
+      ? { name: 'Players', value: `${latest.minecraft.playersOnline}/${latest.minecraft.maxPlayers}`, inline: true }
+      : null,
+    latest?.system?.tempC != null ? { name: 'Temp', value: `${latest.system.tempC}C`, inline: true } : null,
+    latest?.system?.ramPercent != null ? { name: 'RAM', value: `${latest.system.ramPercent}%`, inline: true } : null,
+    latest?.system?.diskPercent != null ? { name: 'Disk', value: `${latest.system.diskPercent}%`, inline: true } : null,
+    { name: 'Detail', value: message },
+    latest?.minecraft?.latestWarning ? { name: 'Latest Warning', value: latest.minecraft.latestWarning } : null,
+    latest?.minecraft?.latestError ? { name: 'Latest Error', value: latest.minecraft.latestError } : null
+  ].filter(Boolean);
 }
 
 async function maybeSendServerAlerts(client, health) {
@@ -1467,16 +1576,19 @@ async function maybeSendServerAlerts(client, health) {
   const alertState = status.alert_state ?? {};
   const now = Date.now();
   const cooldownMs = config.serverAgent.alertCooldownSeconds * 1000;
-  for (const [key, title, message] of serverAlertCandidates(health)) {
-    const lastSent = alertState[key]?.lastSentAt ?? 0;
+  const candidates = serverAlertCandidates(health);
+  const activeKeys = new Set(candidates.map((alert) => alert.key));
+  for (const alert of candidates) {
+    const lastSent = alertState[alert.key]?.lastSentAt ?? 0;
     if (now - lastSent < cooldownMs) continue;
-    statements.setServerAlertState.run(key, { lastSentAt: now, message });
-    await minecraftLog(client, title, [
-      { name: 'Server', value: health.latest?.serverId ?? 'lifesteal-g17', inline: true },
-      { name: 'State', value: health.state, inline: true },
-      { name: 'Detail', value: message },
-      health.latest?.minecraft.latestWarning ? { name: 'Latest Warning', value: health.latest.minecraft.latestWarning } : null
-    ].filter(Boolean));
+    statements.setServerAlertState.run(alert.key, { lastSentAt: now, active: true, resolvedSentAt: null, message: alert.message, severity: alert.severity });
+    await minecraftLog(client, alert.title, serverAlertFields(health, alert.message));
+  }
+
+  for (const [key, value] of Object.entries(alertState)) {
+    if (!value?.active || activeKeys.has(key)) continue;
+    statements.setServerAlertState.run(key, { ...value, active: false, resolvedSentAt: now });
+    await minecraftLog(client, 'Lifesteal Server Alert Resolved', serverAlertFields(health, value.message ?? key));
   }
 }
 
@@ -1580,6 +1692,70 @@ export function startWebServer(client) {
   app.get('/api/v1/server/status', protectedApiRateLimit, requireApiSecret, (_req, res) => {
     const health = serverHealth(statements.getServerStatus.get());
     res.json({ ok: true, ...health, generatedAt: Date.now() });
+  });
+
+  app.get('/api/v1/server/status/:serverId', protectedApiRateLimit, requireApiSecret, (req, res) => {
+    const health = serverStatusFor(req.params.serverId);
+    res.json({ ok: true, serverId: req.params.serverId, ...health, generatedAt: Date.now() });
+  });
+
+  app.get('/api/v1/server/history/:serverId', protectedApiRateLimit, requireApiSecret, (req, res) => {
+    const limit = Math.max(1, Math.min(500, Number.parseInt(req.query.limit ?? '120', 10) || 120));
+    const status = statements.getServerStatus.get();
+    const history = (status.history ?? [])
+      .filter((entry) => entry.serverId === req.params.serverId)
+      .slice(0, limit);
+    res.json({ ok: true, serverId: req.params.serverId, history, count: history.length, generatedAt: Date.now() });
+  });
+
+  app.get('/api/v1/server/actions/pending', protectedApiRateLimit, requireApiSecret, (req, res) => {
+    const serverId = String(req.query.serverId ?? '').trim();
+    if (!serverId) return res.status(400).json({ ok: false, error: 'serverId is required.' });
+    if (!config.serverAgent.actionsEnabled) {
+      return res.json({ ok: true, actionsEnabled: false, actions: [], generatedAt: Date.now() });
+    }
+    const limit = Math.max(1, Math.min(10, Number.parseInt(req.query.limit ?? '5', 10) || 5));
+    const actions = statements.listPendingServerActions.all(serverId, limit);
+    res.json({ ok: true, actionsEnabled: true, actions, generatedAt: Date.now() });
+  });
+
+  app.post('/api/v1/server/actions/:actionId/result', protectedApiRateLimit, requireApiSecret, (req, res) => {
+    try {
+      const body = serverActionResultSchema.parse({ ...(req.body ?? {}), actionId: req.params.actionId });
+      const action = statements.upsertServerActionResult.run(body);
+      audit('server.action_result', {
+        data: {
+          actionId: body.actionId,
+          serverId: body.serverId,
+          type: body.type,
+          status: body.status,
+          message: body.message
+        }
+      });
+      res.json({ ok: true, action, receivedAt: Date.now() });
+    } catch (error) {
+      res.status(400).json({ ok: false, error: validationErrorMessage(error) });
+    }
+  });
+
+  app.post('/api/v1/server/log-event', protectedApiRateLimit, requireApiSecret, (req, res) => {
+    try {
+      const body = serverLogEventSchema.parse(req.body ?? {});
+      audit('server.log_event', {
+        data: {
+          serverId: body.serverId,
+          type: body.type,
+          severity: body.severity,
+          message: body.message,
+          occurredAt: body.occurredAt ?? null,
+          minecraftName: body.minecraftName ?? null,
+          data: body.data ?? {}
+        }
+      });
+      res.json({ ok: true, receivedAt: Date.now() });
+    } catch (error) {
+      res.status(400).json({ ok: false, error: validationErrorMessage(error) });
+    }
   });
 
   app.get('/api/v1/overlays/lifesteal/player', publicReadRateLimit, requireOverlayToken, (_req, res) => {

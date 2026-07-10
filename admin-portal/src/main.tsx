@@ -65,6 +65,7 @@ import {
   deleteAdminPlayer,
   getAdminAudit,
   getAdminLifestealEvents,
+  getAdminLifestealServerStatus,
   getAdminPlayers,
   getAdminSubmissions,
   getAdminOverview,
@@ -81,6 +82,7 @@ import {
   type AdminApiSubmission,
   type AdminAuditPayload,
   type AdminLifestealEvent,
+  type AdminServerStatusPayload,
   type AdminOverview,
   type AdminPlayer,
   type AdminPlayerBadge,
@@ -1248,6 +1250,17 @@ function formatServiceDetail(detail: string) {
   return match ? `Last gameplay sync ${relativeTime(Number(match[1]))}` : detail
 }
 
+function formatMetric(value: number | null | undefined, unit: string) {
+  return value == null ? 'n/a' : `${value}${unit}`
+}
+
+function chunkyStatus(chunky: { active?: boolean | null; progressPercent?: number | null; completed?: boolean | null } | null | undefined) {
+  if (!chunky) return 'Unknown'
+  if (chunky.completed) return 'Completed'
+  if (chunky.active) return chunky.progressPercent != null ? `${chunky.progressPercent}%` : 'Active'
+  return 'Inactive'
+}
+
 function workspaceRoute(workspace: AdminWorkspaceId): AdminView {
   if (workspace === 'general' || workspace === 'global') return 'general-inbox'
   if (workspace === 'valorant') return 'valorant-inbox'
@@ -2082,15 +2095,48 @@ function MetricCard({ label, value, detail, icon }: { label: string; value: stri
 }
 
 function LifestealOverviewPage({ submissions, onNavigate }: { submissions: Submission[]; onNavigate: (view: AdminView) => void }) {
+  const [serverStatus, setServerStatus] = useState<AdminServerStatusPayload | null>(null)
+  const [serverStatusState, setServerStatusState] = useState<'loading' | 'ready' | 'error'>(adminDemoMode ? 'ready' : 'loading')
   const open = submissions.filter((item) => !['Approved', 'Denied'].includes(item.status)).length
   const unclaimed = submissions.filter((item) => !item.claimedBy && !['Approved', 'Denied'].includes(item.status)).length
   const highPriority = submissions.filter((item) => item.priority === 'High' && !['Approved', 'Denied'].includes(item.status)).length
+  const latest = serverStatus?.latest ?? null
+  const activeAlerts = Object.values(serverStatus?.alerts ?? {}).filter((alert) => alert.active).length
+  const serverStateLabel = serverStatusState === 'loading'
+    ? 'Loading'
+    : serverStatusState === 'error'
+      ? 'Unavailable'
+      : serverStatus?.state ?? 'waiting'
   const metrics = [
     { label: 'Open reviews', value: String(open), detail: 'Across every Minecraft workflow', icon: Inbox },
     { label: 'Unclaimed', value: String(unclaimed), detail: 'Waiting for a staff owner', icon: UserRoundSearch },
     { label: 'High priority', value: String(highPriority), detail: 'Appeals or reports needing attention', icon: FileWarning },
     { label: 'Bot bridge', value: 'Online', detail: 'Last staff sync 18 seconds ago', icon: Activity },
   ]
+
+  useEffect(() => {
+    let disposed = false
+    const loadServerStatus = async (silent = false) => {
+      if (!silent) setServerStatusState('loading')
+      try {
+        const payload = await getAdminLifestealServerStatus(60)
+        if (disposed) return
+        setServerStatus(payload)
+        setServerStatusState('ready')
+      } catch {
+        if (disposed) return
+        setServerStatusState('error')
+      }
+    }
+    loadServerStatus()
+    if (adminDemoMode) return () => { disposed = true }
+    const timer = window.setInterval(() => loadServerStatus(true), 15_000)
+    return () => {
+      disposed = true
+      window.clearInterval(timer)
+    }
+  }, [])
+
   return (
     <main className="page-workspace">
       <PageHeader eyebrow="Lifesteal Operations" title="Overview" detail="Minecraft reviews, player access, service health, and staff activity." />
@@ -2126,6 +2172,28 @@ function LifestealOverviewPage({ submissions, onNavigate }: { submissions: Submi
             <HealthRow label="Support API" detail="Public intake responding" status="Online" />
             <HealthRow label="Minecraft bridge" detail="Last gameplay sync 32s ago" status="Online" />
             <HealthRow label="Admin storage" detail="Frontend prototype data" status="Mock" muted />
+          </div>
+        </article>
+        <article className="dashboard-panel wide">
+          <header>
+            <div><span className="eyebrow">Server Agent</span><h2>G17 Health</h2></div>
+            <span className={`health-label ${serverStatus?.state === 'online' ? '' : 'warning'}`}><Activity size={14} />{serverStateLabel}</span>
+          </header>
+          <div className="server-agent-grid">
+            <Fact label="Heartbeat" value={serverStatus?.ageSeconds != null ? `${serverStatus.ageSeconds}s ago` : 'Waiting'} />
+            <Fact label="Minecraft" value={latest?.minecraft?.serviceState ?? (latest?.minecraft?.serviceActive ? 'active' : 'unknown')} />
+            <Fact label="Version" value={latest?.minecraft?.versionName ?? 'Unknown'} />
+            <Fact label="Players" value={latest?.minecraft?.playersOnline != null && latest?.minecraft?.maxPlayers != null ? `${latest.minecraft.playersOnline}/${latest.minecraft.maxPlayers}` : 'Not synced'} />
+            <Fact label="CPU / Temp" value={`${formatMetric(latest?.system?.cpuPercent, '%')} / ${formatMetric(latest?.system?.tempC, 'C')}`} />
+            <Fact label="RAM" value={latest?.system?.ramUsedGb != null && latest?.system?.ramTotalGb != null ? `${latest.system.ramUsedGb}/${latest.system.ramTotalGb} GB` : formatMetric(latest?.system?.ramPercent, '%')} />
+            <Fact label="Disk" value={latest?.system?.diskUsedGb != null && latest?.system?.diskTotalGb != null ? `${latest.system.diskUsedGb}/${latest.system.diskTotalGb} GB` : formatMetric(latest?.system?.diskPercent, '%')} />
+            <Fact label="Backup" value={latest?.backup?.ageHours != null ? `${latest.backup.ageHours}h ago` : 'Unknown'} />
+            <Fact label="Chunky" value={chunkyStatus(latest?.minecraft?.chunky ?? latest?.logs?.chunky)} />
+            <Fact label="Alerts" value={activeAlerts ? `${activeAlerts} active` : 'None active'} />
+          </div>
+          <div className="server-agent-notes">
+            <HealthRow label="Latest warning" detail={latest?.minecraft?.latestWarning ?? latest?.logs?.latestWarning ?? 'None'} status={String(latest?.minecraft?.cantKeepUpCount ?? latest?.logs?.cantKeepUpCountLast10Min ?? 0)} muted={!latest?.minecraft?.latestWarning && !latest?.logs?.latestWarning} />
+            <HealthRow label="Latest error" detail={latest?.minecraft?.latestError ?? latest?.logs?.latestError ?? 'None'} status={String(latest?.minecraft?.errorCount ?? latest?.logs?.errorCountLast10Min ?? 0)} muted={!latest?.minecraft?.latestError && !latest?.logs?.latestError} />
           </div>
         </article>
         <article className="dashboard-panel wide">

@@ -2,7 +2,7 @@
 
 Client-only Fabric companion for the SHD Lifesteal server mod.
 
-This mod registers the visual/client representation of `shd-lifesteal:heart`, packages the heart item assets under the original `shd-lifesteal` namespace, and declares a lightweight `shd-lifesteal-client:integrity` networking channel for server-side client-integrity checks. It intentionally does not include any gameplay rules, persistence, commands, mixins, recipes, or server services.
+This mod registers the visual/client representation of `shd-lifesteal:heart`, packages heart item assets under the original `shd-lifesteal` namespace, declares a lightweight `shd-lifesteal-client:integrity` networking channel, and reports the active Fabric mod list on server join for audit-only integrity alerts. It intentionally does not include any gameplay rules, persistence, commands, mixins, recipes, or server services.
 
 Install this with Fabric API on clients that connect to servers running the authoritative `shd-lifesteal` mod. The server still owns all heart behavior.
 

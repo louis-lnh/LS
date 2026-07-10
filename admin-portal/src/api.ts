@@ -131,6 +131,118 @@ export type AdminAuditPayload = {
   updatedAt: number
 }
 
+export type AdminServerHeartbeat = {
+  schemaVersion?: number
+  serverId: string
+  hostname: string | null
+  agentVersion: string | null
+  sentAt: string | null
+  timestamp?: string | null
+  receivedAt: number
+  host?: {
+    hostname?: string | null
+    uptimeSeconds?: number | null
+    localIps?: string[]
+    networkOnline?: boolean | null
+  } | null
+  system: {
+    cpuPercent?: number | null
+    load1?: number | null
+    load5?: number | null
+    load15?: number | null
+    ramUsedGb?: number | null
+    ramTotalGb?: number | null
+    ramFreeGb?: number | null
+    ramPercent?: number | null
+    diskPath?: string | null
+    diskUsedGb?: number | null
+    diskTotalGb?: number | null
+    diskFreeGb?: number | null
+    diskPercent?: number | null
+    tempC?: number | null
+    uptimeSeconds?: number | null
+  }
+  minecraft: {
+    serviceName?: string | null
+    serviceState?: string | null
+    serviceActive?: boolean | null
+    processRunning?: boolean | null
+    logFresh?: boolean | null
+    online?: boolean | null
+    queryOnline?: boolean | null
+    playersOnline?: number | null
+    maxPlayers?: number | null
+    versionName?: string | null
+    pingError?: string | null
+    rconAvailable?: boolean | null
+    rconError?: string | null
+    latestWarning?: string | null
+    latestError?: string | null
+    cantKeepUpCount?: number | null
+    errorCount?: number | null
+    crashDetected?: boolean | null
+    serverStarted?: boolean | null
+    serverStopping?: boolean | null
+    joinCount?: number | null
+    leaveCount?: number | null
+    chunky?: {
+      active?: boolean | null
+      progressPercent?: number | null
+      latestLine?: string | null
+      completed?: boolean | null
+    }
+  }
+  logs?: {
+    latestWarning?: string | null
+    latestError?: string | null
+    cantKeepUpCountLast10Min?: number | null
+    errorCountLast10Min?: number | null
+    crashDetected?: boolean | null
+    lastCrashReport?: string | null
+    serverStarted?: boolean | null
+    serverStopping?: boolean | null
+    joinCount?: number | null
+    leaveCount?: number | null
+    chunky?: {
+      active?: boolean | null
+      progressPercent?: number | null
+      latestLine?: string | null
+      completed?: boolean | null
+    }
+  } | null
+  backup: {
+    lastBackupAt?: string | null
+    ageSeconds?: number | null
+    ageHours?: number | null
+    count?: number | null
+    sizeGb?: number | null
+    stale?: boolean | null
+  }
+  agent?: {
+    version?: string | null
+    mode?: 'monitoring' | 'actions-enabled'
+    actionsEnabled?: boolean
+  } | null
+  issues: string[]
+}
+
+export type AdminServerStatusPayload = {
+  ok: boolean
+  state: 'online' | 'warning' | 'offline' | 'waiting'
+  ageSeconds: number | null
+  thresholds: {
+    staleSeconds: number
+    maxTempC: number
+    maxRamPercent: number
+    maxDiskPercent: number
+    maxBackupAgeHours: number
+  }
+  latest: AdminServerHeartbeat | null
+  history: AdminServerHeartbeat[]
+  alerts: Record<string, { lastSentAt?: number; active?: boolean; resolvedSentAt?: number | null; message?: string; severity?: string }>
+  generatedAt: number
+}
+
 export type StaffChatMessage = {
   id: string
   authorId: string | null
@@ -610,6 +722,22 @@ export async function getAdminLifestealEvents(): Promise<{ events: AdminLifestea
   if (adminDemoMode) return { events: [], updatedAt: Date.now() }
   const response = await adminRequest<{ ok: boolean; events: AdminLifestealEvent[]; updatedAt?: number }>('/lifesteal/events')
   return { events: response.events, updatedAt: response.updatedAt ?? Date.now() }
+}
+
+export async function getAdminLifestealServerStatus(limit = 60): Promise<AdminServerStatusPayload> {
+  if (adminDemoMode) {
+    return {
+      ok: true,
+      state: 'waiting',
+      ageSeconds: null,
+      thresholds: { staleSeconds: 45, maxTempC: 90, maxRamPercent: 92, maxDiskPercent: 90, maxBackupAgeHours: 30 },
+      latest: null,
+      history: [],
+      alerts: {},
+      generatedAt: Date.now(),
+    }
+  }
+  return adminRequest<AdminServerStatusPayload>(`/lifesteal/server-status?limit=${encodeURIComponent(String(limit))}`)
 }
 
 export async function createAdminLifestealEvent(payload: UpsertAdminLifestealEventPayload): Promise<{ events: AdminLifestealEvent[]; event: AdminLifestealEvent }> {

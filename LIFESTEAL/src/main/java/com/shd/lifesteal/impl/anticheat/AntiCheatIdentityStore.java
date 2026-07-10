@@ -27,6 +27,7 @@ public final class AntiCheatIdentityStore {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final String IP_HASH_PREFIX = "shd-anticheat-ip-v1|";
     private static final int MAX_STORED_VALUES = 20;
+    private static final int MAX_STORED_CLIENT_MODS = 256;
 
     private final Path path;
     private final Map<UUID, StoredIdentity> identities = new HashMap<>();
@@ -108,6 +109,23 @@ public final class AntiCheatIdentityStore {
         return new BrandAssessment(previousBrand, normalizedBrand, changed);
     }
 
+    public synchronized ModReportAssessment recordModReport(ServerPlayerEntity player, List<String> modIds) {
+        UUID playerId = player.getUuid();
+        Instant now = Instant.now();
+        StoredIdentity identity = identities.computeIfAbsent(playerId, ignored -> StoredIdentity.create(playerId, now));
+        List<String> previousMods = identity.lastClientMods == null ? List.of() : List.copyOf(identity.lastClientMods);
+        List<String> currentMods = normalizedModList(modIds);
+        boolean changed = !previousMods.isEmpty() && !previousMods.equals(currentMods);
+
+        identity.lastName = player.getName().getString();
+        identity.lastSeen = now.toString();
+        identity.lastClientModReportAt = now.toString();
+        identity.lastClientMods = currentMods;
+        save();
+
+        return new ModReportAssessment(previousMods, currentMods, changed);
+    }
+
     private Set<UUID> uuidsForName(String normalizedName) {
         Set<UUID> matches = new LinkedHashSet<>();
         for (Map.Entry<UUID, StoredIdentity> entry : identities.entrySet()) {
@@ -185,6 +203,13 @@ public final class AntiCheatIdentityStore {
     ) {
     }
 
+    public record ModReportAssessment(
+            List<String> previousMods,
+            List<String> currentMods,
+            boolean changed
+    ) {
+    }
+
     private static final class StoredIdentity {
         String uuid;
         String firstSeen;
@@ -195,6 +220,8 @@ public final class AntiCheatIdentityStore {
         List<String> ipHashes = new ArrayList<>();
         String lastClientBrand;
         List<String> clientBrands = new ArrayList<>();
+        String lastClientModReportAt;
+        List<String> lastClientMods = new ArrayList<>();
         boolean staffOperatorSeen;
 
         static StoredIdentity create(UUID playerId, Instant now) {
@@ -219,9 +246,13 @@ public final class AntiCheatIdentityStore {
             if (clientBrands == null) {
                 clientBrands = new ArrayList<>();
             }
+            if (lastClientMods == null) {
+                lastClientMods = new ArrayList<>();
+            }
             names = normalizedList(names);
             ipHashes = normalizedList(ipHashes);
             clientBrands = normalizedList(clientBrands);
+            lastClientMods = normalizedModList(lastClientMods);
         }
 
         private List<String> normalizedList(List<String> values) {
@@ -237,5 +268,23 @@ public final class AntiCheatIdentityStore {
             }
             return normalized;
         }
+    }
+
+    private static List<String> normalizedModList(List<String> values) {
+        List<String> normalized = new ArrayList<>();
+        if (values == null) {
+            return normalized;
+        }
+        for (String value : values) {
+            String entry = AntiCheatIdentityStore.normalize(value);
+            if (!entry.isBlank() && !normalized.contains(entry)) {
+                normalized.add(entry);
+            }
+        }
+        normalized.sort(String.CASE_INSENSITIVE_ORDER);
+        if (normalized.size() > MAX_STORED_CLIENT_MODS) {
+            return List.copyOf(normalized.subList(0, MAX_STORED_CLIENT_MODS));
+        }
+        return List.copyOf(normalized);
     }
 }

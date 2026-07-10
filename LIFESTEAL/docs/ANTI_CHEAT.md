@@ -19,11 +19,11 @@ Build anti-cheat as two cooperating modules:
    - usable for future SHD Minecraft events
 
 2. `shd-lifesteal-anticheat`
-   - Lifesteal and Season 1 integrity add-on
+   - Lifesteal beta integrity add-on
    - depends on `shd-anticheat-core`
    - integrates with `shd-lifesteal` APIs and event rules
 
-This keeps the boring, reusable cheating checks separate from the special Season 1 logic around hearts, maces, dragon egg tracking, grace period, elimination, revival, and public API consistency.
+This keeps the boring, reusable cheating checks separate from the special Lifesteal logic around hearts, maces, dragon egg tracking, grace period, elimination, revival, and public API consistency.
 
 ## Why Split It
 
@@ -38,7 +38,7 @@ The normal anti-cheat should care about common Minecraft cheating:
 - staff audit context
 - evidence logging and alert routing
 
-The Lifesteal add-on should care about competitive state that only exists in this season:
+The Lifesteal add-on should care about competitive state that only exists in this event:
 
 - heart economy
 - elimination and revival state
@@ -108,7 +108,7 @@ Current source:
 - `com.shd.lifesteal.impl.anticheat.lifesteal.LifestealAntiCheatCheckDefinition`
 - `com.shd.lifesteal.impl.anticheat.lifesteal.LifestealIntegrityCheck`
 
-The module definition maps the Lifesteal-specific check families. The first active Lifesteal-specific check is now registered by `LifestealRuntime` as an event-specific anti-cheat check, while the remaining Season 1 families are still being filled in without mixing that logic into the reusable generic checks.
+The module definition maps the Lifesteal-specific check families. The first active Lifesteal-specific check is now registered by `LifestealRuntime` as an event-specific anti-cheat check, while the remaining beta families are still being filled in without mixing that logic into the reusable generic checks.
 
 ### `shd-lifesteal`
 
@@ -127,7 +127,7 @@ The anti-cheat may observe, alert, block, or request a correction through public
 
 ## First Production Behavior
 
-Season 1 anti-cheat should start conservative:
+Beta anti-cheat should start conservative:
 
 - log evidence
 - alert staff
@@ -456,7 +456,7 @@ Every alert-worthy case should try to capture:
 - staff/admin context
 - action taken: observed, blocked, reverted, alerted, punished
 
-Core should collect generic evidence. Lifesteal should enrich with season state.
+Core should collect generic evidence. Lifesteal should enrich with beta state.
 
 ## Severity
 
@@ -509,7 +509,7 @@ Start with checks that are mostly deterministic and low false-positive:
 - duplicate active custom maces alert as critical
 - restricted item cleanup emits evidence when it affects competitive items
 
-This protects the season before we chase noisy packet-level checks.
+This protects the beta before we chase noisy packet-level checks.
 
 ### Phase 3: Generic Inventory And Restricted Item Checks
 
@@ -584,7 +584,7 @@ Staff alerts should include:
 
 ## Launch Gate
 
-Before Season 1 launch, verify on a real dedicated server:
+Before closed beta launch, verify on a real dedicated server:
 
 - normal vanilla gameplay
 - expected modded client setup
@@ -618,7 +618,7 @@ This whitelist automation must not change the public/player-page registration st
 
 - exact module names and repo locations
 - whether anti-cheat lives in this repo now or becomes its own shared repo later
-- whether Season 1 requires a client-side SHD validation mod
+- the required client-side SHD validation mod behavior
 - minimap/worldmap/freecam policy: block, alert, or rules-only
 - exact alert destination for critical events
 - exact punishment policy per check/category

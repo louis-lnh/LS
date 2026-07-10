@@ -76,7 +76,7 @@ public final class DisabledFeatureRules {
 
         String name = stack.getName().getString();
         if (isAlwaysDisabled(stack)) {
-            return Optional.of(name + " is disabled this season.");
+            return Optional.of(name + " is disabled by the Lifesteal rules.");
         }
         if (isForbiddenPotion(stack, inCombat)) {
             return Optional.of(name + " is restricted by the Lifesteal rules.");

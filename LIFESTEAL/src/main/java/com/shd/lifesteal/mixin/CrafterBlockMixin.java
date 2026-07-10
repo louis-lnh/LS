@@ -2,6 +2,7 @@ package com.shd.lifesteal.mixin;
 
 import com.shd.lifesteal.impl.restriction.MaceLimitRules;
 import com.shd.lifesteal.impl.item.HeartItem;
+import com.shd.lifesteal.impl.revival.RevivalBeaconItem;
 import com.shd.lifesteal.impl.restriction.DisabledFeatureRules;
 import java.util.Optional;
 import net.minecraft.block.BlockState;
@@ -46,5 +47,21 @@ public abstract class CrafterBlockMixin {
     @Inject(method = "transferOrSpawnStack", at = @At("HEAD"))
     private void shd$tagAutocraftedMace(ServerWorld world, BlockPos pos, CrafterBlockEntity crafter, ItemStack stack, BlockState state, RecipeEntry<?> recipe, CallbackInfo ci) {
         MaceLimitRules.markCraftedMace(stack, world.getServer(), "autocrafted at " + world.getRegistryKey().getValue() + " " + pos.toShortString());
+        if (isRevivalBeaconRecipe(crafter, stack)) {
+            RevivalBeaconItem.markRevivalBeacon(stack);
+        }
+    }
+
+    private boolean isRevivalBeaconRecipe(CrafterBlockEntity crafter, ItemStack stack) {
+        if (!stack.isOf(net.minecraft.item.Items.BEACON)) {
+            return false;
+        }
+
+        for (ItemStack inputStack : crafter.getHeldStacks()) {
+            if (inputStack.getItem() instanceof HeartItem) {
+                return true;
+            }
+        }
+        return false;
     }
 }

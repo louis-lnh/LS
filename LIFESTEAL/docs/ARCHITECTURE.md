@@ -125,16 +125,17 @@ Current disabled-feature layer:
 - Totems of Undying are removed from player inventories so they cannot trigger
 - Tipped arrows are removed from player inventories
 - Debuff potions are blocked/removed
-- Weakness potions are allowed outside combat but blocked/removed while combat tagged
+- Normal drinkable Weakness potions are allowed for curing zombie villagers; Splash, Lingering, and other non-normal Weakness variants are blocked/removed
 - Strength II or higher is blocked/removed
-- Explosive fireworks with more than 7 explosions are blocked/removed
+- All firework rockets are blocked/removed
 - PvP combat tagging applies item cooldowns to Elytras, ender pearls, and tridents
 - Ender pearls are blocked while combat tagged as a server-side backstop
-- Riptide tridents are blocked while combat tagged as a server-side backstop
-- Elytra and TNT minecarts are blocked/removed while combat tagged
-- Netherite swords and netherite axes are removed
+- Riptide tridents are blocked while combat tagged as a server-side backstop; non-Riptide tridents are not blanket-banned
+- Elytra equip/use and TNT minecarts are blocked/removed while combat tagged
+- Netherite swords, axes, spears, and armor are removed
 - Protection above 3 is clamped down to 3 on carried items/books
 - Sharpness above 4 is clamped down to 4 on carried items/books
+- Lunge is removed from carried items/books
 - Crafting/anvil/smithing result slots refuse restricted outputs before the player can take them
 - Enchanting table rolls are capped so Protection IV becomes Protection III and Sharpness V becomes Sharpness IV
 - New mace crafting/smithing outputs are refused once 2 known maces already exist
@@ -203,4 +204,4 @@ V1 should prioritize the stable gameplay loop:
 - dragon egg glowing holder effect
 - admin commands
 
-Custom heart crafting, revival rituals, stricter persistent mace tracking, End lockout, and advanced events can be layered onto this architecture later.
+The tagged vanilla Beacon revival flow, persistent mace tracking, End lockout, and advanced events are layered onto this architecture.

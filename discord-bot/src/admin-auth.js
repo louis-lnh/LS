@@ -1045,6 +1045,37 @@ function serverHelperService() {
   return { status: state, detail: parts.join(' / ') };
 }
 
+function buildAdminServerStatusPayload(limit = 60) {
+  const status = statements.getServerStatus.get();
+  const latest = status.latest ?? null;
+  const ageSeconds = latest ? Math.max(0, Math.floor((Date.now() - latest.receivedAt) / 1000)) : null;
+  const stale = ageSeconds != null && ageSeconds > config.serverAgent.staleSeconds;
+  const minecraftDown = latest?.minecraft?.serviceActive === false || latest?.minecraft?.processRunning === false || latest?.minecraft?.online === false;
+  const state = !latest
+    ? 'waiting'
+    : stale || minecraftDown || latest.minecraft?.crashDetected
+      ? 'offline'
+      : latest.issues?.length
+        ? 'warning'
+        : 'online';
+  return {
+    ok: true,
+    state,
+    ageSeconds,
+    thresholds: {
+      staleSeconds: config.serverAgent.staleSeconds,
+      maxTempC: config.serverAgent.maxTempC,
+      maxRamPercent: config.serverAgent.maxRamPercent,
+      maxDiskPercent: config.serverAgent.maxDiskPercent,
+      maxBackupAgeHours: config.serverAgent.maxBackupAgeHours
+    },
+    latest,
+    history: (status.history ?? []).slice(0, Math.max(1, Math.min(250, limit))),
+    alerts: status.alert_state ?? {},
+    generatedAt: Date.now()
+  };
+}
+
 async function announceLifestealEvent(client, event, options = {}) {
   const force = Boolean(options.force);
   if (!config.admin.lifestealEventChannelId || (!event.announce && !force)) return { ok: false, skipped: true, messageId: null };
@@ -1696,6 +1727,14 @@ export function createAdminRouter(client) {
       return res.status(403).json({ ok: false, code: 'ADMIN_WORKSPACE_DENIED', error: 'Lifesteal access required.' });
     }
     return res.json({ ok: true, events: buildAdminLifestealEvents(), updatedAt: Date.now() });
+  });
+
+  router.get('/lifesteal/server-status', requireAdminSession(client), (req, res) => {
+    if (!req.adminSession.workspaces.includes('lifesteal')) {
+      return res.status(403).json({ ok: false, code: 'ADMIN_WORKSPACE_DENIED', error: 'Lifesteal access required.' });
+    }
+    const limit = Number.parseInt(req.query.limit ?? '60', 10) || 60;
+    return res.json(buildAdminServerStatusPayload(limit));
   });
 
   router.post('/lifesteal/events', requireAdminSession(client), async (req, res) => {

@@ -138,7 +138,7 @@ public final class DisabledFeatureHandler {
                 }
 
                 if (DisabledFeatureRules.clampRestrictedEnchantments(stack)) {
-                    warn(player, stack.getName().getString() + " enchantments were reduced to the season limit.");
+                    warn(player, stack.getName().getString() + " enchantments were reduced to the Lifesteal limit.");
                     changed = true;
                 }
             }
@@ -169,7 +169,7 @@ public final class DisabledFeatureHandler {
                 }
 
                 if (DisabledFeatureRules.clampRestrictedEnchantments(stack)) {
-                    warn(player, stack.getName().getString() + " enchantments were reduced to the season limit.");
+                    warn(player, stack.getName().getString() + " enchantments were reduced to the Lifesteal limit.");
                     changed = true;
                 }
             }

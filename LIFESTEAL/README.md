@@ -37,11 +37,11 @@ The current build bundles Xerial SQLite JDBC. Fabric Loom may print a warning th
 - Temporary heart item model uses the vanilla nether star texture until the Blockbench model/texture is added
 - Combat logging while tagged drops the player's inventory and resolves the same heart transfer/elimination path as death
 - Grace commands support status/start/end/pause/resume, and grace blocks PvP damage
-- Disabled-feature enforcement blocks crystals, anchors, totems, tipped arrows, restricted potions, oversized explosive fireworks, combat pearls/elytra/TNT minecarts, combat Riptide tridents, netherite sword/axe, Protection above 3, and Sharpness above 4
+- Disabled-feature enforcement blocks crystals, anchors, totems, tipped arrows, restricted potions, all firework rockets, combat pearls/elytra/TNT minecarts, combat Riptide tridents, netherite combat gear, Protection above 3, Sharpness above 4, and all Lunge enchantments
 - PvP combat tagging applies item cooldowns to Elytras, ender pearls, and tridents; pearl use and Riptide trident use remain blocked while combat tagged as a server-side backstop
 - Mace limiting issues a hidden tracking id to every crafted/discovered mace, persists last-known locations in `config/shd-lifesteal/maces.json`, blocks player/workbench/autocrafter mace crafts once two tracked maces exist, and writes `mace-audit.log` entries for blocked or suspicious maces
 - Heart items and dragon eggs are ejected from loaded vanilla storage/bundles near players; dragon egg carriers glow
-- Dragon egg glow uses a persisted 48-hour holder timer and keeps counting while the egg is moved on the inventory cursor
+- Dragon egg glow uses a 12-hour online holder timer and keeps counting while the egg is moved on the inventory cursor
 - Placed dragon eggs and dragon eggs in item frames emit a server-particle vertical marker from Y -60 to Y 312
 - Optional Discord gameplay-role sync posts exact heart count, eliminated state, dragon egg holder, and mace holder snapshots to the Discord bot API
 
@@ -53,7 +53,7 @@ The sync is disabled by default. To enable it, set these environment variables b
 LIFESTEAL_DISCORD_ROLE_SYNC_ENDPOINT=http://localhost:3000/api/v1/gameplay/roles/sync
 LIFESTEAL_DISCORD_API_SHARED_SECRET=replace_with_the_bot_API_SHARED_SECRET
 LIFESTEAL_DISCORD_ROLE_SYNC_INTERVAL_SECONDS=60
-LIFESTEAL_DRAGON_EGG_GLOW_HOURS=48
+LIFESTEAL_DRAGON_EGG_GLOW_HOURS=12
 ```
 
 Use `localhost` only when the Discord bot is running on the same machine as the Minecraft server. If the bot is running on a VPS, point the endpoint at the public bot/API URL instead:

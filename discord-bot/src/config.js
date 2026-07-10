@@ -141,6 +141,7 @@ export const config = {
     password: process.env.MINECRAFT_RCON_PASSWORD ?? ''
   },
   serverAgent: {
+    actionsEnabled: bool('SERVER_AGENT_ACTIONS_ENABLED', false),
     staleSeconds: int('SERVER_AGENT_STALE_SECONDS', 45),
     alertCooldownSeconds: int('SERVER_AGENT_ALERT_COOLDOWN_SECONDS', 300),
     maxHistory: int('SERVER_AGENT_HISTORY_LIMIT', 120),

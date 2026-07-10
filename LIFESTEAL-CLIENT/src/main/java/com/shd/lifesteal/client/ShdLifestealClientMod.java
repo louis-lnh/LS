@@ -1,8 +1,11 @@
 package com.shd.lifesteal.client;
 
+import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
-import net.fabricmc.api.ModInitializer;
+import net.fabricmc.loader.api.FabricLoader;
+import net.fabricmc.loader.api.ModContainer;
 import net.minecraft.item.Item;
 import net.minecraft.network.RegistryByteBuf;
 import net.minecraft.network.codec.PacketCodec;
@@ -16,16 +19,13 @@ import net.minecraft.util.Rarity;
 public final class ShdLifestealClientMod implements ModInitializer {
     public static final String LIFESTEAL_MOD_ID = "shd-lifesteal";
     public static final Identifier HEART_ID = Identifier.of(LIFESTEAL_MOD_ID, "heart");
-    public static final Identifier REVIVAL_BEACON_ID = Identifier.of(LIFESTEAL_MOD_ID, "revival_beacon");
     public static final Identifier INTEGRITY_CHANNEL_ID = Identifier.of("shd-lifesteal-client", "integrity");
     public static final RegistryKey<Item> HEART_KEY = RegistryKey.of(Registries.ITEM.getKey(), HEART_ID);
-    public static final RegistryKey<Item> REVIVAL_BEACON_KEY = RegistryKey.of(Registries.ITEM.getKey(), REVIVAL_BEACON_ID);
 
     @Override
     public void onInitialize() {
         registerIntegrityChannel();
         registerHeartItem();
-        registerRevivalBeaconItem();
     }
 
     private void registerHeartItem() {
@@ -44,27 +44,32 @@ public final class ShdLifestealClientMod implements ModInitializer {
         );
     }
 
-    private void registerRevivalBeaconItem() {
-        if (Registries.ITEM.containsId(REVIVAL_BEACON_ID)) {
-            return;
-        }
-
-        Registry.register(
-                Registries.ITEM,
-                REVIVAL_BEACON_ID,
-                new Item(new Item.Settings()
-                        .registryKey(REVIVAL_BEACON_KEY)
-                        .maxCount(1)
-                        .rarity(Rarity.EPIC)
-                        .fireproof())
-        );
-    }
-
     private void registerIntegrityChannel() {
         PayloadTypeRegistry.playS2C().register(IntegrityPayload.ID, IntegrityPayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(ModReportPayload.ID, ModReportPayload.CODEC);
         ClientPlayNetworking.registerGlobalReceiver(IntegrityPayload.ID, (payload, context) -> {
             // Channel declaration is enough for server-side client-integrity checks.
         });
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> sender.sendPacket(new ModReportPayload(
+                ModReportPayload.CURRENT_PROTOCOL,
+                collectMods()
+        )));
+    }
+
+    private java.util.List<ModReportPayload.ModEntry> collectMods() {
+        return FabricLoader.getInstance().getAllMods().stream()
+                .map(this::toModEntry)
+                .sorted(java.util.Comparator.comparing(ModReportPayload.ModEntry::id))
+                .toList();
+    }
+
+    private ModReportPayload.ModEntry toModEntry(ModContainer container) {
+        var metadata = container.getMetadata();
+        return new ModReportPayload.ModEntry(
+                metadata.getId(),
+                metadata.getName(),
+                metadata.getVersion().getFriendlyString()
+        );
     }
 
     public record IntegrityPayload() implements CustomPayload {

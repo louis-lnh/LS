@@ -28,7 +28,7 @@ public final class LifestealRuleSettings {
     }
 
     public String statusText() {
-        return "static season rules active";
+        return "static beta rules active";
     }
 
     private void save() {

@@ -39,6 +39,7 @@ const initialState = {
     history: [],
     alert_state: {}
   },
+  server_actions: [],
   public_lifesteal_snapshot: {
     schema_version: 2,
     status: {
@@ -1275,6 +1276,37 @@ export const statements = {
       state.server_status.alert_state ??= {};
       state.server_status.alert_state[key] = value;
       persist();
+    }
+  },
+  listPendingServerActions: {
+    all(serverId, limit = 5) {
+      state.server_actions ??= [];
+      return structuredClone(state.server_actions
+        .filter((action) => action.serverId === serverId && action.status === 'pending')
+        .slice(0, limit));
+    }
+  },
+  upsertServerActionResult: {
+    run(result) {
+      state.server_actions ??= [];
+      const existing = state.server_actions.find((action) => action.id === result.actionId);
+      if (existing) {
+        existing.status = result.status;
+        existing.result = structuredClone(result);
+        existing.finishedAt = result.finishedAt;
+      } else {
+        state.server_actions.unshift({
+          id: result.actionId,
+          serverId: result.serverId,
+          type: result.type,
+          status: result.status,
+          result: structuredClone(result),
+          createdAt: result.startedAt,
+          finishedAt: result.finishedAt
+        });
+      }
+      persist();
+      return structuredClone(existing ?? state.server_actions[0]);
     }
   }
 };

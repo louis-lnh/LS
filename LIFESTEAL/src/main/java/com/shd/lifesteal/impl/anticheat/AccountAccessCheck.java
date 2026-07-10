@@ -9,6 +9,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.network.packet.BrandCustomPayload;
@@ -26,7 +27,10 @@ public final class AccountAccessCheck implements AntiCheatCheck {
     private final AntiCheatIdentityStore identityStore;
     private final Map<UUID, Long> pendingBrandChecks = new HashMap<>();
     private final Map<UUID, String> observedBrands = new HashMap<>();
+    private final Map<UUID, Long> pendingModReportChecks = new HashMap<>();
+    private final Set<UUID> observedModReports = new LinkedHashSet<>();
     private boolean brandReceiverRegistered;
+    private boolean modReportReceiverRegistered;
 
     public AccountAccessCheck(AntiCheatService antiCheatService, AntiCheatSettings settings, AntiCheatIdentityStore identityStore) {
         this.antiCheatService = antiCheatService;
@@ -46,6 +50,8 @@ public final class AccountAccessCheck implements AntiCheatCheck {
             UUID playerId = handler.getPlayer().getUuid();
             pendingBrandChecks.remove(playerId);
             observedBrands.remove(playerId);
+            pendingModReportChecks.remove(playerId);
+            observedModReports.remove(playerId);
         });
 
         try {
@@ -54,14 +60,31 @@ public final class AccountAccessCheck implements AntiCheatCheck {
             brandReceiverRegistered = false;
             ShdLifestealMod.LOGGER.warn("Unable to register anti-cheat client brand receiver", exception);
         }
+
+        try {
+            PayloadTypeRegistry.playC2S().register(ClientModReportPayload.ID, ClientModReportPayload.CODEC);
+            modReportReceiverRegistered = ServerPlayNetworking.registerGlobalReceiver(ClientModReportPayload.ID, (payload, context) -> onModReport(context.server(), context.player(), payload));
+        } catch (IllegalArgumentException exception) {
+            modReportReceiverRegistered = false;
+            ShdLifestealMod.LOGGER.warn("Unable to register anti-cheat client mod report receiver", exception);
+        }
     }
 
     @Override
     public void tick(AntiCheatCheckContext context) {
-        if (!settings.enabled() || !settings.clientChecksEnabled() || !settings.clientRequireBrand() || !brandReceiverRegistered) {
+        if (!settings.enabled() || !settings.clientChecksEnabled()) {
             return;
         }
 
+        if (settings.clientRequireBrand() && brandReceiverRegistered) {
+            checkPendingBrand(context);
+        }
+        if (settings.clientRequireModReport() && modReportReceiverRegistered) {
+            checkPendingModReport(context);
+        }
+    }
+
+    private void checkPendingBrand(AntiCheatCheckContext context) {
         Long checkTick = pendingBrandChecks.get(context.player().getUuid());
         if (checkTick == null) {
             return;
@@ -83,10 +106,34 @@ public final class AccountAccessCheck implements AntiCheatCheck {
         ));
     }
 
+    private void checkPendingModReport(AntiCheatCheckContext context) {
+        Long checkTick = pendingModReportChecks.get(context.player().getUuid());
+        if (checkTick == null) {
+            return;
+        }
+        if (checkTick == BRAND_CHECK_PENDING_START) {
+            pendingModReportChecks.put(context.player().getUuid(), context.tick() + settings.clientBrandGraceTicks());
+            return;
+        }
+        if (context.tick() < checkTick) {
+            return;
+        }
+        pendingModReportChecks.remove(context.player().getUuid());
+        if (observedModReports.contains(context.player().getUuid())) {
+            return;
+        }
+
+        alert(context.server(), context.player(), AntiCheatCategory.CLIENT_INTEGRITY, AntiCheatSeverity.WARNING, "client_missing_mod_report", "Missing client mod report detected", "modReport=missing graceTicks=%d".formatted(
+                settings.clientBrandGraceTicks()
+        ));
+    }
+
     @Override
     public void endServerTick(AntiCheatServerTickContext context) {
         pendingBrandChecks.keySet().removeIf(playerId -> !context.onlinePlayers().contains(playerId));
         observedBrands.keySet().removeIf(playerId -> !context.onlinePlayers().contains(playerId));
+        pendingModReportChecks.keySet().removeIf(playerId -> !context.onlinePlayers().contains(playerId));
+        observedModReports.removeIf(playerId -> !context.onlinePlayers().contains(playerId));
     }
 
     private void onJoin(MinecraftServer server, ServerPlayerEntity player) {
@@ -104,6 +151,9 @@ public final class AccountAccessCheck implements AntiCheatCheck {
             checkClientChannels(server, player);
             if (settings.clientRequireBrand() && brandReceiverRegistered) {
                 pendingBrandChecks.put(player.getUuid(), BRAND_CHECK_PENDING_START);
+            }
+            if (settings.clientRequireModReport() && modReportReceiverRegistered) {
+                pendingModReportChecks.put(player.getUuid(), BRAND_CHECK_PENDING_START);
             }
         }
     }
@@ -150,6 +200,66 @@ public final class AccountAccessCheck implements AntiCheatCheck {
             alert(server, player, AntiCheatCategory.CLIENT_INTEGRITY, AntiCheatSeverity.HIGH, "client_unapproved_brand", "Unapproved client brand detected", "brand=%s allowedBrands=%s".formatted(
                     normalizedBrand,
                     settings.clientAllowedBrands()
+            ));
+        }
+    }
+
+    private void onModReport(MinecraftServer server, ServerPlayerEntity player, ClientModReportPayload payload) {
+        if (!settings.enabled() || !settings.clientChecksEnabled()) {
+            return;
+        }
+
+        List<String> modIds = new ArrayList<>();
+        if (payload.mods() != null) {
+            for (ClientModReportPayload.ModEntry entry : payload.mods()) {
+                String id = normalizeModId(entry.id());
+                if (!id.isBlank() && !modIds.contains(id)) {
+                    modIds.add(id);
+                }
+            }
+        }
+        observedModReports.add(player.getUuid());
+        pendingModReportChecks.remove(player.getUuid());
+
+        AntiCheatIdentityStore.ModReportAssessment assessment = identityStore.recordModReport(player, modIds);
+        Set<String> currentMods = new LinkedHashSet<>(assessment.currentMods());
+
+        if (payload.protocolVersion() != 1) {
+            alert(server, player, AntiCheatCategory.CLIENT_INTEGRITY, AntiCheatSeverity.WARNING, "client_mod_report_protocol", "Unexpected client mod report protocol", "protocol=%d mods=%d".formatted(
+                    payload.protocolVersion(),
+                    currentMods.size()
+            ));
+        }
+
+        if (currentMods.isEmpty()) {
+            alert(server, player, AntiCheatCategory.CLIENT_INTEGRITY, AntiCheatSeverity.WARNING, "client_empty_mod_report", "Empty client mod report detected", "protocol=%d".formatted(payload.protocolVersion()));
+            return;
+        }
+
+        if (assessment.changed()) {
+            alert(server, player, AntiCheatCategory.CLIENT_INTEGRITY, AntiCheatSeverity.INFO, "client_mod_report_changed", "Client mod report changed", "previousCount=%d currentCount=%d added=%s removed=%s".formatted(
+                    assessment.previousMods().size(),
+                    assessment.currentMods().size(),
+                    limitStrings(difference(currentMods, new LinkedHashSet<>(assessment.previousMods()))),
+                    limitStrings(difference(new LinkedHashSet<>(assessment.previousMods()), currentMods))
+            ));
+        }
+
+        Set<String> suspicious = new LinkedHashSet<>(currentMods);
+        suspicious.retainAll(settings.clientSuspiciousModIds());
+        if (!suspicious.isEmpty()) {
+            alert(server, player, AntiCheatCategory.CLIENT_INTEGRITY, AntiCheatSeverity.WARNING, "client_suspicious_mods", "Suspicious client mods reported", "mods=%s total=%d".formatted(
+                    limitStrings(suspicious),
+                    currentMods.size()
+            ));
+        }
+
+        Set<String> blocked = new LinkedHashSet<>(currentMods);
+        blocked.retainAll(settings.clientBlockedModIds());
+        if (!blocked.isEmpty()) {
+            alert(server, player, AntiCheatCategory.CLIENT_INTEGRITY, AntiCheatSeverity.HIGH, "client_blocked_mods", "Blocked client mods reported", "mods=%s total=%d".formatted(
+                    limitStrings(blocked),
+                    currentMods.size()
             ));
         }
     }
@@ -237,6 +347,17 @@ public final class AccountAccessCheck implements AntiCheatCheck {
     private static String normalize(String value) {
         String normalized = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
         return normalized.length() <= MAX_BRAND_LENGTH ? normalized : normalized.substring(0, MAX_BRAND_LENGTH);
+    }
+
+    private static String normalizeModId(String value) {
+        String normalized = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+        return normalized.length() <= 96 ? normalized : normalized.substring(0, 96);
+    }
+
+    private static Set<String> difference(Set<String> left, Set<String> right) {
+        Set<String> values = new LinkedHashSet<>(left);
+        values.removeAll(right);
+        return values;
     }
 
     private static List<String> limitStrings(Set<String> values) {

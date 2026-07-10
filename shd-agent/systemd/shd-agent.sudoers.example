@@ -1,0 +1,12 @@
+# Install with:
+# sudo visudo -f /etc/sudoers.d/shd-agent
+#
+# Keep this allowlist narrow. Do not grant NOPASSWD: ALL.
+
+shd-agent ALL=(root) NOPASSWD: /bin/systemctl status lifesteal
+shd-agent ALL=(root) NOPASSWD: /bin/systemctl start lifesteal
+shd-agent ALL=(root) NOPASSWD: /bin/systemctl stop lifesteal
+shd-agent ALL=(root) NOPASSWD: /bin/systemctl restart lifesteal
+shd-agent ALL=(root) NOPASSWD: /opt/shd/lifesteal/scripts/backup-lifesteal.sh
+shd-agent ALL=(root) NOPASSWD: /opt/shd/lifesteal/scripts/deploy-mods.sh
+shd-agent ALL=(root) NOPASSWD: /opt/shd/lifesteal/scripts/deploy-configs.sh

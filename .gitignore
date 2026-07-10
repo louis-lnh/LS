@@ -74,3 +74,5 @@ temp/
 *.bak
 *.swp
 *.swo
+
+full_agent_list.md
