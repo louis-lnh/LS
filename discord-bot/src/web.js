@@ -195,6 +195,26 @@ const serverLogEventSchema = z.object({
   data: z.record(z.unknown()).optional()
 });
 
+const antiCheatRecordSchema = z.object({
+  evidenceId: z.string().min(2).max(40),
+  appealId: z.string().max(40).optional().nullable(),
+  minecraftUuid: z.string().min(32).max(36),
+  minecraftName: z.string().min(1).max(32),
+  shdId: z.string().max(20).optional().nullable(),
+  action: z.string().max(40),
+  category: z.string().max(80),
+  severity: z.string().max(40),
+  reasonCode: z.string().max(120),
+  publicReason: z.string().max(500),
+  world: z.string().max(120).optional().nullable(),
+  x: z.number().optional().nullable(),
+  y: z.number().optional().nullable(),
+  z: z.number().optional().nullable(),
+  context: z.string().max(4000).optional().nullable(),
+  occurredAt: z.string().max(80),
+  expiresAt: z.string().max(80).optional().nullable()
+});
+
 const supportRulesAckSchema = z.object({
   project: z.enum(['lifesteal']).default('lifesteal')
 });
@@ -1780,6 +1800,34 @@ export function startWebServer(client) {
         }
       });
       res.json({ ok: true, receivedAt: Date.now() });
+    } catch (error) {
+      res.status(400).json({ ok: false, error: validationErrorMessage(error) });
+    }
+  });
+
+  app.post('/api/v1/minecraft/anticheat-record', protectedApiRateLimit, requireApiSecret, (req, res) => {
+    try {
+      const body = antiCheatRecordSchema.parse(req.body ?? {});
+      const identity = statements.findLifestealIdentityByMinecraft.get(body.minecraftUuid);
+      const linked = findLinkedMinecraftAccount(body.minecraftUuid);
+      const shdId = body.shdId || linked?.shd_id || identity?.id || null;
+      const record = statements.upsertAntiCheatRecord.run({
+        ...body,
+        shdId,
+        receivedAt: Date.now()
+      });
+      audit('minecraft.anticheat_record', {
+        discordId: linked?.discord_id ?? identity?.discord_id ?? null,
+        minecraftUuid: body.minecraftUuid,
+        data: {
+          evidenceId: body.evidenceId,
+          appealId: body.appealId ?? null,
+          shdId,
+          action: body.action,
+          reasonCode: body.reasonCode
+        }
+      });
+      res.json({ ok: true, record, shdId, receivedAt: Date.now() });
     } catch (error) {
       res.status(400).json({ ok: false, error: validationErrorMessage(error) });
     }

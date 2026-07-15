@@ -683,6 +683,22 @@ async function openSupportAppealTicket(interaction) {
 }
 
 function findAntiCheatAppeals({ minecraftUuid, shdId }) {
+  const stored = statements.findAntiCheatRecordsForAccount.all({ minecraftUuid, shdId, limit: 10 })
+    .map((record) => ({
+      appealId: record.appeal_id,
+      evidenceId: record.evidence_id,
+      timestamp: record.occurred_at,
+      playerName: record.minecraft_name,
+      playerId: record.minecraft_uuid,
+      action: record.action,
+      reasonCode: record.reason_code,
+      publicReason: record.public_reason,
+      context: record.context ?? ''
+    }));
+  if (stored.length > 0) {
+    return stored;
+  }
+
   if (!existsSync(config.antiCheat.historyPath)) {
     return [];
   }

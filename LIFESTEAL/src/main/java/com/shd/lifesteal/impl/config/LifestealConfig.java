@@ -10,6 +10,7 @@ public record LifestealConfig(
         Duration gracePeriodDuration,
         String discordRoleSyncEndpoint,
         String discordIdentityEndpoint,
+        String discordAntiCheatRecordEndpoint,
         String discordApiSharedSecret,
         Duration discordRoleSyncInterval,
         Duration dragonEggGlowDuration
@@ -23,6 +24,7 @@ public record LifestealConfig(
                 Duration.ofMinutes(60),
                 env("LIFESTEAL_DISCORD_ROLE_SYNC_ENDPOINT", ""),
                 env("LIFESTEAL_DISCORD_IDENTITY_ENDPOINT", ""),
+                env("LIFESTEAL_DISCORD_ANTICHEAT_RECORD_ENDPOINT", ""),
                 env("LIFESTEAL_DISCORD_API_SHARED_SECRET", ""),
                 Duration.ofSeconds(envLong("LIFESTEAL_DISCORD_ROLE_SYNC_INTERVAL_SECONDS", 60)),
                 Duration.ofHours(envLong("LIFESTEAL_DRAGON_EGG_GLOW_HOURS", 12))
@@ -44,6 +46,21 @@ public record LifestealConfig(
         if (discordRoleSyncEndpoint.endsWith("/api/v1/gameplay/roles/sync")) {
             return discordRoleSyncEndpoint.substring(0, discordRoleSyncEndpoint.length() - "/api/v1/gameplay/roles/sync".length())
                     + "/api/v1/lifesteal/identity/minecraft/" + minecraftUuid;
+        }
+        return "";
+    }
+
+    public String discordAntiCheatRecordEndpoint() {
+        if (!discordAntiCheatRecordEndpoint.isBlank()) {
+            return discordAntiCheatRecordEndpoint;
+        }
+        if (!discordIdentityEndpoint.isBlank() && discordIdentityEndpoint.contains("/api/v1/lifesteal/identity/")) {
+            return discordIdentityEndpoint.substring(0, discordIdentityEndpoint.indexOf("/api/v1/lifesteal/identity/"))
+                    + "/api/v1/minecraft/anticheat-record";
+        }
+        if (discordRoleSyncEndpoint.endsWith("/api/v1/gameplay/roles/sync")) {
+            return discordRoleSyncEndpoint.substring(0, discordRoleSyncEndpoint.length() - "/api/v1/gameplay/roles/sync".length())
+                    + "/api/v1/minecraft/anticheat-record";
         }
         return "";
     }

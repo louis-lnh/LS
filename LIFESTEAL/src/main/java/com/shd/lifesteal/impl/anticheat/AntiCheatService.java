@@ -2,6 +2,7 @@ package com.shd.lifesteal.impl.anticheat;
 
 import com.shd.lifesteal.impl.audit.LifestealAuditLog;
 import com.shd.lifesteal.impl.config.LifestealConfig;
+import com.shd.lifesteal.ShdLifestealMod;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.util.ArrayDeque;
@@ -39,6 +40,7 @@ public final class AntiCheatService {
             .build();
     private final Deque<AntiCheatRecord> history = new ArrayDeque<>();
     private final Map<String, AntiCheatReview> reviews = new HashMap<>();
+    private boolean warnedDiscordBotSyncDisabled;
 
     public AntiCheatService(LifestealConfig config, AntiCheatSettings settings, LifestealAuditLog auditLog, AntiCheatPersistence persistence) {
         this.config = config;
@@ -82,6 +84,7 @@ public final class AntiCheatService {
         );
         remember(record);
         persistence.appendRecord(record);
+        pushRecordToDiscordBot(record);
 
         auditLog.log("anticheat", "%s category=%s severity=%s action=%s reason=%s appealId=%s %s".formatted(
                 settings.enabled() ? "detection" : "detection-disabled",
@@ -394,5 +397,52 @@ public final class AntiCheatService {
         } catch (Exception ignored) {
             return Optional.empty();
         }
+    }
+
+    private void pushRecordToDiscordBot(AntiCheatRecord record) {
+        if (!config.discordIdentityLookupEnabled()) {
+            if (!warnedDiscordBotSyncDisabled) {
+                warnedDiscordBotSyncDisabled = true;
+                ShdLifestealMod.LOGGER.warn("SHD anti-cheat Discord bot sync is disabled; missing LIFESTEAL_DISCORD_ROLE_SYNC_ENDPOINT/LIFESTEAL_DISCORD_IDENTITY_ENDPOINT or LIFESTEAL_DISCORD_API_SHARED_SECRET");
+            }
+            return;
+        }
+        String endpoint = config.discordAntiCheatRecordEndpoint();
+        if (endpoint.isBlank()) {
+            return;
+        }
+        HttpRequest request;
+        try {
+            request = HttpRequest.newBuilder(URI.create(endpoint))
+                    .header("Authorization", "Bearer " + config.discordApiSharedSecret())
+                    .header("Content-Type", "application/json")
+                    .timeout(IDENTITY_LOOKUP_TIMEOUT)
+                    .POST(HttpRequest.BodyPublishers.ofString(recordJson(record)))
+                    .build();
+        } catch (IllegalArgumentException exception) {
+            return;
+        }
+        httpClient.sendAsync(request, HttpResponse.BodyHandlers.discarding());
+    }
+
+    private static String recordJson(AntiCheatRecord record) {
+        JsonObject root = new JsonObject();
+        root.addProperty("evidenceId", record.evidence().evidenceId());
+        root.addProperty("appealId", record.appealId());
+        root.addProperty("minecraftUuid", record.evidence().playerId().toString());
+        root.addProperty("minecraftName", record.evidence().playerName());
+        root.addProperty("action", record.action().name());
+        root.addProperty("category", record.category().name());
+        root.addProperty("severity", record.severity().name());
+        root.addProperty("reasonCode", record.reasonCode());
+        root.addProperty("publicReason", record.publicReason());
+        root.addProperty("world", record.evidence().world());
+        root.addProperty("x", record.evidence().x());
+        root.addProperty("y", record.evidence().y());
+        root.addProperty("z", record.evidence().z());
+        root.addProperty("context", record.evidence().context());
+        root.addProperty("occurredAt", record.evidence().timestamp().toString());
+        root.addProperty("expiresAt", record.expiresAt() == null ? "" : record.expiresAt().toString());
+        return root.toString();
     }
 }

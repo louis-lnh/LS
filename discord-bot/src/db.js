@@ -32,6 +32,7 @@ const initialState = {
   staff_notes: [],
   shared_ip_exceptions: [],
   ticket_threads: [],
+  anti_cheat_records: [],
   notification_previews: [],
   app_settings: {},
   overlay_lifesteal_player: null,
@@ -73,6 +74,7 @@ const initialState = {
   nextAdminStaffAccessId: 1,
   nextNoteId: 1,
   nextTicketId: 1,
+  nextAntiCheatRecordId: 1,
   nextNotificationPreviewId: 1
 };
 
@@ -1018,6 +1020,52 @@ export const statements = {
       ticket.closed_at = closedAt;
       persist();
       return ticket;
+    }
+  },
+  upsertAntiCheatRecord: {
+    run(row) {
+      state.anti_cheat_records ??= [];
+      const existing = state.anti_cheat_records.find((item) => item.evidence_id === row.evidenceId);
+      const record = {
+        id: existing?.id ?? state.nextAntiCheatRecordId++,
+        evidence_id: row.evidenceId,
+        appeal_id: row.appealId ?? null,
+        minecraft_uuid: row.minecraftUuid ?? null,
+        minecraft_name: row.minecraftName ?? null,
+        shd_id: row.shdId ?? null,
+        action: row.action ?? null,
+        category: row.category ?? null,
+        severity: row.severity ?? null,
+        reason_code: row.reasonCode ?? null,
+        public_reason: row.publicReason ?? null,
+        world: row.world ?? null,
+        x: row.x ?? null,
+        y: row.y ?? null,
+        z: row.z ?? null,
+        context: row.context ?? '',
+        occurred_at: row.occurredAt ?? null,
+        expires_at: row.expiresAt ?? null,
+        received_at: row.receivedAt ?? Date.now()
+      };
+      if (existing) Object.assign(existing, record);
+      else state.anti_cheat_records.push(record);
+      persist();
+      return structuredClone(existing ?? record);
+    }
+  },
+  findAntiCheatRecordsForAccount: {
+    all({ minecraftUuid, shdId, limit = 10 }) {
+      state.anti_cheat_records ??= [];
+      const normalizedUuid = normalizeMinecraftUuid(minecraftUuid);
+      const normalizedShdId = normalizeShdId(shdId);
+      return structuredClone(state.anti_cheat_records
+        .filter((row) => row.appeal_id)
+        .filter((row) =>
+          (normalizedUuid && normalizeMinecraftUuid(row.minecraft_uuid) === normalizedUuid) ||
+          (normalizedShdId && normalizeShdId(row.shd_id) === normalizedShdId)
+        )
+        .sort((left, right) => Number(right.received_at ?? 0) - Number(left.received_at ?? 0))
+        .slice(0, Math.max(1, Math.min(50, limit))));
     }
   },
   findNotesForAccount: {
