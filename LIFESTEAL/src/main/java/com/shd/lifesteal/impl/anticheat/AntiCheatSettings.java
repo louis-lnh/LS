@@ -181,11 +181,17 @@ public final class AntiCheatSettings {
             "xaeroworldmap",
             "journeymap",
             "voxelmap",
-            "freecam",
             "baritone"
     );
     private Set<String> clientBlockedModIds = Set.of(
             "advanced-xray",
+            "advancedxray",
+            "advanced_xray",
+            "freecam",
+            "fullbrightnesstoggle",
+            "litematica",
+            "litematica-enderchest-materials",
+            "meteorclient",
             "xray",
             "meteor-client",
             "wurst"
@@ -312,6 +318,9 @@ public final class AntiCheatSettings {
     }
 
     public AntiCheatAction actionFor(AntiCheatDetection detection) {
+        if (detection.recommendedAction() != null && detection.recommendedAction().disconnectsPlayer()) {
+            return detection.recommendedAction();
+        }
         AntiCheatAction configured = categoryActions.get(detection.category());
         if (configured != null) {
             return configured;

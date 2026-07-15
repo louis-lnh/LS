@@ -150,6 +150,9 @@ export const config = {
     maxRamPercent: int('SERVER_AGENT_MAX_RAM_PERCENT', 92),
     maxBackupAgeHours: int('SERVER_AGENT_MAX_BACKUP_AGE_HOURS', 30)
   },
+  antiCheat: {
+    historyPath: process.env.ANTICHEAT_HISTORY_PATH ?? '/opt/shd/lifesteal/server/config/shd-lifesteal/anticheat-history.jsonl'
+  },
   apiSharedSecret: process.env.API_SHARED_SECRET ?? '',
   admin: {
     portalUrl: (process.env.ADMIN_PORTAL_URL ?? 'http://127.0.0.1:4177').replace(/\/+$/, ''),

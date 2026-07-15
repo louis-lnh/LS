@@ -9,9 +9,13 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.shd.lifesteal.api.HeartChangeReason;
 import com.shd.lifesteal.api.HeartChangeResult;
 import com.shd.lifesteal.api.PlayerHeartState;
+import com.shd.lifesteal.impl.anticheat.AntiCheatAction;
 import com.shd.lifesteal.impl.anticheat.AntiCheatCaseStatus;
+import com.shd.lifesteal.impl.anticheat.AntiCheatCategory;
+import com.shd.lifesteal.impl.anticheat.AntiCheatDetection;
 import com.shd.lifesteal.impl.anticheat.AntiCheatRecord;
 import com.shd.lifesteal.impl.anticheat.AntiCheatService;
+import com.shd.lifesteal.impl.anticheat.AntiCheatSeverity;
 import com.shd.lifesteal.impl.audit.LifestealAuditLog;
 import com.shd.lifesteal.impl.combat.CombatTagService;
 import com.shd.lifesteal.impl.combat.CombatTagSnapshot;
@@ -36,6 +40,7 @@ import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.item.ItemStack;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
+import net.minecraft.server.PlayerConfigEntry;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 
@@ -258,7 +263,36 @@ public final class LifestealCommandRegistrar {
                                                         context.getSource(),
                                                         WhitelistedPlayerArgumentType.getPlayer(context, "player", playerResolver),
                                                         IntegerArgumentType.getInteger(context, "limit")
-                                                ))))))
+                                                )))))
+                        .then(CommandManager.literal("ingest")
+                                .then(playerArgument("player")
+                                        .then(CommandManager.argument("source", StringArgumentType.word())
+                                                .then(CommandManager.argument("check", StringArgumentType.word())
+                                                        .then(CommandManager.argument("violations", IntegerArgumentType.integer(1))
+                                                                .then(CommandManager.argument("action", StringArgumentType.word())
+                                                                        .suggests((context, builder) -> CommandSource.suggestMatching(
+                                                                                java.util.Arrays.stream(AntiCheatAction.values()).map(Enum::name).toList(),
+                                                                                builder
+                                                                        ))
+                                                                        .executes(context -> antiCheatIngest(
+                                                                                context.getSource(),
+                                                                                WhitelistedPlayerArgumentType.getPlayer(context, "player", playerResolver),
+                                                                                StringArgumentType.getString(context, "source"),
+                                                                                StringArgumentType.getString(context, "check"),
+                                                                                IntegerArgumentType.getInteger(context, "violations"),
+                                                                                StringArgumentType.getString(context, "action"),
+                                                                                ""
+                                                                        ))
+                                                                        .then(CommandManager.argument("details", StringArgumentType.greedyString())
+                                                                                .executes(context -> antiCheatIngest(
+                                                                                        context.getSource(),
+                                                                                        WhitelistedPlayerArgumentType.getPlayer(context, "player", playerResolver),
+                                                                                        StringArgumentType.getString(context, "source"),
+                                                                                        StringArgumentType.getString(context, "check"),
+                                                                                        IntegerArgumentType.getInteger(context, "violations"),
+                                                                                        StringArgumentType.getString(context, "action"),
+                                                                                        StringArgumentType.getString(context, "details")
+                                                                                ))))))))))
                 .then(CommandManager.literal("ui")
                         .then(CommandManager.literal("status")
                                 .executes(context -> uiStatus(context.getSource())))
@@ -672,6 +706,116 @@ public final class LifestealCommandRegistrar {
             source.sendFeedback(() -> Text.literal(record.compactSummary()), false);
         }
         return records.size();
+    }
+
+    private int antiCheatIngest(
+            ServerCommandSource source,
+            ResolvedPlayer player,
+            String externalSource,
+            String check,
+            int violations,
+            String action,
+            String details
+    ) {
+        ServerPlayerEntity onlinePlayer = player.onlinePlayer().orElse(null);
+        if (onlinePlayer == null) {
+            source.sendError(Text.literal("External anti-cheat ingest requires an online player: " + player.name()));
+            return 0;
+        }
+
+        AntiCheatAction requestedAction = AntiCheatAction.parse(action, null);
+        if (requestedAction == null) {
+            source.sendError(Text.literal("Unknown anti-cheat action: " + action));
+            return 0;
+        }
+
+        boolean operator = source.getServer().getPlayerManager().isOperator(new PlayerConfigEntry(onlinePlayer.getGameProfile()));
+        AntiCheatAction appliedAction = operator && requestedAction.disconnectsPlayer()
+                ? AntiCheatAction.AUDIT_ONLY
+                : requestedAction;
+        String normalizedSource = sanitizeExternalToken(externalSource);
+        String normalizedCheck = sanitizeExternalToken(check);
+        AntiCheatSeverity severity = externalSeverity(appliedAction, requestedAction, violations);
+        AntiCheatCategory category = externalCategory(normalizedSource);
+        String reasonCode = "external_%s_%s".formatted(normalizedSource, normalizedCheck);
+        String publicReason = externalPublicReason(normalizedSource, normalizedCheck, appliedAction);
+        String context = "check=external_anticheat source=%s externalCheck=%s violations=%d requestedAction=%s appliedAction=%s operatorExempt=%s details=\"%s\"".formatted(
+                normalizedSource,
+                normalizedCheck,
+                violations,
+                requestedAction,
+                appliedAction,
+                operator && requestedAction.disconnectsPlayer(),
+                cleanDetails(details)
+        );
+
+        var enforcement = antiCheatService.handle(source.getServer(), onlinePlayer, new AntiCheatDetection(
+                category,
+                severity,
+                reasonCode,
+                publicReason,
+                context,
+                appliedAction
+        ));
+        source.sendFeedback(() -> Text.literal("External anti-cheat case created: action=%s reason=%s evidence=%s appeal=%s".formatted(
+                enforcement.action(),
+                enforcement.reasonCode(),
+                enforcement.evidenceId(),
+                enforcement.appealId().isBlank() ? "none" : enforcement.appealId()
+        )), true);
+        return 1;
+    }
+
+    private static AntiCheatSeverity externalSeverity(AntiCheatAction appliedAction, AntiCheatAction requestedAction, int violations) {
+        if (requestedAction == AntiCheatAction.PERMANENT_BAN || appliedAction == AntiCheatAction.PERMANENT_BAN) {
+            return AntiCheatSeverity.CRITICAL;
+        }
+        if (requestedAction == AntiCheatAction.TEMP_BAN || appliedAction == AntiCheatAction.TEMP_BAN) {
+            return AntiCheatSeverity.HIGH;
+        }
+        if (requestedAction == AntiCheatAction.KICK || appliedAction == AntiCheatAction.KICK || violations >= 40) {
+            return AntiCheatSeverity.HIGH;
+        }
+        if (violations >= 10) {
+            return AntiCheatSeverity.WARNING;
+        }
+        return AntiCheatSeverity.INFO;
+    }
+
+    private static AntiCheatCategory externalCategory(String source) {
+        if (source.contains("grim")) {
+            return AntiCheatCategory.COMBAT;
+        }
+        if (source.contains("xray")) {
+            return AntiCheatCategory.INVENTORY;
+        }
+        return AntiCheatCategory.SYSTEM_CONSISTENCY;
+    }
+
+    private static String externalPublicReason(String source, String check, AntiCheatAction action) {
+        String label = source.equals("grim") ? "GrimAC" : source.toUpperCase(java.util.Locale.ROOT);
+        if (action == AntiCheatAction.TEMP_BAN || action == AntiCheatAction.PERMANENT_BAN || action == AntiCheatAction.KICK) {
+            return "%s unfair gameplay advantage detected".formatted(label);
+        }
+        return "%s anti-cheat review required: %s".formatted(label, check);
+    }
+
+    private static String sanitizeExternalToken(String value) {
+        String normalized = value == null ? "unknown" : value.trim().toLowerCase(java.util.Locale.ROOT);
+        normalized = normalized.replaceAll("[^a-z0-9_-]", "_");
+        normalized = normalized.replaceAll("_+", "_");
+        if (normalized.isBlank()) {
+            return "unknown";
+        }
+        return normalized.length() <= 48 ? normalized : normalized.substring(0, 48);
+    }
+
+    private static String cleanDetails(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        String cleaned = value.replaceAll("[\\r\\n\\t]+", " ").trim();
+        return cleaned.length() <= 240 ? cleaned : cleaned.substring(0, 240);
     }
 
     private int uiStatus(ServerCommandSource source) {

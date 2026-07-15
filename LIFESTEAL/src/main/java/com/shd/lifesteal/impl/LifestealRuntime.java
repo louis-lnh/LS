@@ -70,7 +70,7 @@ public final class LifestealRuntime {
             configDirectory.resolve("anticheat-reviews.jsonl")
     );
     private final AntiCheatIdentityStore antiCheatIdentityStore = new AntiCheatIdentityStore(configDirectory.resolve("anticheat-accounts.json"));
-    private final AntiCheatService antiCheatService = new AntiCheatService(antiCheatSettings, auditLog, antiCheatPersistence);
+    private final AntiCheatService antiCheatService = new AntiCheatService(config, antiCheatSettings, auditLog, antiCheatPersistence);
     private final AntiCheatCheckRunner antiCheatCheckRunner = new AntiCheatCheckRunner(antiCheatService, antiCheatSettings, antiCheatIdentityStore);
     private final SqliteLifestealRepository repository = new SqliteLifestealRepository(databasePath);
     private final UiBridgeManager uiBridgeManager = new UiBridgeManager();

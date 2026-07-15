@@ -9,6 +9,7 @@ public record LifestealConfig(
         Duration combatTagDuration,
         Duration gracePeriodDuration,
         String discordRoleSyncEndpoint,
+        String discordIdentityEndpoint,
         String discordApiSharedSecret,
         Duration discordRoleSyncInterval,
         Duration dragonEggGlowDuration
@@ -21,6 +22,7 @@ public record LifestealConfig(
                 Duration.ofSeconds(30),
                 Duration.ofMinutes(60),
                 env("LIFESTEAL_DISCORD_ROLE_SYNC_ENDPOINT", ""),
+                env("LIFESTEAL_DISCORD_IDENTITY_ENDPOINT", ""),
                 env("LIFESTEAL_DISCORD_API_SHARED_SECRET", ""),
                 Duration.ofSeconds(envLong("LIFESTEAL_DISCORD_ROLE_SYNC_INTERVAL_SECONDS", 60)),
                 Duration.ofHours(envLong("LIFESTEAL_DRAGON_EGG_GLOW_HOURS", 12))
@@ -29,6 +31,21 @@ public record LifestealConfig(
 
     public boolean discordRoleSyncEnabled() {
         return !discordRoleSyncEndpoint.isBlank() && !discordApiSharedSecret.isBlank();
+    }
+
+    public boolean discordIdentityLookupEnabled() {
+        return (!discordIdentityEndpoint.isBlank() || !discordRoleSyncEndpoint.isBlank()) && !discordApiSharedSecret.isBlank();
+    }
+
+    public String discordMinecraftIdentityEndpoint(String minecraftUuid) {
+        if (!discordIdentityEndpoint.isBlank()) {
+            return discordIdentityEndpoint.replace("{minecraftUuid}", minecraftUuid);
+        }
+        if (discordRoleSyncEndpoint.endsWith("/api/v1/gameplay/roles/sync")) {
+            return discordRoleSyncEndpoint.substring(0, discordRoleSyncEndpoint.length() - "/api/v1/gameplay/roles/sync".length())
+                    + "/api/v1/lifesteal/identity/minecraft/" + minecraftUuid;
+        }
+        return "";
     }
 
     private static String env(String name, String fallback) {

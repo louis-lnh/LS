@@ -190,6 +190,7 @@ Initial implementation status:
 - Temporary and permanent ban actions write to the real server user ban list, include appeal/evidence IDs in the ban reason, then disconnect the player with the same appeal details.
 - The service keeps a bounded loaded recent-alert history for staff review and reloads it from persistent JSONL evidence on startup.
 - Staff can inspect and operate the foundation with `/lifesteal anticheat status`, `/lifesteal anticheat reload`, `/lifesteal anticheat clear`, `/lifesteal anticheat lookup <evidenceId|appealId>`, `/lifesteal anticheat recent [limit]`, `/lifesteal anticheat player <player> [limit]`, `/lifesteal anticheat open [limit]`, `/lifesteal anticheat mark <evidenceId|appealId> <status> [note]`, and `/lifesteal anticheat note <evidenceId|appealId> <note>`.
+- External anti-cheat plugins can route enforcement into SHD evidence with `/lifesteal anticheat ingest <player> <source> <check> <violations> <action> [details]`. This lets GrimAC or Xray detections use SHD evidence IDs, appeal IDs, and player-facing disconnect messages for kick/temp-ban/ban actions.
 - A generic check runner executes reusable server anti-cheat checks once per server tick.
 - The first generic check is `movement_anomaly`, a conservative audit-first movement signal controlled by `movement.maxHorizontalPerTick` and `movement.maxVerticalPerTick`.
 - Generic combat signals now cover unusual reach, rapid attack timing, multi-target hit bursts, line-of-sight anomalies, unusual damage spikes, and impossible spectator attacks.
@@ -197,6 +198,7 @@ Initial implementation status:
 - Generic interaction signals now cover unusual block/entity reach, rapid interaction bursts, interactions while a non-player menu is open, and spectator interactions.
 - Generic account access signals now cover account name changes, name reuse across UUIDs, network-hash account clusters, and staff/operator logins.
 - Generic client integrity signals now cover client brand metadata, client brand changes, configured allowed/blocked brands, and configured required/disallowed networking channels.
+- Client mod reports distinguish suspicious mods from blocked mods. Suspicious mods alert staff only. Blocked mods create evidence and disconnect non-operator players immediately with an appeal/evidence ID so the player must remove the mod before staying online. Operators are audit-only for blocked mods so staff can test with controlled clients.
 - Generic checks can be toggled with `movement.enabled`, `combat.enabled`, `inventory.enabled`, `interaction.enabled`, `account.enabled`, and `client.enabled`.
 - Lifesteal-specific integrity checks can be toggled with `lifesteal.enabled`, `lifesteal.scanIntervalTicks`, and `lifesteal.alertCooldownTicks`.
 
@@ -400,6 +402,7 @@ Current generic client integrity coverage:
 - `client.allowedBrands` is non-empty and the observed brand is not in the allow list
 - required client networking channels are missing
 - disallowed client networking channels are declared
+- configured blocked mod IDs are reported by the SHD client mod; non-operators are kicked while operators remain audit-only for testing
 
 Client integrity config keys:
 
@@ -570,6 +573,8 @@ If an API does not exist yet, add the smallest read-only method needed.
 ## Staff Handling
 
 Staff should not be silently exempt.
+
+External plugin punishments ingested through SHD downgrade disconnecting actions to `AUDIT_ONLY` for operators. This prevents owner/admin test clients from being kicked or banned by configured Grim/Xray thresholds while still producing evidence.
 
 Staff cases should usually become audit/review events instead of automatic punishments. This catches mistakes, test commands run in the wrong environment, and compromised staff accounts without making normal administration painful.
 

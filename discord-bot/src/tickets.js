@@ -1,4 +1,8 @@
 import {
+  existsSync,
+  readFileSync
+} from 'node:fs';
+import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -142,7 +146,7 @@ export async function handleTicketInteraction(interaction) {
       return showSupportJoinModal(interaction);
     }
     if (interaction.customId === SUPPORT_APPEAL_BUTTON_ID) {
-      return showSupportAppealModal(interaction);
+      return openSupportAppealTicket(interaction);
     }
     if (interaction.customId === SUPPORT_REPORT_BUTTON_ID) {
       return showSupportReportModal(interaction);
@@ -497,32 +501,6 @@ function showSupportJoinModal(interaction) {
   return interaction.showModal(modal);
 }
 
-function showSupportAppealModal(interaction) {
-  const modal = new ModalBuilder()
-    .setCustomId(SUPPORT_APPEAL_MODAL_ID)
-    .setTitle('Ban Appeal');
-
-  const banId = new TextInputBuilder()
-    .setCustomId('ban_id')
-    .setLabel('Ban ID')
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true)
-    .setMaxLength(80);
-
-  const minecraftName = new TextInputBuilder()
-    .setCustomId('minecraft_name')
-    .setLabel('Your Minecraft username')
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true)
-    .setMaxLength(16);
-
-  modal.addComponents(
-    new ActionRowBuilder().addComponents(banId),
-    new ActionRowBuilder().addComponents(minecraftName)
-  );
-  return interaction.showModal(modal);
-}
-
 function showSupportReportModal(interaction) {
   const modal = new ModalBuilder()
     .setCustomId(SUPPORT_REPORT_MODAL_ID)
@@ -612,39 +590,54 @@ async function openSupportAppealTicket(interaction) {
     return interaction.editReply(`You already have an open appeal thread: <#${existing.thread_id}>`);
   }
 
-  const banId = interaction.fields.getTextInputValue('ban_id').trim();
-  const minecraftNameInput = interaction.fields.getTextInputValue('minecraft_name').trim();
-  const profile = await resolveMinecraftProfile(minecraftNameInput);
+  const linked = statements.findLinkedByDiscord.get(interaction.user.id);
+  const existingIdentity = statements.findLifestealIdentityByDiscord.get(interaction.user.id);
   const identity = statements.ensureLifestealIdentity.run({
     discordId: interaction.user.id,
-    minecraftUuid: profile.uuid,
-    minecraftName: profile.name,
+    minecraftUuid: linked?.minecraft_uuid ?? existingIdentity?.minecraft_uuid ?? null,
+    minecraftName: linked?.minecraft_name ?? existingIdentity?.minecraft_name ?? null,
     createdAt: Date.now()
   });
-  const thread = await createTicketThread(interaction, `appeal-${safeThreadPart(banId)}-${safeThreadPart(identity.id)}`);
+  const minecraftUuid = linked?.minecraft_uuid ?? identity.minecraft_uuid ?? null;
+  const minecraftName = linked?.minecraft_name ?? identity.minecraft_name ?? null;
+  const antiCheatAppeals = findAntiCheatAppeals({ discordId: interaction.user.id, minecraftUuid, shdId: identity.id });
+  const latestAntiCheatAppeal = antiCheatAppeals[0] ?? null;
+  const appealReference = latestAntiCheatAppeal?.appealId ?? identity.id;
+  const thread = await createTicketThread(interaction, `appeal-${safeThreadPart(appealReference)}-${safeThreadPart(identity.id)}`);
   statements.createTicketThread.run({
     type: 'lifesteal_appeal',
     threadId: thread.id,
     channelId: interaction.channel.id,
     discordId: interaction.user.id,
     shdId: identity.id,
-    minecraftUuid: profile.uuid,
-    minecraftName: profile.name,
-    answers: { banId, source: 'new_support_panel' },
+    minecraftUuid,
+    minecraftName,
+    answers: {
+      source: 'new_support_panel',
+      antiCheatAppeals: antiCheatAppeals.map(antiCheatAppealSummary)
+    },
     createdAt: Date.now()
   });
   const appeal = statements.createAppeal.run({
     discordId: interaction.user.id,
-    minecraftUuid: profile.uuid,
-    banId,
-    reason: `Appeal ticket opened for ban ID ${banId}`,
+    minecraftUuid,
+    banId: latestAntiCheatAppeal?.appealId ?? null,
+    reason: latestAntiCheatAppeal
+      ? `Appeal ticket opened for SHD anti-cheat appeal ${latestAntiCheatAppeal.appealId}`
+      : 'Appeal ticket opened from Discord support panel',
     createdAt: Date.now()
   });
 
   audit('ticket.lifesteal_appeal_created', {
     discordId: interaction.user.id,
-    minecraftUuid: profile.uuid,
-    data: { shdId: identity.id, banId, appealId: appeal.id, threadId: thread.id }
+    minecraftUuid,
+    data: {
+      shdId: identity.id,
+      appealId: appeal.id,
+      antiCheatAppealId: latestAntiCheatAppeal?.appealId ?? null,
+      evidenceId: latestAntiCheatAppeal?.evidenceId ?? null,
+      threadId: thread.id
+    }
   });
 
   await thread.send({
@@ -659,9 +652,9 @@ async function openSupportAppealTicket(interaction) {
         identityBlock({
           discordUser: interaction.user,
           shdId: identity.id,
-          minecraftName: profile.name,
-          minecraftUuid: profile.uuid,
-          extra: [`Ban ID: ${banId}`]
+          minecraftName: minecraftName ?? 'Not linked',
+          minecraftUuid: minecraftUuid ?? 'Not linked',
+          extra: antiCheatAppealLines(antiCheatAppeals)
         })
       ].join('\n'))],
     components: [ticketStaffActionRow()]
@@ -670,14 +663,112 @@ async function openSupportAppealTicket(interaction) {
   await sendTicketCreatedNotices(interaction, {
     type: 'lifesteal_appeal',
     thread,
-    minecraftName: profile.name,
+    minecraftName,
     details: [
       { name: 'SHD ID', value: identity.id, inline: true },
-      { name: 'Ban ID', value: banId, inline: true },
-      { name: 'Appeal', value: `#${appeal.id}`, inline: true }
-    ]
+      { name: 'Appeal', value: `#${appeal.id}`, inline: true },
+      latestAntiCheatAppeal ? { name: 'SHD AC Appeal ID', value: latestAntiCheatAppeal.appealId, inline: true } : null,
+      latestAntiCheatAppeal ? { name: 'Evidence ID', value: latestAntiCheatAppeal.evidenceId, inline: true } : null
+    ].filter(Boolean)
   });
+  await appealLog(interaction.client, 'Appeal Ticket Created', [
+    { name: 'User', value: `<@${interaction.user.id}>`, inline: true },
+    { name: 'SHD ID', value: identity.id, inline: true },
+    { name: 'Minecraft', value: minecraftName ?? 'Not linked', inline: true },
+    latestAntiCheatAppeal ? { name: 'SHD AC Appeal ID', value: latestAntiCheatAppeal.appealId, inline: true } : null,
+    latestAntiCheatAppeal ? { name: 'Evidence ID', value: latestAntiCheatAppeal.evidenceId, inline: true } : null,
+    { name: 'Thread', value: `<#${thread.id}>`, inline: true }
+  ].filter(Boolean));
   return interaction.editReply(`Appeal thread created: <#${thread.id}>`);
+}
+
+function findAntiCheatAppeals({ minecraftUuid, shdId }) {
+  if (!existsSync(config.antiCheat.historyPath)) {
+    return [];
+  }
+  const normalizedUuid = normalizeMinecraftUuid(minecraftUuid);
+  const normalizedShdId = normalizeShdId(shdId);
+  return readFileSync(config.antiCheat.historyPath, 'utf8')
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => parseAntiCheatRecord(line))
+    .filter(Boolean)
+    .filter((record) => record.appealId)
+    .filter((record) =>
+      (normalizedUuid && normalizeMinecraftUuid(record.playerId) === normalizedUuid) ||
+      (normalizedShdId && record.context.toUpperCase().includes(normalizedShdId))
+    )
+    .sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp))
+    .slice(0, 10);
+}
+
+function parseAntiCheatRecord(line) {
+  try {
+    const record = JSON.parse(line);
+    return {
+      appealId: String(record.appealId ?? '').trim(),
+      evidenceId: String(record.evidenceId ?? '').trim(),
+      timestamp: String(record.timestamp ?? '').trim(),
+      playerName: String(record.playerName ?? '').trim(),
+      playerId: String(record.playerId ?? '').trim(),
+      action: String(record.action ?? '').trim(),
+      reasonCode: String(record.reasonCode ?? '').trim(),
+      publicReason: String(record.publicReason ?? '').trim(),
+      context: String(record.context ?? '').trim()
+    };
+  } catch (_error) {
+    return null;
+  }
+}
+
+function antiCheatAppealLines(records) {
+  if (records.length === 0) {
+    return ['Anti-Cheat Appeal IDs: none found for this linked Minecraft account'];
+  }
+  const latest = records[0];
+  const lines = [
+    `Latest Appeal ID: ${latest.appealId}`,
+    `Latest Evidence ID: ${latest.evidenceId}`,
+    `Latest Detection: ${formatAntiCheatTimestamp(latest.timestamp)} / ${latest.reasonCode || latest.publicReason || 'unknown'}`
+  ];
+  if (records.length > 1) {
+    lines.push('Previous Appeals:');
+    for (const record of records.slice(1)) {
+      lines.push(`- ${record.appealId} / ${record.evidenceId} / ${formatAntiCheatTimestamp(record.timestamp)} / ${record.reasonCode || 'unknown'}`);
+    }
+  }
+  return lines;
+}
+
+function antiCheatAppealSummary(record) {
+  return {
+    appealId: record.appealId,
+    evidenceId: record.evidenceId,
+    timestamp: record.timestamp,
+    playerName: record.playerName,
+    playerId: record.playerId,
+    action: record.action,
+    reasonCode: record.reasonCode,
+    publicReason: record.publicReason
+  };
+}
+
+function formatAntiCheatTimestamp(value) {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    return value || 'unknown time';
+  }
+  return new Date(timestamp).toISOString();
+}
+
+function normalizeMinecraftUuid(value) {
+  return String(value ?? '').trim().toLowerCase().replaceAll('-', '');
+}
+
+function normalizeShdId(value) {
+  const raw = String(value ?? '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!raw) return '';
+  return raw.startsWith('SHD') ? raw : `SHD${raw}`;
 }
 
 async function openSupportReportTicket(interaction) {

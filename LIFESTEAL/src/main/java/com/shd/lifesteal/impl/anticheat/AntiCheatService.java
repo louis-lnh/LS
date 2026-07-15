@@ -1,6 +1,9 @@
 package com.shd.lifesteal.impl.anticheat;
 
 import com.shd.lifesteal.impl.audit.LifestealAuditLog;
+import com.shd.lifesteal.impl.config.LifestealConfig;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Date;
@@ -9,6 +12,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.io.StringReader;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Locale;
 import java.util.UUID;
@@ -20,13 +29,19 @@ import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 
 public final class AntiCheatService {
+    private static final Duration IDENTITY_LOOKUP_TIMEOUT = Duration.ofSeconds(2);
+    private final LifestealConfig config;
     private final AntiCheatSettings settings;
     private final LifestealAuditLog auditLog;
     private final AntiCheatPersistence persistence;
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(IDENTITY_LOOKUP_TIMEOUT)
+            .build();
     private final Deque<AntiCheatRecord> history = new ArrayDeque<>();
     private final Map<String, AntiCheatReview> reviews = new HashMap<>();
 
-    public AntiCheatService(AntiCheatSettings settings, LifestealAuditLog auditLog, AntiCheatPersistence persistence) {
+    public AntiCheatService(LifestealConfig config, AntiCheatSettings settings, LifestealAuditLog auditLog, AntiCheatPersistence persistence) {
+        this.config = config;
         this.settings = settings;
         this.auditLog = auditLog;
         this.persistence = persistence;
@@ -42,10 +57,10 @@ public final class AntiCheatService {
     }
 
     public AntiCheatEnforcement handle(MinecraftServer server, ServerPlayerEntity player, AntiCheatDetection detection) {
-        String evidenceId = id("ev");
+        String evidenceId = shortId("EV");
         AntiCheatEvidence evidence = AntiCheatEvidence.capture(player, evidenceId, detection.context());
         AntiCheatAction action = settings.enabled() ? settings.actionFor(detection) : AntiCheatAction.AUDIT_ONLY;
-        String appealId = action.disconnectsPlayer() ? id("ap") : "";
+        String appealId = action.disconnectsPlayer() ? shortId("AP") : "";
         Instant expiresAt = action == AntiCheatAction.TEMP_BAN ? Instant.now().plus(settings.tempBanDuration()) : null;
         AntiCheatEnforcement enforcement = new AntiCheatEnforcement(
                 action,
@@ -84,7 +99,7 @@ public final class AntiCheatService {
         }
 
         if (action.disconnectsPlayer()) {
-            player.networkHandler.disconnect(disconnectMessage(enforcement));
+            player.networkHandler.disconnect(disconnectMessage(player, enforcement));
         }
 
         return enforcement;
@@ -307,23 +322,24 @@ public final class AntiCheatService {
         );
     }
 
-    private Text disconnectMessage(AntiCheatEnforcement enforcement) {
+    private Text disconnectMessage(ServerPlayerEntity player, AntiCheatEnforcement enforcement) {
         Text header = Text.literal(title(enforcement.action())).formatted(Formatting.RED, Formatting.BOLD);
         Text reason = Text.literal("\nReason: " + enforcement.publicReason()).formatted(Formatting.WHITE);
-        Text appeal = Text.literal("\nAppeal ID: " + enforcement.appealId()).formatted(Formatting.YELLOW);
-        Text appealUrl = Text.literal("\nAppeal: " + settings.appealUrl()).formatted(Formatting.GRAY);
-        Text evidence = Text.literal("\nEvidence ID: " + enforcement.evidenceId()).formatted(Formatting.DARK_GRAY);
+        String shdId = lookupShdId(player.getUuidAsString()).orElse("");
+        String appealLine = shdId.isBlank() ? "Appeal ID: " + enforcement.appealId() : shdId + " / " + enforcement.appealId();
+        Text appeal = Text.literal("\n" + appealLine).formatted(Formatting.YELLOW);
+        Text appealInstruction = Text.literal("\nYou may appeal in Discord").formatted(Formatting.GRAY);
         Text expires = enforcement.expiresAt() == null
                 ? Text.empty()
-                : Text.literal("\nExpires: " + enforcement.expiresAt()).formatted(Formatting.GRAY);
-        return header.copy().append(reason).append(expires).append(appeal).append(appealUrl).append(evidence);
+                : Text.literal("\nSuspension ends: " + enforcement.expiresAt()).formatted(Formatting.GRAY);
+        return header.copy().append(reason).append(expires).append(appeal).append(appealInstruction);
     }
 
     private static String title(AntiCheatAction action) {
         return switch (action) {
             case KICK -> "Disconnected by SHD Anti-Cheat";
-            case TEMP_BAN -> "Temporarily banned by SHD Anti-Cheat";
-            case PERMANENT_BAN -> "Permanently banned by SHD Anti-Cheat";
+            case TEMP_BAN -> "You are temporarily suspended from playing on this server";
+            case PERMANENT_BAN -> "You are banned from playing on this server";
             default -> "SHD Anti-Cheat";
         };
     }
@@ -339,5 +355,44 @@ public final class AntiCheatService {
 
     private static String id(String prefix) {
         return prefix + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase(Locale.ROOT);
+    }
+
+    private String shortId(String prefix) {
+        for (int attempt = 0; attempt < 100; attempt++) {
+            String candidate = "%s-%04d".formatted(prefix, 1000 + java.util.concurrent.ThreadLocalRandom.current().nextInt(9000));
+            if (history.stream().noneMatch(record -> candidate.equalsIgnoreCase(record.evidence().evidenceId()) || candidate.equalsIgnoreCase(record.appealId()))) {
+                return candidate;
+            }
+        }
+        return id(prefix.toLowerCase(Locale.ROOT));
+    }
+
+    private Optional<String> lookupShdId(String minecraftUuid) {
+        if (!config.discordIdentityLookupEnabled()) {
+            return Optional.empty();
+        }
+        String endpoint = config.discordMinecraftIdentityEndpoint(minecraftUuid);
+        if (endpoint.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            HttpRequest request = HttpRequest.newBuilder(URI.create(endpoint))
+                    .header("Authorization", "Bearer " + config.discordApiSharedSecret())
+                    .timeout(IDENTITY_LOOKUP_TIMEOUT)
+                    .GET()
+                    .build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                return Optional.empty();
+            }
+            JsonObject root = JsonParser.parseReader(new StringReader(response.body())).getAsJsonObject();
+            if (!root.has("shdId") || root.get("shdId").isJsonNull()) {
+                return Optional.empty();
+            }
+            String shdId = root.get("shdId").getAsString().trim();
+            return shdId.isBlank() ? Optional.empty() : Optional.of(shdId);
+        } catch (Exception ignored) {
+            return Optional.empty();
+        }
     }
 }

@@ -63,7 +63,15 @@ public final class AccountAccessCheck implements AntiCheatCheck {
 
         try {
             PayloadTypeRegistry.playC2S().register(ClientModReportPayload.ID, ClientModReportPayload.CODEC);
-            modReportReceiverRegistered = ServerPlayNetworking.registerGlobalReceiver(ClientModReportPayload.ID, (payload, context) -> onModReport(context.server(), context.player(), payload));
+            modReportReceiverRegistered = ServerPlayNetworking.registerGlobalReceiver(ClientModReportPayload.ID, (payload, context) -> {
+                UUID playerId = context.player().getUuid();
+                context.server().execute(() -> {
+                    ServerPlayerEntity player = context.server().getPlayerManager().getPlayer(playerId);
+                    if (player != null) {
+                        onModReport(context.server(), player, payload);
+                    }
+                });
+            });
         } catch (IllegalArgumentException exception) {
             modReportReceiverRegistered = false;
             ShdLifestealMod.LOGGER.warn("Unable to register anti-cheat client mod report receiver", exception);
@@ -209,9 +217,11 @@ public final class AccountAccessCheck implements AntiCheatCheck {
             return;
         }
 
+        List<ClientModReportPayload.ModEntry> modEntries = new ArrayList<>();
         List<String> modIds = new ArrayList<>();
         if (payload.mods() != null) {
             for (ClientModReportPayload.ModEntry entry : payload.mods()) {
+                modEntries.add(entry);
                 String id = normalizeModId(entry.id());
                 if (!id.isBlank() && !modIds.contains(id)) {
                     modIds.add(id);
@@ -257,14 +267,46 @@ public final class AccountAccessCheck implements AntiCheatCheck {
             ));
         }
 
-        Set<String> blocked = new LinkedHashSet<>(currentMods);
-        blocked.retainAll(settings.clientBlockedModIds());
-        if (shouldAlertReportContents && !blocked.isEmpty()) {
+        Set<String> blocked = blockedMods(modEntries);
+        if (!blocked.isEmpty()) {
+            boolean operator = server.getPlayerManager().isOperator(new PlayerConfigEntry(player.getGameProfile()));
             alert(server, player, AntiCheatCategory.CLIENT_INTEGRITY, AntiCheatSeverity.HIGH, "client_blocked_mods", "Blocked client mods reported", "mods=%s total=%d".formatted(
                     limitStrings(blocked),
                     currentMods.size()
-            ));
+            ), operator ? AntiCheatAction.AUDIT_ONLY : AntiCheatAction.KICK);
         }
+    }
+
+    private Set<String> blockedMods(List<ClientModReportPayload.ModEntry> entries) {
+        Set<String> blocked = new LinkedHashSet<>();
+        Set<String> blockedNeedles = settings.clientBlockedModIds();
+        for (ClientModReportPayload.ModEntry entry : entries) {
+            String id = normalizeModId(entry.id());
+            String name = normalizeModId(entry.name());
+            String compactName = compactModToken(name);
+            if (matchesBlockedMod(id, name, compactName, blockedNeedles)) {
+                blocked.add(displayMod(entry, id, name));
+            }
+        }
+        return blocked;
+    }
+
+    private static boolean matchesBlockedMod(String id, String name, String compactName, Set<String> blockedNeedles) {
+        for (String blocked : blockedNeedles) {
+            String normalized = normalizeModId(blocked);
+            String compact = compactModToken(normalized);
+            if (id.equals(normalized) || name.equals(normalized) || compactName.equals(compact)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String displayMod(ClientModReportPayload.ModEntry entry, String id, String name) {
+        if (name.isBlank() || name.equals(id)) {
+            return id;
+        }
+        return "%s(%s)".formatted(id, name);
     }
 
     private void checkAccountAccess(MinecraftServer server, ServerPlayerEntity player, AntiCheatIdentityStore.LoginAssessment assessment) {
@@ -332,6 +374,10 @@ public final class AccountAccessCheck implements AntiCheatCheck {
     }
 
     private void alert(MinecraftServer server, ServerPlayerEntity player, AntiCheatCategory category, AntiCheatSeverity severity, String reasonCode, String publicReason, String detail) {
+        alert(server, player, category, severity, reasonCode, publicReason, detail, AntiCheatAction.AUDIT_ONLY);
+    }
+
+    private void alert(MinecraftServer server, ServerPlayerEntity player, AntiCheatCategory category, AntiCheatSeverity severity, String reasonCode, String publicReason, String detail, AntiCheatAction recommendedAction) {
         antiCheatService.handle(server, player, new AntiCheatDetection(
                 category,
                 severity,
@@ -343,7 +389,7 @@ public final class AccountAccessCheck implements AntiCheatCheck {
                         player.getUuidAsString(),
                         detail
                 ),
-                AntiCheatAction.AUDIT_ONLY
+                recommendedAction
         ));
     }
 
@@ -355,6 +401,10 @@ public final class AccountAccessCheck implements AntiCheatCheck {
     private static String normalizeModId(String value) {
         String normalized = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
         return normalized.length() <= 96 ? normalized : normalized.substring(0, 96);
+    }
+
+    private static String compactModToken(String value) {
+        return normalizeModId(value).replaceAll("[^a-z0-9]", "");
     }
 
     private static Set<String> difference(Set<String> left, Set<String> right) {
