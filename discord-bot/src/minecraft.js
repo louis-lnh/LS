@@ -50,6 +50,19 @@ export async function minecraftBan(username, reason) {
   return withRcon((rcon) => rcon.send(`ban ${username} ${cleanReason}`));
 }
 
+export async function minecraftTempBan(username, duration, reason) {
+  const cleanDuration = String(duration ?? '').trim();
+  if (!/^\d+[smhdw]$/.test(cleanDuration)) {
+    throw new Error('Temporary ban duration must look like 30m, 12h, 7d, or 1w.');
+  }
+  const cleanReason = reason?.replace(/[\r\n]/g, ' ').slice(0, 180) || 'Temporarily suspended by Discord moderation';
+  return withRcon((rcon) => rcon.send(`tempban ${username} ${cleanDuration} ${cleanReason}`));
+}
+
+export async function minecraftUnban(username) {
+  return withRcon((rcon) => rcon.send(`pardon ${username}`));
+}
+
 export async function minecraftKick(username, reason) {
   const cleanReason = reason?.replace(/[\r\n]/g, ' ').slice(0, 180) || 'Kicked by Discord moderation';
   return withRcon((rcon) => rcon.send(`kick ${username} ${cleanReason}`));

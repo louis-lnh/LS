@@ -747,13 +747,34 @@ function antiCheatAppealLines(records) {
     `Latest Evidence ID: ${latest.evidenceId}`,
     `Latest Detection: ${formatAntiCheatTimestamp(latest.timestamp)} / ${latest.reasonCode || latest.publicReason || 'unknown'}`
   ];
+  const blockedMods = antiCheatMods(latest);
+  if (blockedMods.length > 0) {
+    lines.push(`Blocked Mods: ${blockedMods.join(', ')}`);
+  }
   if (records.length > 1) {
     lines.push('Previous Appeals:');
     for (const record of records.slice(1)) {
-      lines.push(`- ${record.appealId} / ${record.evidenceId} / ${formatAntiCheatTimestamp(record.timestamp)} / ${record.reasonCode || 'unknown'}`);
+      const previousMods = antiCheatMods(record);
+      lines.push(`- ${record.appealId} / ${record.evidenceId} / ${formatAntiCheatTimestamp(record.timestamp)} / ${record.reasonCode || 'unknown'}${previousMods.length ? ` / mods: ${previousMods.join(', ')}` : ''}`);
     }
   }
   return lines;
+}
+
+function antiCheatMods(record) {
+  if (!String(record.reasonCode ?? '').includes('mod')) {
+    return [];
+  }
+  const context = String(record.context ?? '');
+  const match = context.match(/\bmods=\[(.*?)\]\s+total=/i);
+  if (!match) {
+    return [];
+  }
+  return match[1]
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .slice(0, 12);
 }
 
 function antiCheatAppealSummary(record) {
@@ -765,7 +786,8 @@ function antiCheatAppealSummary(record) {
     playerId: record.playerId,
     action: record.action,
     reasonCode: record.reasonCode,
-    publicReason: record.publicReason
+    publicReason: record.publicReason,
+    mods: antiCheatMods(record)
   };
 }
 

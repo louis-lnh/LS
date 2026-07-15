@@ -7,55 +7,12 @@ import {
 
 export const commands = [
   new SlashCommandBuilder()
-    .setName('verify')
-    .setDescription('Link your Discord account to your Minecraft account')
-    .addStringOption((option) =>
-      option
-        .setName('minecraft_name')
-        .setDescription('Your Minecraft Java username')
-        .setRequired(true)
-    ),
-  new SlashCommandBuilder()
     .setName('whois')
     .setDescription('Look up a linked account')
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
     .addUserOption((option) => option.setName('user').setDescription('Discord user to look up'))
     .addStringOption((option) =>
       option.setName('minecraft_name').setDescription('Minecraft username to look up')
-    ),
-  new SlashCommandBuilder()
-    .setName('risk')
-    .setDescription('Show a linked account risk score')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
-    .addUserOption((option) => option.setName('user').setDescription('Discord user to check'))
-    .addStringOption((option) => option.setName('minecraft_name').setDescription('Minecraft username to check')),
-  new SlashCommandBuilder()
-    .setName('risklist')
-    .setDescription('List linked accounts at or above a risk score')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
-    .addIntegerOption((option) =>
-      option.setName('threshold').setDescription('Minimum risk score').setRequired(true).setMinValue(0).setMaxValue(200)
-    ),
-  new SlashCommandBuilder()
-    .setName('signup')
-    .setDescription('Submit or view Lifesteal signup context')
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName('submit')
-        .setDescription('Submit your Lifesteal signup answers')
-        .addStringOption((option) => option.setName('minecraft_name').setDescription('Minecraft username'))
-        .addStringOption((option) => option.setName('experience').setDescription('Have you played Lifesteal before?'))
-        .addStringOption((option) => option.setName('found_server').setDescription('How did you find the server?'))
-        .addStringOption((option) => option.setName('timezone').setDescription('Timezone or region'))
-        .addBooleanOption((option) => option.setName('understands_pvp').setDescription('You understand this is competitive PvP'))
-        .addBooleanOption((option) => option.setName('agree_rules').setDescription('You agree to the rules'))
-        .addStringOption((option) => option.setName('extra').setDescription('Optional extra context'))
-    )
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName('status')
-        .setDescription('View signup answers')
-        .addUserOption((option) => option.setName('user').setDescription('Staff: user to view'))
     ),
   new SlashCommandBuilder()
     .setName('rules')
@@ -67,24 +24,6 @@ export const commands = [
         .setName('bump')
         .setDescription('Staff: bump the required rules version')
         .addStringOption((option) => option.setName('version').setDescription('New rules version').setRequired(true))
-    ),
-  new SlashCommandBuilder()
-    .setName('profile')
-    .setDescription('View or update Lifesteal profile/event data')
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName('set')
-        .setDescription('Update your profile data')
-        .addStringOption((option) => option.setName('region').setDescription('Region or timezone'))
-        .addStringOption((option) => option.setName('team').setDescription('Team name'))
-        .addStringOption((option) => option.setName('event_interest').setDescription('Event interest'))
-        .addBooleanOption((option) => option.setName('public_stats').setDescription('Opt into public stats later'))
-    )
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName('view')
-        .setDescription('View profile data')
-        .addUserOption((option) => option.setName('user').setDescription('Staff: user to view'))
     ),
   new SlashCommandBuilder()
     .setName('panel')
@@ -131,36 +70,6 @@ export const commands = [
     .setDescription('Post the Lifesteal notification role panel in this channel')
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
   new SlashCommandBuilder()
-    .setName('appeal')
-    .setDescription('Create or manage appeals')
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName('create')
-        .setDescription('Create an appeal')
-        .addStringOption((option) => option.setName('reason').setDescription('Appeal reason').setRequired(true))
-    )
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName('close')
-        .setDescription('Staff: close an appeal')
-        .addIntegerOption((option) => option.setName('id').setDescription('Appeal ID').setRequired(true))
-        .addStringOption((option) => option.setName('reason').setDescription('Close reason'))
-    )
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName('accept')
-        .setDescription('Staff: accept an appeal')
-        .addIntegerOption((option) => option.setName('id').setDescription('Appeal ID').setRequired(true))
-        .addStringOption((option) => option.setName('reason').setDescription('Decision reason'))
-    )
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName('deny')
-        .setDescription('Staff: deny an appeal')
-        .addIntegerOption((option) => option.setName('id').setDescription('Appeal ID').setRequired(true))
-        .addStringOption((option) => option.setName('reason').setDescription('Decision reason'))
-    ),
-  new SlashCommandBuilder()
     .setName('alts')
     .setDescription('Investigate likely alt accounts')
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
@@ -198,24 +107,37 @@ export const commands = [
     ),
   new SlashCommandBuilder()
     .setName('approve')
-    .setDescription('Approve a linked member or portal application')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
-    .addUserOption((option) => option.setName('user').setDescription('Linked Discord user to approve'))
-    .addStringOption((option) => option
-      .setName('application_code')
-      .setDescription('Portal application awaiting review')
-      .setAutocomplete(true))
-    .addStringOption((option) => option.setName('reason').setDescription('Approval reason')),
+    .setDescription('Staff: approve an appeal ticket and unban the player')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
   new SlashCommandBuilder()
     .setName('deny')
-    .setDescription('Deny a linked member or portal application')
+    .setDescription('Staff: deny the current ticket request')
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
-    .addUserOption((option) => option.setName('user').setDescription('Linked Discord user to deny'))
+    .addStringOption((option) => option.setName('reason').setDescription('Optional denial note')),
+  new SlashCommandBuilder()
+    .setName('acknowledge')
+    .setDescription('Staff: acknowledge a player report ticket')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
     .addStringOption((option) => option
-      .setName('application_code')
-      .setDescription('Portal application awaiting review')
-      .setAutocomplete(true))
-    .addStringOption((option) => option.setName('reason').setDescription('Denial reason')),
+      .setName('action')
+      .setDescription('What staff is doing with the report')
+      .addChoices(
+        { name: 'Acknowledged', value: 'acknowledged' },
+        { name: 'Under Investigation', value: 'investigation' },
+        { name: 'Temporary Ban Reported Player', value: 'temp_ban' },
+        { name: 'Ban Reported Player', value: 'ban' }
+      ))
+    .addStringOption((option) => option.setName('duration').setDescription('Temp ban duration, for example 12h or 7d'))
+    .addStringOption((option) => option.setName('reason').setDescription('Optional staff note')),
+  new SlashCommandBuilder()
+    .setName('close-ticket')
+    .setDescription('Staff: close the current ticket immediately')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
+  new SlashCommandBuilder()
+    .setName('add')
+    .setDescription('Staff: add a Discord user to the current ticket thread')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+    .addUserOption((option) => option.setName('user').setDescription('User to add to the ticket').setRequired(true)),
   new SlashCommandBuilder()
     .setName('sharedip')
     .setDescription('Manage approved shared-IP exceptions')
@@ -234,26 +156,6 @@ export const commands = [
         .setDescription('List shared-IP exceptions for a user')
         .addUserOption((option) => option.setName('user').setDescription('Discord user').setRequired(true))
     ),
-  new SlashCommandBuilder()
-    .setName('case')
-    .setDescription('Staff case tools')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName('close')
-        .setDescription('Close a moderation case')
-        .addIntegerOption((option) => option.setName('id').setDescription('Case ID').setRequired(true))
-        .addStringOption((option) => option.setName('reason').setDescription('Close reason'))
-    ),
-  new SlashCommandBuilder()
-    .setName('flag')
-    .setDescription('Flag or clear a linked member as suspicious')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
-    .addUserOption((option) => option.setName('user').setDescription('Discord user').setRequired(true))
-    .addBooleanOption((option) =>
-      option.setName('suspicious').setDescription('Whether the member should be flagged').setRequired(true)
-    )
-    .addStringOption((option) => option.setName('reason').setDescription('Reason')),
   new SlashCommandBuilder()
     .setName('purge')
     .setDescription('Delete recent messages in this channel')

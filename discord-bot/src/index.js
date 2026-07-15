@@ -13,7 +13,7 @@ import {
 import { assertRuntimeConfig, config } from './config.js';
 import { statements } from './db.js';
 import { appealLog, modLog, audit, securityLog, staffAuditLog } from './logger.js';
-import { minecraftBan, minecraftKick, resolveMinecraftProfile, whitelistAdd, whitelistRemove } from './minecraft.js';
+import { minecraftBan, minecraftKick, minecraftTempBan, minecraftUnban, resolveMinecraftProfile, whitelistAdd, whitelistRemove } from './minecraft.js';
 import { calculateRisk, formatRiskReasons, refreshRisk } from './risk.js';
 import { currentRulesVersion, setRulesVersion } from './settings.js';
 import { handleRulesPanelCommand, handleRulesPanelInteraction } from './rule-panels.js';
@@ -36,22 +36,21 @@ const client = new Client({
 
 const staffCommands = new Set([
   'whois',
-  'risk',
-  'risklist',
   'panel',
   'whoisid',
   'confirm',
+  'approve',
+  'deny',
+  'acknowledge',
+  'close-ticket',
+  'add',
   'discord-rules-panel',
   'lifesteal-rules-panel',
   'lifesteal-roles-panel',
   'alts',
   'history',
   'note',
-  'case',
-  'flag',
   'purge',
-  'approve',
-  'deny',
   'sharedip',
   'kick',
   'ban',
@@ -108,26 +107,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     switch (interaction.commandName) {
-      case 'verify':
-        await handleVerify(interaction);
-        break;
       case 'whois':
         await handleWhois(interaction);
         break;
-      case 'risk':
-        await handleRisk(interaction);
-        break;
-      case 'risklist':
-        await handleRiskList(interaction);
-        break;
-      case 'signup':
-        await handleSignup(interaction);
-        break;
       case 'rules':
         await handleRules(interaction);
-        break;
-      case 'profile':
-        await handleProfile(interaction);
         break;
       case 'panel':
         await handlePanelCommand(interaction);
@@ -141,6 +125,21 @@ client.on(Events.InteractionCreate, async (interaction) => {
       case 'confirm':
         await handleConfirmTicket(interaction);
         break;
+      case 'approve':
+        await handleApprove(interaction);
+        break;
+      case 'deny':
+        await handleDeny(interaction);
+        break;
+      case 'acknowledge':
+        await handleAcknowledge(interaction);
+        break;
+      case 'close-ticket':
+        await handleCloseTicketCommand(interaction);
+        break;
+      case 'add':
+        await handleAddToTicket(interaction);
+        break;
       case 'discord-rules-panel':
         await handleRulesPanelCommand(interaction, 'discord');
         break;
@@ -149,9 +148,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         break;
       case 'lifesteal-roles-panel':
         await handleRolePanelCommand(interaction);
-        break;
-      case 'appeal':
-        await handleAppeal(interaction);
         break;
       case 'alts':
         await handleAlts(interaction);
@@ -162,20 +158,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
       case 'note':
         await handleNote(interaction);
         break;
-      case 'approve':
-        await handleApprove(interaction);
-        break;
-      case 'deny':
-        await handleDeny(interaction);
-        break;
       case 'sharedip':
         await handleSharedIp(interaction);
-        break;
-      case 'case':
-        await handleCase(interaction);
-        break;
-      case 'flag':
-        await handleFlag(interaction);
         break;
       case 'purge':
         await handlePurge(interaction);
@@ -707,73 +691,88 @@ async function handleNote(interaction) {
 
 async function handleApprove(interaction) {
   await interaction.deferReply({ ephemeral: true });
-  const applicationCode = interaction.options.getString('application_code');
-  if (applicationCode) {
-    return approveSupportApplication(interaction, applicationCode);
+  const ticket = findTicketForCommand(interaction);
+  if (!ticket.ok) return interaction.editReply(ticket.message);
+  if (!['lifesteal_appeal', 'appeal'].includes(ticket.record.type)) {
+    return interaction.editReply('Use `/approve` inside an appeal ticket thread.');
+  }
+  if (!ticket.record.minecraft_name) {
+    return interaction.editReply('This appeal ticket is missing a Minecraft username.');
   }
 
-  const user = interaction.options.getUser('user');
-  if (!user) return interaction.editReply('Choose a linked Discord user or provide an application code.');
-  const reason = interaction.options.getString('reason') || 'Approved by staff';
-  const linked = statements.findLinkedByDiscord.get(user.id);
-  if (!linked) return interaction.editReply('That Discord user is not linked.');
-
-  statements.setLinkedStatus.run({
-    discordId: user.id,
-    status: 'active',
-    suspicious: 0,
-    reason,
-    rosterStatusUpdatedAt: Date.now()
-  });
-  const whitelistResult = await optionalSideEffect(client, {
-    type: 'minecraft.whitelist_add',
-    action: 'Add Minecraft whitelist entry',
-    discordId: user.id,
-    minecraftUuid: linked.minecraft_uuid,
+  const now = Date.now();
+  const appealRecord = latestAntiCheatAppeal(ticket.record);
+  const unbanResult = await optionalSideEffect(client, {
+    type: 'minecraft.unban',
+    action: 'Unban appealed Minecraft account',
+    discordId: ticket.record.discord_id,
+    minecraftUuid: ticket.record.minecraft_uuid,
     fields: [
-      { name: 'Target', value: `<@${user.id}>`, inline: true },
-      { name: 'Minecraft', value: linked.minecraft_name, inline: true },
+      { name: 'Target', value: `<@${ticket.record.discord_id}>`, inline: true },
+      { name: 'Minecraft', value: ticket.record.minecraft_name, inline: true },
       { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true }
     ],
-    run: () => whitelistAdd(linked.minecraft_name)
+    run: () => minecraftUnban(ticket.record.minecraft_name)
   });
-
-  const member = await interaction.guild.members.fetch(user.id).catch(() => null);
-  let roleResult = { ok: true };
-  if (member && config.suspiciousRoleId) {
-    roleResult = await optionalSideEffect(client, {
-      type: 'discord.role_remove.suspicious',
-      action: 'Remove suspicious Discord role',
-      discordId: user.id,
-      minecraftUuid: linked.minecraft_uuid,
-      fields: [
-        { name: 'Target', value: `<@${user.id}>`, inline: true },
-        { name: 'Role', value: `<@&${config.suspiciousRoleId}>`, inline: true },
-        { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true }
-      ],
-      run: () => member.roles.remove(config.suspiciousRoleId, reason)
+  const answers = solvedTicketAnswers(ticket.record, now, interaction.user.id, {
+    approvedAt: now,
+    approvedBy: interaction.user.id,
+    approval: 'appeal',
+    antiCheatResolution: appealRecord
+      ? {
+          appealId: appealRecord.appealId ?? null,
+          evidenceId: appealRecord.evidenceId ?? null,
+          status: 'approved',
+          resolvedAt: now,
+          resolvedBy: interaction.user.id
+        }
+      : null
+  });
+  statements.updateTicketThread.run({ threadId: ticket.record.thread_id, answers });
+  if (appealRecord) {
+    statements.resolveAntiCheatRecord.run({
+      appealId: appealRecord.appealId,
+      evidenceId: appealRecord.evidenceId,
+      status: 'approved',
+      resolvedAt: now,
+      resolvedBy: interaction.user.id,
+      note: `Approved from ticket ${ticket.record.thread_id}`
     });
   }
 
-  addCase('approve', user.id, linked.minecraft_uuid, interaction.user.id, reason);
-  audit('moderation.approve', {
-    discordId: user.id,
-    minecraftUuid: linked.minecraft_uuid,
-    data: { reason, moderatorId: interaction.user.id, whitelistOk: whitelistResult.ok, suspiciousRoleOk: roleResult.ok }
+  addCase('ticket_appeal_approved', ticket.record.discord_id, ticket.record.minecraft_uuid, interaction.user.id, 'Appeal ticket approved');
+  audit('ticket.appeal_approved', {
+    discordId: ticket.record.discord_id,
+    minecraftUuid: ticket.record.minecraft_uuid,
+    data: {
+      threadId: ticket.record.thread_id,
+      moderatorId: interaction.user.id,
+      appealId: appealRecord?.appealId ?? null,
+      evidenceId: appealRecord?.evidenceId ?? null,
+      unbanOk: unbanResult.ok
+    }
   });
-  await modLog(client, 'Linked Member Approved', [
-    { name: 'Target', value: `<@${user.id}>`, inline: true },
-    { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true },
-    { name: 'Minecraft', value: linked.minecraft_name, inline: true },
-    whitelistResult.ok ? null : { name: 'Whitelist Warning', value: whitelistResult.error },
-    roleResult.ok ? null : { name: 'Role Warning', value: roleResult.error },
-    { name: 'Reason', value: reason }
+  await modLog(client, 'Appeal Ticket Approved', [
+    { name: 'Ticket', value: `<#${ticket.record.thread_id}>`, inline: true },
+    { name: 'User', value: `<@${ticket.record.discord_id}>`, inline: true },
+    { name: 'Minecraft', value: ticket.record.minecraft_name, inline: true },
+    appealRecord?.appealId ? { name: 'Appeal ID', value: appealRecord.appealId, inline: true } : null,
+    appealRecord?.evidenceId ? { name: 'Evidence ID', value: appealRecord.evidenceId, inline: true } : null,
+    unbanResult.ok ? null : { name: 'Unban Warning', value: unbanResult.error }
   ].filter(Boolean));
-  const warnings = [
-    whitelistResult.ok ? null : `whitelist sync failed: ${whitelistResult.error}`,
-    roleResult.ok ? null : `role update failed: ${roleResult.error}`
-  ].filter(Boolean);
-  await interaction.editReply(`Approved ${user.tag} and set the link active.${warnings.length ? ` Staff warning: ${warnings.join('; ')}.` : ''}`);
+
+  await interaction.channel.send([
+    `<@${ticket.record.discord_id}> your appeal was approved.`,
+    `Minecraft: **${ticket.record.minecraft_name}**`,
+    appealRecord?.appealId ? `Appeal ID: **${appealRecord.appealId}**` : null,
+    appealRecord?.evidenceId ? `Evidence ID: **${appealRecord.evidenceId}**` : null,
+    unbanResult.ok ? 'Minecraft ban access was cleared.' : 'Staff will finish the Minecraft unban manually if needed.',
+    'This ticket will automatically close after 12 hours.'
+  ].filter(Boolean).join('\n')).catch(() => null);
+
+  return interaction.editReply(unbanResult.ok
+    ? 'Appeal approved, player unbanned, and ticket marked solved.'
+    : `Appeal approved and ticket marked solved. Unban warning: ${unbanResult.error}`);
 }
 
 async function handleApplicationAutocomplete(interaction) {
@@ -940,62 +939,187 @@ async function approveSupportApplication(interaction, codeInput) {
 
 async function handleDeny(interaction) {
   await interaction.deferReply({ ephemeral: true });
-  const applicationCode = interaction.options.getString('application_code');
-  if (applicationCode) {
-    return denySupportApplication(interaction, applicationCode);
+  const ticket = findTicketForCommand(interaction);
+  if (!ticket.ok) return interaction.editReply(ticket.message);
+
+  const now = Date.now();
+  const reason = interaction.options.getString('reason')?.trim() || 'Denied by staff';
+  statements.updateTicketThread.run({
+    threadId: ticket.record.thread_id,
+    answers: solvedTicketAnswers(ticket.record, now, interaction.user.id, {
+      deniedAt: now,
+      deniedBy: interaction.user.id,
+      denialReason: reason
+    })
+  });
+  const appealRecord = ['lifesteal_appeal', 'appeal'].includes(ticket.record.type)
+    ? latestAntiCheatAppeal(ticket.record)
+    : null;
+  if (appealRecord) {
+    statements.resolveAntiCheatRecord.run({
+      appealId: appealRecord.appealId,
+      evidenceId: appealRecord.evidenceId,
+      status: 'denied',
+      resolvedAt: now,
+      resolvedBy: interaction.user.id,
+      note: reason
+    });
   }
 
-  const user = interaction.options.getUser('user');
-  if (!user) return interaction.editReply('Choose a linked Discord user or select an application code.');
-  const reason = interaction.options.getString('reason') || 'Denied by staff';
-  const linked = statements.findLinkedByDiscord.get(user.id);
-  if (!linked) return interaction.editReply('That Discord user is not linked.');
-  if (!await confirmAction(interaction, {
-    title: 'Confirm Deny',
-    body: `Deny ${user.tag} and mark their link banned?`,
-    confirmLabel: 'Deny'
-  })) return;
-
-  statements.setLinkedStatus.run({
-    discordId: user.id,
-    status: 'banned',
-    suspicious: 1,
-    reason
+  addCase('ticket_denied', ticket.record.discord_id, ticket.record.minecraft_uuid, interaction.user.id, reason);
+  audit('ticket.denied', {
+    discordId: ticket.record.discord_id,
+    minecraftUuid: ticket.record.minecraft_uuid,
+    data: { type: ticket.record.type, threadId: ticket.record.thread_id, moderatorId: interaction.user.id, reason }
   });
-  const whitelistResult = await optionalSideEffect(client, {
-    type: 'minecraft.whitelist_remove',
-    action: 'Remove Minecraft whitelist entry',
-    discordId: user.id,
-    minecraftUuid: linked.minecraft_uuid,
-    fields: [
-      { name: 'Target', value: `<@${user.id}>`, inline: true },
-      { name: 'Minecraft', value: linked.minecraft_name, inline: true },
-      { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true }
-    ],
-    run: () => whitelistRemove(linked.minecraft_name)
-  });
-
-  addCase('deny', user.id, linked.minecraft_uuid, interaction.user.id, reason);
-  audit('moderation.deny', {
-    discordId: user.id,
-    minecraftUuid: linked.minecraft_uuid,
-    data: { reason, moderatorId: interaction.user.id, whitelistOk: whitelistResult.ok }
-  });
-  await staffAuditLog(client, 'Denied Linked Member', [
-    { name: 'Target', value: `<@${user.id}>`, inline: true },
-    { name: 'Moderator', value: `<@${interaction.user.id}>`, inline: true },
-    { name: 'Minecraft', value: linked.minecraft_name, inline: true },
-    whitelistResult.ok ? null : { name: 'Whitelist Warning', value: whitelistResult.error },
-    { name: 'Reason', value: reason }
-  ].filter(Boolean));
-  await modLog(client, 'Linked Member Denied', [
-    { name: 'Target', value: `<@${user.id}>`, inline: true },
+  await modLog(client, 'Ticket Denied', [
+    { name: 'Ticket', value: `<#${ticket.record.thread_id}>`, inline: true },
+    { name: 'Type', value: ticket.record.type, inline: true },
+    { name: 'User', value: `<@${ticket.record.discord_id}>`, inline: true },
     { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true },
-    { name: 'Minecraft', value: linked.minecraft_name, inline: true },
-    whitelistResult.ok ? null : { name: 'Whitelist Warning', value: whitelistResult.error },
+    { name: 'Reason', value: reason }
+  ]);
+
+  await interaction.channel.send([
+    `<@${ticket.record.discord_id}> this request was denied by staff.`,
+    `Reason: ${reason}`,
+    'This ticket will automatically close after 12 hours.'
+  ].join('\n')).catch(() => null);
+  return interaction.editReply('Ticket denied and marked solved.');
+}
+
+async function handleAcknowledge(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const ticket = findTicketForCommand(interaction);
+  if (!ticket.ok) return interaction.editReply(ticket.message);
+  if (!['lifesteal_report', 'report'].includes(ticket.record.type)) {
+    return interaction.editReply('Use `/acknowledge` inside a player report ticket thread.');
+  }
+
+  const now = Date.now();
+  const action = interaction.options.getString('action') || 'acknowledged';
+  const reason = interaction.options.getString('reason')?.trim() || 'Report acknowledged by staff';
+  const duration = interaction.options.getString('duration')?.trim() || '12h';
+  const reportedName = reportedMinecraftName(ticket.record);
+  let minecraftResult = { ok: true };
+
+  if (action === 'temp_ban' && !/^\d+[smhdw]$/.test(duration)) {
+    return interaction.editReply('Temporary ban duration must look like `30m`, `12h`, `7d`, or `1w`.');
+  }
+
+  if (action === 'ban' || action === 'temp_ban') {
+    if (!reportedName) {
+      return interaction.editReply('This report ticket is missing the reported player Minecraft username.');
+    }
+    minecraftResult = await optionalSideEffect(client, {
+      type: action === 'ban' ? 'minecraft.report_ban' : 'minecraft.report_tempban',
+      action: action === 'ban' ? 'Ban reported Minecraft player' : 'Temporarily ban reported Minecraft player',
+      discordId: ticket.record.discord_id,
+      minecraftUuid: ticket.record.minecraft_uuid,
+      fields: [
+        { name: 'Reported Player', value: reportedName, inline: true },
+        { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true },
+        { name: 'Reason', value: reason }
+      ],
+      run: () => action === 'ban'
+        ? minecraftBan(reportedName, reason)
+        : minecraftTempBan(reportedName, duration, reason)
+    });
+  }
+
+  statements.updateTicketThread.run({
+    threadId: ticket.record.thread_id,
+    answers: solvedTicketAnswers(ticket.record, now, interaction.user.id, {
+      acknowledgedAt: now,
+      acknowledgedBy: interaction.user.id,
+      acknowledgementAction: action,
+      acknowledgementReason: reason,
+      acknowledgementDuration: action === 'temp_ban' ? duration : null,
+      reportedMinecraftName: reportedName ?? null
+    })
+  });
+
+  addCase(`ticket_report_${action}`, ticket.record.discord_id, ticket.record.minecraft_uuid, interaction.user.id, reason);
+  audit('ticket.report_acknowledged', {
+    discordId: ticket.record.discord_id,
+    minecraftUuid: ticket.record.minecraft_uuid,
+    data: {
+      threadId: ticket.record.thread_id,
+      moderatorId: interaction.user.id,
+      action,
+      duration: action === 'temp_ban' ? duration : null,
+      reportedMinecraftName: reportedName ?? null,
+      minecraftOk: minecraftResult.ok
+    }
+  });
+  await modLog(client, 'Player Report Acknowledged', [
+    { name: 'Ticket', value: `<#${ticket.record.thread_id}>`, inline: true },
+    { name: 'Reporter', value: `<@${ticket.record.discord_id}>`, inline: true },
+    reportedName ? { name: 'Reported Player', value: reportedName, inline: true } : null,
+    { name: 'Action', value: action, inline: true },
+    action === 'temp_ban' ? { name: 'Duration', value: duration, inline: true } : null,
+    minecraftResult.ok ? null : { name: 'Minecraft Warning', value: minecraftResult.error },
     { name: 'Reason', value: reason }
   ].filter(Boolean));
-  await interaction.editReply(`Denied ${user.tag}; their link is now banned.${whitelistResult.ok ? ' Whitelist removal was applied or RCON is disabled.' : ` Staff warning: whitelist removal failed: ${whitelistResult.error}.`}`);
+
+  await interaction.channel.send([
+    `<@${ticket.record.discord_id}> your report was acknowledged by staff.`,
+    `Action: **${formatReportAction(action)}**`,
+    action === 'temp_ban' ? `Duration: **${duration}**` : null,
+    minecraftResult.ok ? null : 'Staff will finish the Minecraft action manually if needed.',
+    'This ticket will automatically close after 12 hours.'
+  ].filter(Boolean).join('\n')).catch(() => null);
+  return interaction.editReply(minecraftResult.ok
+    ? 'Report acknowledged and ticket marked solved.'
+    : `Report acknowledged and ticket marked solved. Minecraft warning: ${minecraftResult.error}`);
+}
+
+async function handleCloseTicketCommand(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const ticket = findTicketForCommand(interaction);
+  if (!ticket.ok) return interaction.editReply(ticket.message);
+  const reason = 'Ticket closed instantly by staff command.';
+  statements.closeTicketThread.run(interaction.channel.id);
+  audit('ticket.closed', {
+    discordId: ticket.record.discord_id,
+    minecraftUuid: ticket.record.minecraft_uuid,
+    data: {
+      type: ticket.record.type,
+      threadId: interaction.channel.id,
+      reason,
+      closedBy: interaction.user.id,
+      command: 'close-ticket'
+    }
+  });
+  await modLog(client, 'Ticket Closed', [
+    { name: 'Type', value: ticket.record.type, inline: true },
+    { name: 'User', value: `<@${ticket.record.discord_id}>`, inline: true },
+    { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true },
+    { name: 'Reason', value: reason }
+  ]);
+  await interaction.channel.send(`Ticket closed by <@${interaction.user.id}>.`);
+  await interaction.channel.setArchived(true, reason).catch(() => null);
+  return interaction.editReply('Ticket closed.');
+}
+
+async function handleAddToTicket(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const ticket = findTicketForCommand(interaction);
+  if (!ticket.ok) return interaction.editReply(ticket.message);
+  const user = interaction.options.getUser('user', true);
+  await interaction.channel.members.add(user.id);
+  audit('ticket.member_added', {
+    discordId: ticket.record.discord_id,
+    minecraftUuid: ticket.record.minecraft_uuid,
+    data: {
+      type: ticket.record.type,
+      threadId: ticket.record.thread_id,
+      addedUserId: user.id,
+      moderatorId: interaction.user.id
+    }
+  });
+  await interaction.channel.send(`<@${user.id}> was added to this ticket by <@${interaction.user.id}>.`).catch(() => null);
+  return interaction.editReply(`Added ${user.tag} to this ticket.`);
 }
 
 async function denySupportApplication(interaction, codeInput) {
@@ -1744,6 +1868,56 @@ function addCase(action, targetDiscordId, targetMinecraftUuid, moderatorId, reas
     reason,
     createdAt: Date.now()
   });
+}
+
+function findTicketForCommand(interaction) {
+  if (!interaction.channel?.isThread?.()) {
+    return { ok: false, message: 'Use this command inside a ticket thread.' };
+  }
+
+  const ticket = statements.findTicketByThread.get(interaction.channel.id);
+  if (!ticket) {
+    return { ok: false, message: 'No open ticket record found for this thread.' };
+  }
+
+  return { ok: true, record: ticket };
+}
+
+function solvedTicketAnswers(ticket, now, staffId, extra = {}) {
+  return {
+    ...(ticket.answers ?? {}),
+    ...extra,
+    solvedAt: now,
+    solvedBy: staffId,
+    autoCloseAt: now + 12 * 60 * 60 * 1000
+  };
+}
+
+function latestAntiCheatAppeal(ticket) {
+  const records = Array.isArray(ticket.answers?.antiCheatAppeals) ? ticket.answers.antiCheatAppeals : [];
+  return records.find((record) => record?.appealId || record?.evidenceId) ?? null;
+}
+
+function reportedMinecraftName(ticket) {
+  return [
+    ticket.answers?.reportedMinecraftName,
+    ticket.answers?.reportedPlayerName,
+    ticket.answers?.reportedName,
+    ticket.answers?.targetMinecraftName
+  ].map((value) => String(value ?? '').trim()).find(Boolean) ?? null;
+}
+
+function formatReportAction(action) {
+  switch (action) {
+    case 'ban':
+      return 'Reported player banned';
+    case 'temp_ban':
+      return 'Reported player temporarily banned';
+    case 'investigation':
+      return 'Reported player under investigation';
+    default:
+      return 'Report acknowledged';
+  }
 }
 
 function startSolvedTicketAutoArchive(client) {

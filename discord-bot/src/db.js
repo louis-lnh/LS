@@ -1045,12 +1045,34 @@ export const statements = {
         context: row.context ?? '',
         occurred_at: row.occurredAt ?? null,
         expires_at: row.expiresAt ?? null,
-        received_at: row.receivedAt ?? Date.now()
+        received_at: row.receivedAt ?? Date.now(),
+        resolution_status: existing?.resolution_status ?? null,
+        resolved_at: existing?.resolved_at ?? null,
+        resolved_by: existing?.resolved_by ?? null,
+        resolution_note: existing?.resolution_note ?? null
       };
       if (existing) Object.assign(existing, record);
       else state.anti_cheat_records.push(record);
       persist();
       return structuredClone(existing ?? record);
+    }
+  },
+  resolveAntiCheatRecord: {
+    run(row) {
+      state.anti_cheat_records ??= [];
+      const appealId = String(row.appealId ?? '').trim();
+      const evidenceId = String(row.evidenceId ?? '').trim();
+      const record = state.anti_cheat_records.find((item) =>
+        (evidenceId && item.evidence_id === evidenceId) ||
+        (appealId && item.appeal_id === appealId)
+      );
+      if (!record) return null;
+      record.resolution_status = row.status;
+      record.resolved_at = row.resolvedAt ?? Date.now();
+      record.resolved_by = row.resolvedBy ?? null;
+      record.resolution_note = row.note ?? null;
+      persist();
+      return structuredClone(record);
     }
   },
   findAntiCheatRecordsForAccount: {
