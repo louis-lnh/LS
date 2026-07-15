@@ -1,6 +1,7 @@
 package com.shd.lifesteal.client;
 
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
@@ -21,6 +22,7 @@ public final class ShdLifestealClientMod implements ModInitializer {
     public static final Identifier HEART_ID = Identifier.of(LIFESTEAL_MOD_ID, "heart");
     public static final Identifier INTEGRITY_CHANNEL_ID = Identifier.of("shd-lifesteal-client", "integrity");
     public static final RegistryKey<Item> HEART_KEY = RegistryKey.of(Registries.ITEM.getKey(), HEART_ID);
+    private int modReportResendTicks;
 
     @Override
     public void onInitialize() {
@@ -50,10 +52,25 @@ public final class ShdLifestealClientMod implements ModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(IntegrityPayload.ID, (payload, context) -> {
             // Channel declaration is enough for server-side client-integrity checks.
         });
-        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> sender.sendPacket(new ModReportPayload(
-                ModReportPayload.CURRENT_PROTOCOL,
-                collectMods()
-        )));
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
+            sender.sendPacket(modReport());
+            modReportResendTicks = 80;
+        });
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> modReportResendTicks = 0);
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            if (modReportResendTicks <= 0) {
+                return;
+            }
+
+            modReportResendTicks--;
+            if ((modReportResendTicks == 60 || modReportResendTicks == 20) && ClientPlayNetworking.canSend(ModReportPayload.ID)) {
+                ClientPlayNetworking.send(modReport());
+            }
+        });
+    }
+
+    private ModReportPayload modReport() {
+        return new ModReportPayload(ModReportPayload.CURRENT_PROTOCOL, collectMods());
     }
 
     private java.util.List<ModReportPayload.ModEntry> collectMods() {

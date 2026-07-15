@@ -152,7 +152,7 @@ public final class AccountAccessCheck implements AntiCheatCheck {
             if (settings.clientRequireBrand() && brandReceiverRegistered) {
                 pendingBrandChecks.put(player.getUuid(), BRAND_CHECK_PENDING_START);
             }
-            if (settings.clientRequireModReport() && modReportReceiverRegistered) {
+            if (settings.clientRequireModReport() && modReportReceiverRegistered && !observedModReports.contains(player.getUuid())) {
                 pendingModReportChecks.put(player.getUuid(), BRAND_CHECK_PENDING_START);
             }
         }
