@@ -1217,6 +1217,9 @@ function Landing({ liveHealth, liveLoaded, liveStatus, onNavigate }: { liveHealt
             </button>
           ))}
         </div>
+        <a className="landing-discord-link" href="https://discord.gg/yzsDAKfnue" rel="noreferrer" target="_blank">
+          Join the Discord
+        </a>
       </div>
     </section>
   )

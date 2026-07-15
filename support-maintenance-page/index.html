@@ -67,15 +67,6 @@
         width: 90rem;
       }
 
-      .site::after {
-        background: linear-gradient(135deg, transparent 0 45%, rgba(206, 48, 66, 0.18) 45% 48%, transparent 48% 100%);
-        content: "";
-        inset: 0;
-        opacity: 0.8;
-        pointer-events: none;
-        position: absolute;
-      }
-
       .hero {
         max-width: 56rem;
         position: relative;
@@ -87,6 +78,8 @@
       .hero__content {
         display: grid;
         justify-items: center;
+        margin-inline: auto;
+        width: 100%;
       }
 
       .logo {
@@ -124,7 +117,10 @@
         font-size: clamp(1rem, 2vw, 1.08rem);
         line-height: 1.8;
         margin: 1.35rem auto 0;
-        max-width: 46rem;
+        max-width: 44rem;
+        text-align: center;
+        text-wrap: pretty;
+        width: 100%;
       }
 
       .status {
@@ -140,6 +136,7 @@
         margin-top: 2rem;
         padding: 0.75rem 1rem;
         text-transform: uppercase;
+        justify-self: center;
       }
 
       .status span {
@@ -156,6 +153,7 @@
         gap: 0.7rem;
         justify-content: center;
         margin-top: 1.25rem;
+        width: 100%;
       }
 
       .workflows span {
@@ -173,6 +171,8 @@
         line-height: 1.6;
         margin: 1.5rem auto 0;
         max-width: 38rem;
+        text-align: center;
+        width: 100%;
       }
 
       @media (max-width: 640px) {

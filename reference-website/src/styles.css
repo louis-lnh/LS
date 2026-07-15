@@ -268,6 +268,29 @@ p {
   margin-top: 2.1rem;
 }
 
+.landing-discord-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.8rem;
+  margin-top: 0.9rem;
+  padding: 0.38rem 0.9rem;
+  border: 1px solid rgba(234, 212, 159, 0.42);
+  border-radius: 999px;
+  background: rgba(14, 14, 16, 0.58);
+  color: #ead49f;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.landing-discord-link:hover {
+  border-color: rgba(240, 217, 150, 0.72);
+  color: #fffaf1;
+  transform: translateY(-1px);
+}
+
 .primary-action,
 .secondary-action {
   min-height: 2.6rem;
@@ -1749,6 +1772,7 @@ tbody tr:hover {
   }
 
   .landing-actions button,
+  .landing-discord-link,
   .apply-portal-card .primary-action {
     width: 100%;
   }
