@@ -9,6 +9,7 @@ This folder stages the current build jars for testing the first UI pipeline:
 Copy these into a Fabric client/server `mods` folder for testing:
 
 - `mods/shd-lifesteal-0.1.0.jar`
+- `mods/shd-lifesteal-client-0.1.0.jar`
 - `mods/shd-core-0.1.0.jar`
 - `mods/shd-ui-client-0.1.0.jar`
 
@@ -24,9 +25,16 @@ Server:
 
 Client:
 
+- Required: `shd-lifesteal-client`
 - Required: `shd-core`
 - Required: `shd-ui-client`
 - Optional for local integrated testing: `shd-lifesteal`
+
+Client integrity check:
+
+- The client should declare `shd-lifesteal-client:integrity`.
+- The server should receive `shd-lifesteal-client:mod_report` within the anti-cheat brand grace window.
+- If operators see `client_missing_mod_report`, rebuild `LIFESTEAL-CLIENT`, rerun `stage-mods.ps1`, and make sure the refreshed `shd-lifesteal-client-0.1.0.jar` is installed in the client `mods` folder.
 
 ## Load Checks
 

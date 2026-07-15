@@ -22,6 +22,8 @@ public final class ShdLifestealClientMod implements ModInitializer {
     public static final Identifier HEART_ID = Identifier.of(LIFESTEAL_MOD_ID, "heart");
     public static final Identifier INTEGRITY_CHANNEL_ID = Identifier.of("shd-lifesteal-client", "integrity");
     public static final RegistryKey<Item> HEART_KEY = RegistryKey.of(Registries.ITEM.getKey(), HEART_ID);
+    private static final int MOD_REPORT_RETRY_TICKS = 200;
+    private static final int MOD_REPORT_RETRY_INTERVAL_TICKS = 20;
     private int modReportResendTicks;
 
     @Override
@@ -50,11 +52,10 @@ public final class ShdLifestealClientMod implements ModInitializer {
         PayloadTypeRegistry.playS2C().register(IntegrityPayload.ID, IntegrityPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(ModReportPayload.ID, ModReportPayload.CODEC);
         ClientPlayNetworking.registerGlobalReceiver(IntegrityPayload.ID, (payload, context) -> {
-            // Channel declaration is enough for server-side client-integrity checks.
+            modReportResendTicks = MOD_REPORT_RETRY_TICKS;
         });
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
-            sender.sendPacket(modReport());
-            modReportResendTicks = 80;
+            modReportResendTicks = MOD_REPORT_RETRY_TICKS;
         });
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> modReportResendTicks = 0);
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
@@ -63,7 +64,7 @@ public final class ShdLifestealClientMod implements ModInitializer {
             }
 
             modReportResendTicks--;
-            if ((modReportResendTicks == 60 || modReportResendTicks == 20) && ClientPlayNetworking.canSend(ModReportPayload.ID)) {
+            if (modReportResendTicks % MOD_REPORT_RETRY_INTERVAL_TICKS == 0 && ClientPlayNetworking.canSend(ModReportPayload.ID)) {
                 ClientPlayNetworking.send(modReport());
             }
         });
