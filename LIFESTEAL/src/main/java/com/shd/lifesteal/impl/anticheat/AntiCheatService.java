@@ -104,12 +104,65 @@ public final class AntiCheatService {
         Text message = Text.literal("[SHD AC] ").formatted(formatting(detection.severity()), Formatting.BOLD)
                 .append(Text.literal("%s %s ".formatted(detection.severity(), detection.category())).formatted(formatting(detection.severity())))
                 .append(Text.literal(player.getName().getString()).formatted(Formatting.WHITE))
-                .append(Text.literal(" %s action=%s evidence=%s".formatted(detection.reasonCode(), action, evidence.evidenceId())).formatted(Formatting.GRAY));
+                .append(Text.literal(" %s action=%s evidence=%s".formatted(detection.reasonCode(), action, evidence.evidenceId())).formatted(Formatting.GRAY))
+                .append(detailText(detection));
         server.getPlayerManager()
                 .getPlayerList()
                 .stream()
                 .filter(online -> server.getPlayerManager().isOperator(new PlayerConfigEntry(online.getGameProfile())))
                 .forEach(online -> online.sendMessage(message, false));
+    }
+
+    private static Text detailText(AntiCheatDetection detection) {
+        String detail = operatorDetail(detection);
+        return detail.isBlank()
+                ? Text.empty()
+                : Text.literal(" " + detail).formatted(Formatting.DARK_GRAY);
+    }
+
+    private static String operatorDetail(AntiCheatDetection detection) {
+        String context = detection.context();
+        if (context == null || context.isBlank()) {
+            return "";
+        }
+
+        if (detection.reasonCode().equals("client_suspicious_mods") || detection.reasonCode().equals("client_blocked_mods")) {
+            return extractContextValue(context, "mods=", " total=");
+        }
+        if (detection.reasonCode().equals("client_mod_report_changed")) {
+            String added = extractContextValue(context, "added=", " removed=");
+            String removed = extractContextValue(context, "removed=");
+            if (!added.isBlank() && !removed.isBlank()) {
+                return truncate(added + " " + removed, 120);
+            }
+        }
+
+        return "";
+    }
+
+    private static String extractContextValue(String context, String key, String... stopMarkers) {
+        int start = context.indexOf(key);
+        if (start < 0) {
+            return "";
+        }
+
+        int valueStart = start + key.length();
+        int valueEnd = context.length();
+        for (String stopMarker : stopMarkers) {
+            int candidate = context.indexOf(stopMarker, valueStart);
+            if (candidate >= 0 && candidate < valueEnd) {
+                valueEnd = candidate;
+            }
+        }
+
+        return truncate(key + context.substring(valueStart, valueEnd).trim(), 120);
+    }
+
+    private static String truncate(String value, int maxLength) {
+        if (value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, Math.max(0, maxLength - 3)) + "...";
     }
 
     public String statusText() {

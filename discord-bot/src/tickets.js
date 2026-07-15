@@ -16,9 +16,15 @@ import { hasStaffAccess } from './permissions.js';
 
 const APPEAL_BUTTON_ID = 'ticket:appeal:open';
 const JOIN_BUTTON_ID = 'ticket:join:open';
+const SUPPORT_JOIN_BUTTON_ID = 'ticket:new:join';
+const SUPPORT_APPEAL_BUTTON_ID = 'ticket:new:appeal';
+const SUPPORT_REPORT_BUTTON_ID = 'ticket:new:report';
 const CLOSE_BUTTON_ID = 'ticket:close';
 const CLAIM_BUTTON_ID = 'ticket:claim';
 const APPEAL_MODAL_ID = 'ticket:appeal:modal';
+const SUPPORT_JOIN_MODAL_ID = 'ticket:new:join:modal';
+const SUPPORT_APPEAL_MODAL_ID = 'ticket:new:appeal:modal';
+const SUPPORT_REPORT_MODAL_ID = 'ticket:new:report:modal';
 const CLOSE_MODAL_ID = 'ticket:close:modal';
 const APPLICATION_CODE_PATTERN = /\bSHD-APP-[A-Z0-9]{4,12}\b/i;
 const APPEAL_TICKETS_PAUSED = true;
@@ -29,6 +35,43 @@ export async function handlePanelCommand(interaction) {
   const type = interaction.options.getString('type', true);
   if (!interaction.channel?.threads) {
     return interaction.editReply('This channel cannot create threads.');
+  }
+
+  if (type === 'support') {
+    const embed = new EmbedBuilder()
+      .setTitle('SHD Lifesteal Support')
+      .setColor(0x35b87f)
+      .setDescription([
+        'Choose the ticket type you need.',
+        '',
+        'The bot will collect the required IDs before opening the thread so staff can start with the right context.'
+      ].join('\n'));
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(SUPPORT_JOIN_BUTTON_ID)
+        .setLabel('Apply / Join Lifesteal')
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(SUPPORT_APPEAL_BUTTON_ID)
+        .setLabel('Ban Appeal')
+        .setStyle(ButtonStyle.Danger),
+      new ButtonBuilder()
+        .setCustomId(SUPPORT_REPORT_BUTTON_ID)
+        .setLabel('Report Player')
+        .setStyle(ButtonStyle.Primary)
+    );
+
+    await interaction.channel.send({ embeds: [embed], components: [row] });
+    audit('ticket.panel_created', {
+      discordId: interaction.user.id,
+      data: { type, channelId: interaction.channel.id }
+    });
+    await modLog(interaction.client, 'Ticket Panel Created', [
+      { name: 'Type', value: type, inline: true },
+      { name: 'Channel', value: `<#${interaction.channel.id}>`, inline: true },
+      { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true }
+    ]);
+    return interaction.editReply('Support panel posted.');
   }
 
   const isAppeal = type === 'appeal';
@@ -86,6 +129,15 @@ export async function handleTicketInteraction(interaction) {
     if (interaction.customId === JOIN_BUTTON_ID) {
       return openJoinTicket(interaction);
     }
+    if (interaction.customId === SUPPORT_JOIN_BUTTON_ID) {
+      return showSupportJoinModal(interaction);
+    }
+    if (interaction.customId === SUPPORT_APPEAL_BUTTON_ID) {
+      return showSupportAppealModal(interaction);
+    }
+    if (interaction.customId === SUPPORT_REPORT_BUTTON_ID) {
+      return showSupportReportModal(interaction);
+    }
     if (interaction.customId === CLOSE_BUTTON_ID) {
       return showCloseTicketModal(interaction);
     }
@@ -102,6 +154,15 @@ export async function handleTicketInteraction(interaction) {
   }
   if (interaction.isModalSubmit() && interaction.customId === CLOSE_MODAL_ID) {
     return closeTicket(interaction);
+  }
+  if (interaction.isModalSubmit() && interaction.customId === SUPPORT_JOIN_MODAL_ID) {
+    return openSupportJoinTicket(interaction);
+  }
+  if (interaction.isModalSubmit() && interaction.customId === SUPPORT_APPEAL_MODAL_ID) {
+    return openSupportAppealTicket(interaction);
+  }
+  if (interaction.isModalSubmit() && interaction.customId === SUPPORT_REPORT_MODAL_ID) {
+    return openSupportReportTicket(interaction);
   }
 
   return false;
@@ -390,6 +451,289 @@ async function claimTicket(interaction) {
   ]);
   await interaction.channel.send(`Review claimed by <@${interaction.user.id}>.`);
   return interaction.editReply('Ticket claimed.');
+}
+
+function showSupportJoinModal(interaction) {
+  const modal = new ModalBuilder()
+    .setCustomId(SUPPORT_JOIN_MODAL_ID)
+    .setTitle('Apply / Join Lifesteal');
+
+  const minecraftName = new TextInputBuilder()
+    .setCustomId('minecraft_name')
+    .setLabel('Your Minecraft username')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(16);
+
+  modal.addComponents(new ActionRowBuilder().addComponents(minecraftName));
+  return interaction.showModal(modal);
+}
+
+function showSupportAppealModal(interaction) {
+  const modal = new ModalBuilder()
+    .setCustomId(SUPPORT_APPEAL_MODAL_ID)
+    .setTitle('Ban Appeal');
+
+  const banId = new TextInputBuilder()
+    .setCustomId('ban_id')
+    .setLabel('Ban ID')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(80);
+
+  const minecraftName = new TextInputBuilder()
+    .setCustomId('minecraft_name')
+    .setLabel('Your Minecraft username')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(16);
+
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(banId),
+    new ActionRowBuilder().addComponents(minecraftName)
+  );
+  return interaction.showModal(modal);
+}
+
+function showSupportReportModal(interaction) {
+  const modal = new ModalBuilder()
+    .setCustomId(SUPPORT_REPORT_MODAL_ID)
+    .setTitle('Report Player');
+
+  const reportedMinecraftName = new TextInputBuilder()
+    .setCustomId('reported_minecraft_name')
+    .setLabel('Minecraft username you want to report')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(16);
+
+  modal.addComponents(new ActionRowBuilder().addComponents(reportedMinecraftName));
+  return interaction.showModal(modal);
+}
+
+async function openSupportJoinTicket(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const existing = await findUsableOpenTicket(interaction, 'lifesteal_join');
+  if (existing) {
+    return interaction.editReply(`You already have an open Lifesteal join thread: <#${existing.thread_id}>`);
+  }
+
+  const minecraftNameInput = interaction.fields.getTextInputValue('minecraft_name').trim();
+  const profile = await resolveMinecraftProfile(minecraftNameInput);
+  const identity = statements.ensureLifestealIdentity.run({
+    discordId: interaction.user.id,
+    minecraftUuid: profile.uuid,
+    minecraftName: profile.name,
+    createdAt: Date.now()
+  });
+  const thread = await createTicketThread(interaction, `join-${safeThreadPart(identity.id)}-${safeThreadPart(profile.name)}`);
+  statements.createTicketThread.run({
+    type: 'lifesteal_join',
+    threadId: thread.id,
+    channelId: interaction.channel.id,
+    discordId: interaction.user.id,
+    shdId: identity.id,
+    minecraftUuid: profile.uuid,
+    minecraftName: profile.name,
+    answers: { source: 'new_support_panel' },
+    createdAt: Date.now()
+  });
+
+  audit('ticket.lifesteal_join_created', {
+    discordId: interaction.user.id,
+    minecraftUuid: profile.uuid,
+    data: { shdId: identity.id, threadId: thread.id, minecraftName: profile.name }
+  });
+
+  await thread.send({
+    content: `<@${interaction.user.id}>`,
+    embeds: [new EmbedBuilder()
+      .setTitle('Lifesteal Application')
+      .setColor(0x35b87f)
+      .setDescription([
+        `Hello <@${interaction.user.id}>, thanks for signing up to Lifesteal.`,
+        'Staff will be here if they have any questions. Keep your SHD ID because you will need it for future appeals or events.',
+        'You can always use `/whatsmyid` to see it again.',
+        '',
+        identityBlock({
+          discordUser: interaction.user,
+          shdId: identity.id,
+          minecraftName: profile.name,
+          minecraftUuid: profile.uuid
+        })
+      ].join('\n'))],
+    components: [ticketStaffActionRow()]
+  });
+
+  await sendTicketCreatedNotices(interaction, {
+    type: 'lifesteal_join',
+    thread,
+    minecraftName: profile.name,
+    details: [
+      { name: 'SHD ID', value: identity.id, inline: true },
+      { name: 'Minecraft UUID', value: profile.uuid, inline: false }
+    ]
+  });
+  return interaction.editReply(`Lifesteal application thread created: <#${thread.id}>`);
+}
+
+async function openSupportAppealTicket(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const existing = await findUsableOpenTicket(interaction, 'lifesteal_appeal');
+  if (existing) {
+    return interaction.editReply(`You already have an open appeal thread: <#${existing.thread_id}>`);
+  }
+
+  const banId = interaction.fields.getTextInputValue('ban_id').trim();
+  const minecraftNameInput = interaction.fields.getTextInputValue('minecraft_name').trim();
+  const profile = await resolveMinecraftProfile(minecraftNameInput);
+  const identity = statements.ensureLifestealIdentity.run({
+    discordId: interaction.user.id,
+    minecraftUuid: profile.uuid,
+    minecraftName: profile.name,
+    createdAt: Date.now()
+  });
+  const thread = await createTicketThread(interaction, `appeal-${safeThreadPart(banId)}-${safeThreadPart(identity.id)}`);
+  statements.createTicketThread.run({
+    type: 'lifesteal_appeal',
+    threadId: thread.id,
+    channelId: interaction.channel.id,
+    discordId: interaction.user.id,
+    shdId: identity.id,
+    minecraftUuid: profile.uuid,
+    minecraftName: profile.name,
+    answers: { banId, source: 'new_support_panel' },
+    createdAt: Date.now()
+  });
+  const appeal = statements.createAppeal.run({
+    discordId: interaction.user.id,
+    minecraftUuid: profile.uuid,
+    banId,
+    reason: `Appeal ticket opened for ban ID ${banId}`,
+    createdAt: Date.now()
+  });
+
+  audit('ticket.lifesteal_appeal_created', {
+    discordId: interaction.user.id,
+    minecraftUuid: profile.uuid,
+    data: { shdId: identity.id, banId, appealId: appeal.id, threadId: thread.id }
+  });
+
+  await thread.send({
+    content: `<@${interaction.user.id}>`,
+    embeds: [new EmbedBuilder()
+      .setTitle(`Ban Appeal #${appeal.id}`)
+      .setColor(0xff5f56)
+      .setDescription([
+        `Hello <@${interaction.user.id}>, please tell us how we can help with your appeal.`,
+        'Describe in detail what happened and add evidence if you have any. Staff will review it and determine the next step.',
+        '',
+        identityBlock({
+          discordUser: interaction.user,
+          shdId: identity.id,
+          minecraftName: profile.name,
+          minecraftUuid: profile.uuid,
+          extra: [`Ban ID: ${banId}`]
+        })
+      ].join('\n'))],
+    components: [ticketStaffActionRow()]
+  });
+
+  await sendTicketCreatedNotices(interaction, {
+    type: 'lifesteal_appeal',
+    thread,
+    minecraftName: profile.name,
+    details: [
+      { name: 'SHD ID', value: identity.id, inline: true },
+      { name: 'Ban ID', value: banId, inline: true },
+      { name: 'Appeal', value: `#${appeal.id}`, inline: true }
+    ]
+  });
+  return interaction.editReply(`Appeal thread created: <#${thread.id}>`);
+}
+
+async function openSupportReportTicket(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const reportedNameInput = interaction.fields.getTextInputValue('reported_minecraft_name').trim();
+  const reportedProfile = await resolveMinecraftProfile(reportedNameInput);
+  const linkedReporter = statements.findLinkedByDiscord.get(interaction.user.id);
+  const reporterIdentity = statements.ensureLifestealIdentity.run({
+    discordId: interaction.user.id,
+    minecraftUuid: linkedReporter?.minecraft_uuid ?? null,
+    minecraftName: linkedReporter?.minecraft_name ?? null,
+    createdAt: Date.now()
+  });
+  const reportedIdentity = statements.ensureLifestealIdentity.run({
+    minecraftUuid: reportedProfile.uuid,
+    minecraftName: reportedProfile.name,
+    createdAt: Date.now()
+  });
+  const thread = await createTicketThread(interaction, `report-${safeThreadPart(reportedProfile.name)}-${safeThreadPart(reporterIdentity.id)}`);
+  statements.createTicketThread.run({
+    type: 'lifesteal_report',
+    threadId: thread.id,
+    channelId: interaction.channel.id,
+    discordId: interaction.user.id,
+    shdId: reporterIdentity.id,
+    minecraftUuid: linkedReporter?.minecraft_uuid ?? null,
+    minecraftName: linkedReporter?.minecraft_name ?? null,
+    answers: {
+      reportedShdId: reportedIdentity.id,
+      reportedMinecraftUuid: reportedProfile.uuid,
+      reportedMinecraftName: reportedProfile.name,
+      source: 'new_support_panel'
+    },
+    createdAt: Date.now()
+  });
+
+  audit('ticket.lifesteal_report_created', {
+    discordId: interaction.user.id,
+    minecraftUuid: linkedReporter?.minecraft_uuid ?? null,
+    data: {
+      shdId: reporterIdentity.id,
+      reportedShdId: reportedIdentity.id,
+      reportedMinecraftUuid: reportedProfile.uuid,
+      threadId: thread.id
+    }
+  });
+
+  await thread.send({
+    content: `<@${interaction.user.id}>`,
+    embeds: [new EmbedBuilder()
+      .setTitle(`Player Report: ${reportedProfile.name}`)
+      .setColor(0xffb020)
+      .setDescription([
+        `Hello <@${interaction.user.id}>, tell us why you want to report **${reportedProfile.name}**.`,
+        'Describe what happened, when it happened, and include screenshots, clips, logs, or witnesses if available.',
+        '',
+        '**Reporter**',
+        identityBlock({
+          discordUser: interaction.user,
+          shdId: reporterIdentity.id,
+          minecraftName: linkedReporter?.minecraft_name ?? 'Not linked',
+          minecraftUuid: linkedReporter?.minecraft_uuid ?? 'Not linked'
+        }),
+        '',
+        '**Reported Player**',
+        identityBlock({
+          shdId: reportedIdentity.id,
+          minecraftName: reportedProfile.name,
+          minecraftUuid: reportedProfile.uuid
+        })
+      ].join('\n'))],
+    components: [ticketStaffActionRow()]
+  });
+
+  await sendTicketCreatedNotices(interaction, {
+    type: 'lifesteal_report',
+    thread,
+    minecraftName: linkedReporter?.minecraft_name ?? 'Not linked',
+    details: [
+      { name: 'Reporter SHD ID', value: reporterIdentity.id, inline: true },
+      { name: 'Reported', value: `${reportedProfile.name} / ${reportedIdentity.id}`, inline: true }
+    ]
+  });
+  return interaction.editReply(`Player report thread created: <#${thread.id}>`);
 }
 
 function showAppealModal(interaction) {
@@ -719,4 +1063,15 @@ function safeThreadPart(value) {
     .replace(/[^a-z0-9_-]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 32) || 'ticket';
+}
+
+function identityBlock({ discordUser = null, shdId, minecraftName, minecraftUuid, extra = [] }) {
+  return [
+    discordUser ? `Discord Username: ${discordUser.tag ?? discordUser.username}` : null,
+    discordUser ? `Discord User ID: ${discordUser.id}` : null,
+    shdId ? `User SHD ID: ${shdId}` : null,
+    minecraftName ? `Minecraft Name: ${minecraftName}` : null,
+    minecraftUuid ? `Minecraft UUID: ${minecraftUuid}` : null,
+    ...extra
+  ].filter(Boolean).join('\n');
 }

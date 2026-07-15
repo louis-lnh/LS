@@ -218,13 +218,14 @@ public final class AccountAccessCheck implements AntiCheatCheck {
                 }
             }
         }
-        observedModReports.add(player.getUuid());
+        boolean firstReportThisSession = observedModReports.add(player.getUuid());
         pendingModReportChecks.remove(player.getUuid());
 
         AntiCheatIdentityStore.ModReportAssessment assessment = identityStore.recordModReport(player, modIds);
         Set<String> currentMods = new LinkedHashSet<>(assessment.currentMods());
+        boolean shouldAlertReportContents = firstReportThisSession || assessment.changed();
 
-        if (payload.protocolVersion() != 1) {
+        if (shouldAlertReportContents && payload.protocolVersion() != 1) {
             alert(server, player, AntiCheatCategory.CLIENT_INTEGRITY, AntiCheatSeverity.WARNING, "client_mod_report_protocol", "Unexpected client mod report protocol", "protocol=%d mods=%d".formatted(
                     payload.protocolVersion(),
                     currentMods.size()
@@ -232,7 +233,9 @@ public final class AccountAccessCheck implements AntiCheatCheck {
         }
 
         if (currentMods.isEmpty()) {
-            alert(server, player, AntiCheatCategory.CLIENT_INTEGRITY, AntiCheatSeverity.WARNING, "client_empty_mod_report", "Empty client mod report detected", "protocol=%d".formatted(payload.protocolVersion()));
+            if (shouldAlertReportContents) {
+                alert(server, player, AntiCheatCategory.CLIENT_INTEGRITY, AntiCheatSeverity.WARNING, "client_empty_mod_report", "Empty client mod report detected", "protocol=%d".formatted(payload.protocolVersion()));
+            }
             return;
         }
 
@@ -247,7 +250,7 @@ public final class AccountAccessCheck implements AntiCheatCheck {
 
         Set<String> suspicious = new LinkedHashSet<>(currentMods);
         suspicious.retainAll(settings.clientSuspiciousModIds());
-        if (!suspicious.isEmpty()) {
+        if (shouldAlertReportContents && !suspicious.isEmpty()) {
             alert(server, player, AntiCheatCategory.CLIENT_INTEGRITY, AntiCheatSeverity.WARNING, "client_suspicious_mods", "Suspicious client mods reported", "mods=%s total=%d".formatted(
                     limitStrings(suspicious),
                     currentMods.size()
@@ -256,7 +259,7 @@ public final class AccountAccessCheck implements AntiCheatCheck {
 
         Set<String> blocked = new LinkedHashSet<>(currentMods);
         blocked.retainAll(settings.clientBlockedModIds());
-        if (!blocked.isEmpty()) {
+        if (shouldAlertReportContents && !blocked.isEmpty()) {
             alert(server, player, AntiCheatCategory.CLIENT_INTEGRITY, AntiCheatSeverity.HIGH, "client_blocked_mods", "Blocked client mods reported", "mods=%s total=%d".formatted(
                     limitStrings(blocked),
                     currentMods.size()

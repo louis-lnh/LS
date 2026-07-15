@@ -1665,6 +1665,33 @@ export function startWebServer(client) {
     res.json({ linked: linked ?? null });
   });
 
+  app.get('/api/v1/lifesteal/identity/:shdId', protectedApiRateLimit, requireApiSecret, (req, res) => {
+    const identity = statements.findLifestealIdentityByShdId.get(req.params.shdId);
+    const linked = statements.findLinkedByShdId.get(req.params.shdId);
+    if (!identity && !linked) {
+      return res.status(404).json({ ok: false, error: 'SHD ID was not found.' });
+    }
+    return res.json({
+      ok: true,
+      identity: identity ?? null,
+      linked: linked ?? null
+    });
+  });
+
+  app.get('/api/v1/lifesteal/identity/minecraft/:minecraftUuid', protectedApiRateLimit, requireApiSecret, (req, res) => {
+    const identity = statements.findLifestealIdentityByMinecraft.get(req.params.minecraftUuid);
+    const linked = findLinkedMinecraftAccount(req.params.minecraftUuid);
+    if (!identity && !linked) {
+      return res.status(404).json({ ok: false, error: 'Minecraft identity was not found.' });
+    }
+    return res.json({
+      ok: true,
+      shdId: linked?.shd_id ?? identity?.id ?? null,
+      identity: identity ?? null,
+      linked: linked ?? null
+    });
+  });
+
   app.post('/api/v1/server/heartbeat', protectedApiRateLimit, requireApiSecret, async (req, res) => {
     try {
       const body = serverHeartbeatSchema.parse(req.body ?? {});
@@ -2210,10 +2237,18 @@ export function startWebServer(client) {
     });
     await minecraftLog(client, 'Minecraft Join Allowed', [
       { name: 'Discord', value: `<@${linked.discord_id}>`, inline: true },
+      { name: 'SHD ID', value: linked.shd_id ?? 'Not assigned', inline: true },
       { name: 'Minecraft', value: body.minecraftName, inline: true },
       { name: 'Risk', value: String(risk.score), inline: true }
     ]);
-    res.json({ allowed: true, discordId: linked.discord_id, status: linked.status, riskScore: risk.score, rulesVersion: currentRulesVersion() });
+    res.json({
+      allowed: true,
+      discordId: linked.discord_id,
+      shdId: linked.shd_id ?? null,
+      status: linked.status,
+      riskScore: risk.score,
+      rulesVersion: currentRulesVersion()
+    });
   });
 
   app.post('/api/v1/minecraft/event', protectedApiRateLimit, requireApiSecret, async (req, res) => {

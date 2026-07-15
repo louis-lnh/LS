@@ -25,6 +25,7 @@ const initialState = {
   support_rule_acknowledgements: [],
   support_applications: [],
   support_submissions: [],
+  lifesteal_identities: [],
   lifesteal_events: [],
   admin_staff_access: [],
   appeals: [],
@@ -67,6 +68,7 @@ const initialState = {
   nextSupportRuleAckId: 1,
   nextSupportApplicationId: 1,
   nextSupportSubmissionId: 1,
+  nextShdIdentityId: 1,
   nextLifestealEventId: 1,
   nextAdminStaffAccessId: 1,
   nextNoteId: 1,
@@ -229,6 +231,13 @@ export const statements = {
       return state.linked_accounts.find((row) => row.minecraft_uuid === minecraftUuid) ?? null;
     }
   },
+  findLinkedByShdId: {
+    get(shdId) {
+      const normalized = normalizeShdId(shdId);
+      if (!normalized) return null;
+      return state.linked_accounts.find((row) => normalizeShdId(row.shd_id) === normalized) ?? null;
+    }
+  },
   findLinkedByIp: {
     all(ipHash, discordId) {
       return state.linked_accounts.filter((row) => row.ip_hash === ipHash && row.discord_id !== discordId);
@@ -260,6 +269,7 @@ export const statements = {
 
       upsertBy('linked_accounts', 'discord_id', {
         discord_id: row.discordId,
+        shd_id: row.shdId ?? existingLinked?.shd_id ?? null,
         minecraft_uuid: row.minecraftUuid,
         minecraft_name: row.minecraftName,
         discord_username: row.discordUsername ?? null,
@@ -882,6 +892,62 @@ export const statements = {
       return state.shared_ip_exceptions.find((row) => row.discord_id_a === users[0] && row.discord_id_b === users[1]) ?? null;
     }
   },
+  ensureLifestealIdentity: {
+    run(row) {
+      state.lifesteal_identities ??= [];
+      let identity = state.lifesteal_identities.find((item) =>
+        (row.discordId && item.discord_id === row.discordId) ||
+        (row.minecraftUuid && sameMinecraftUuid(item.minecraft_uuid, row.minecraftUuid))
+      );
+      if (!identity) {
+        identity = {
+          id: nextShdId(),
+          discord_id: row.discordId ?? null,
+          minecraft_uuid: row.minecraftUuid ?? null,
+          minecraft_name: row.minecraftName ?? null,
+          created_at: row.createdAt ?? Date.now(),
+          updated_at: row.createdAt ?? Date.now()
+        };
+        state.lifesteal_identities.push(identity);
+      } else {
+        identity.discord_id = row.discordId ?? identity.discord_id;
+        identity.minecraft_uuid = row.minecraftUuid ?? identity.minecraft_uuid;
+        identity.minecraft_name = row.minecraftName ?? identity.minecraft_name;
+        identity.updated_at = row.updatedAt ?? row.createdAt ?? Date.now();
+      }
+
+      const linked = row.discordId
+        ? state.linked_accounts.find((item) => item.discord_id === row.discordId)
+        : row.minecraftUuid
+          ? state.linked_accounts.find((item) => sameMinecraftUuid(item.minecraft_uuid, row.minecraftUuid))
+          : null;
+      if (linked && !linked.shd_id) {
+        linked.shd_id = identity.id;
+      }
+
+      persist();
+      return structuredClone(identity);
+    }
+  },
+  findLifestealIdentityByDiscord: {
+    get(discordId) {
+      state.lifesteal_identities ??= [];
+      return structuredClone(state.lifesteal_identities.find((row) => row.discord_id === discordId) ?? null);
+    }
+  },
+  findLifestealIdentityByMinecraft: {
+    get(minecraftUuid) {
+      state.lifesteal_identities ??= [];
+      return structuredClone(state.lifesteal_identities.find((row) => sameMinecraftUuid(row.minecraft_uuid, minecraftUuid)) ?? null);
+    }
+  },
+  findLifestealIdentityByShdId: {
+    get(shdId) {
+      state.lifesteal_identities ??= [];
+      const normalized = normalizeShdId(shdId);
+      return structuredClone(state.lifesteal_identities.find((row) => normalizeShdId(row.id) === normalized) ?? null);
+    }
+  },
   createTicketThread: {
     run(row) {
       const ticket = {
@@ -890,6 +956,7 @@ export const statements = {
         thread_id: row.threadId,
         channel_id: row.channelId,
         discord_id: row.discordId,
+        shd_id: row.shdId ?? null,
         minecraft_uuid: row.minecraftUuid ?? null,
         minecraft_name: row.minecraftName ?? null,
         status: 'open',
@@ -1325,4 +1392,20 @@ function upsertHistory(table, keys, row) {
 function sameMinecraftUuid(left, right) {
   if (!left || !right) return false;
   return String(left).toLowerCase().replaceAll('-', '') === String(right).toLowerCase().replaceAll('-', '');
+}
+
+function normalizeShdId(value) {
+  const raw = String(value ?? '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!raw) return '';
+  return raw.startsWith('SHD') ? raw : `SHD${raw}`;
+}
+
+function nextShdId() {
+  state.nextShdIdentityId ??= 1;
+  state.lifesteal_identities ??= [];
+  let candidate;
+  do {
+    candidate = `SHD${String(state.nextShdIdentityId++).padStart(4, '0')}`;
+  } while (state.lifesteal_identities.some((row) => normalizeShdId(row.id) === candidate));
+  return candidate;
 }

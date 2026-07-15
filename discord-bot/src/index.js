@@ -39,6 +39,8 @@ const staffCommands = new Set([
   'risk',
   'risklist',
   'panel',
+  'whoisid',
+  'confirm',
   'discord-rules-panel',
   'lifesteal-rules-panel',
   'lifesteal-roles-panel',
@@ -128,6 +130,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
         break;
       case 'panel':
         await handlePanelCommand(interaction);
+        break;
+      case 'whatsmyid':
+        await handleWhatsMyId(interaction);
+        break;
+      case 'whoisid':
+        await handleWhoisId(interaction);
+        break;
+      case 'confirm':
+        await handleConfirmTicket(interaction);
         break;
       case 'discord-rules-panel':
         await handleRulesPanelCommand(interaction, 'discord');
@@ -273,6 +284,7 @@ async function handleWhois(interaction) {
     .setColor(risk.score >= 80 ? 0xff4d4d : linked.suspicious ? 0xffb020 : 0x35b87f)
     .addFields(
       { name: 'Discord', value: `<@${linked.discord_id}> (${linked.discord_id})`, inline: false },
+      { name: 'SHD ID', value: linked.shd_id ?? 'Not assigned', inline: true },
       { name: 'Minecraft', value: `${linked.minecraft_name} (${linked.minecraft_uuid})`, inline: false },
       { name: 'Status', value: linked.status, inline: true },
       { name: 'Risk', value: `${risk.score} (${risk.band})`, inline: true },
@@ -415,6 +427,146 @@ async function handleProfile(interaction) {
   const linked = statements.findLinkedByDiscord.get(target.id);
   if (!linked) return interaction.editReply('No linked account found.');
   await interaction.editReply(profileSummary(linked));
+}
+
+async function handleWhatsMyId(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const linked = statements.findLinkedByDiscord.get(interaction.user.id);
+  const identity = statements.findLifestealIdentityByDiscord.get(interaction.user.id);
+  const shdId = linked?.shd_id ?? identity?.id ?? null;
+  if (!shdId) {
+    return interaction.editReply('You do not have an SHD Lifesteal ID yet. Open a Lifesteal ticket first.');
+  }
+
+  return interaction.editReply([
+    `Your SHD Lifesteal ID is **${shdId}**.`,
+    linked ? `Minecraft: **${linked.minecraft_name}**` : 'Minecraft: not confirmed yet'
+  ].join('\n'));
+}
+
+async function handleWhoisId(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const shdId = normalizeShdId(interaction.options.getString('id', true));
+  const identity = statements.findLifestealIdentityByShdId.get(shdId);
+  const linked = statements.findLinkedByShdId.get(shdId);
+  if (!identity && !linked) {
+    return interaction.editReply(`No Lifesteal identity found for ${shdId}.`);
+  }
+
+  const discordId = linked?.discord_id ?? identity?.discord_id ?? null;
+  const embed = new EmbedBuilder()
+    .setTitle(`SHD Identity ${shdId}`)
+    .setColor(linked?.status === 'active' ? 0x35b87f : 0xffb020)
+    .addFields(
+      { name: 'Discord', value: discordId ? `<@${discordId}> (${discordId})` : 'Not linked', inline: false },
+      { name: 'Minecraft', value: `${linked?.minecraft_name ?? identity?.minecraft_name ?? 'Unknown'} (${linked?.minecraft_uuid ?? identity?.minecraft_uuid ?? 'no uuid'})`, inline: false },
+      { name: 'Status', value: linked?.status ?? 'identity only', inline: true },
+      { name: 'Public Stats', value: linked?.public_stats_opt_in ? 'Enabled' : 'Disabled or not linked', inline: true },
+      { name: 'Risk', value: linked ? `${linked.risk_score ?? 0} (${linked.risk_band ?? 'low'})` : 'Not linked', inline: true }
+    );
+  return interaction.editReply({ embeds: [embed] });
+}
+
+async function handleConfirmTicket(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  if (!interaction.channel?.isThread?.()) {
+    return interaction.editReply('Use `/confirm` inside a Lifesteal join ticket thread.');
+  }
+
+  const ticket = statements.findTicketByThread.get(interaction.channel.id);
+  if (!ticket) {
+    return interaction.editReply('No open ticket record found for this thread.');
+  }
+  if (ticket.type !== 'lifesteal_join') {
+    return interaction.editReply('Only Lifesteal join tickets can be confirmed with this command.');
+  }
+  if (!ticket.discord_id || !ticket.minecraft_uuid || !ticket.minecraft_name) {
+    return interaction.editReply('This ticket is missing Discord or Minecraft identity data.');
+  }
+
+  const now = Date.now();
+  const member = await interaction.guild.members.fetch(ticket.discord_id).catch(() => null);
+  const identity = statements.ensureLifestealIdentity.run({
+    discordId: ticket.discord_id,
+    minecraftUuid: ticket.minecraft_uuid,
+    minecraftName: ticket.minecraft_name,
+    createdAt: now
+  });
+
+  statements.upsertLinked.run({
+    discordId: ticket.discord_id,
+    shdId: identity.id,
+    minecraftUuid: ticket.minecraft_uuid,
+    minecraftName: ticket.minecraft_name,
+    discordUsername: member?.user.tag ?? null,
+    verifiedAt: now,
+    lastSeenAt: now,
+    status: 'active',
+    suspicious: 0,
+    suspiciousReason: `Confirmed from ticket ${ticket.thread_id}`,
+    riskScore: 0,
+    riskBand: 'low',
+    riskReasons: [],
+    publicStatsOptIn: true,
+    rosterStatusUpdatedAt: now
+  });
+  statements.upsertRulesAcceptance.run({
+    discordId: ticket.discord_id,
+    minecraftUuid: ticket.minecraft_uuid,
+    rulesVersion: currentRulesVersion(),
+    acceptedAt: now,
+    source: 'ticket_confirm'
+  });
+
+  const whitelistResult = await optionalSideEffect(client, {
+    type: 'minecraft.whitelist_add',
+    action: 'Add confirmed Lifesteal applicant to Minecraft whitelist',
+    discordId: ticket.discord_id,
+    minecraftUuid: ticket.minecraft_uuid,
+    fields: [
+      { name: 'SHD ID', value: identity.id, inline: true },
+      { name: 'Applicant', value: `<@${ticket.discord_id}>`, inline: true },
+      { name: 'Minecraft', value: ticket.minecraft_name, inline: true },
+      { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true }
+    ],
+    run: () => whitelistAdd(ticket.minecraft_name)
+  });
+
+  addCase('lifesteal_ticket_confirm', ticket.discord_id, ticket.minecraft_uuid, interaction.user.id, `Confirmed ${identity.id} from ticket`);
+  audit('ticket.lifesteal_join_confirmed', {
+    discordId: ticket.discord_id,
+    minecraftUuid: ticket.minecraft_uuid,
+    data: {
+      shdId: identity.id,
+      threadId: ticket.thread_id,
+      moderatorId: interaction.user.id,
+      whitelistOk: whitelistResult.ok
+    }
+  });
+  await staffAuditLog(client, 'Lifesteal Ticket Confirmed', [
+    { name: 'SHD ID', value: identity.id, inline: true },
+    { name: 'Applicant', value: `<@${ticket.discord_id}>`, inline: true },
+    { name: 'Minecraft', value: ticket.minecraft_name, inline: true },
+    { name: 'Staff', value: `<@${interaction.user.id}>`, inline: true },
+    whitelistResult.ok ? null : { name: 'Whitelist Warning', value: whitelistResult.error }
+  ].filter(Boolean));
+  await modLog(client, 'Lifesteal Ticket Confirmed', [
+    { name: 'SHD ID', value: identity.id, inline: true },
+    { name: 'Applicant', value: `<@${ticket.discord_id}>`, inline: true },
+    { name: 'Minecraft', value: ticket.minecraft_name, inline: true },
+    whitelistResult.ok ? null : { name: 'Whitelist Warning', value: whitelistResult.error }
+  ].filter(Boolean));
+
+  await interaction.channel.send([
+    `<@${ticket.discord_id}> your Lifesteal signup was confirmed.`,
+    `SHD ID: **${identity.id}**`,
+    `Minecraft: **${ticket.minecraft_name}**`,
+    whitelistResult.ok ? 'Minecraft access is prepared.' : 'Staff will finish Minecraft access manually if needed.'
+  ].join('\n')).catch(() => null);
+
+  return interaction.editReply(whitelistResult.ok
+    ? `Confirmed ${identity.id}, linked ${ticket.minecraft_name}, enabled public stats, and prepared whitelist access.`
+    : `Confirmed ${identity.id}, linked ${ticket.minecraft_name}, and enabled public stats. Whitelist warning: ${whitelistResult.error}`);
 }
 
 async function handleAppeal(interaction) {
@@ -1456,6 +1608,7 @@ function compactSignup(signup) {
 
 function profileSummary(linked) {
   return [
+    `SHD ID: ${linked.shd_id ?? 'Not assigned'}`,
     `Minecraft: ${linked.minecraft_name ?? 'Unknown'}`,
     `Role: ${linked.role ?? 'player'}`,
     `Region/timezone: ${linked.region ?? 'Not set'}`,
@@ -1465,6 +1618,12 @@ function profileSummary(linked) {
     `Status: ${linked.status}`,
     `Risk: ${linked.risk_score ?? 0} (${linked.risk_band ?? 'low'})`
   ].join('\n').slice(0, 1024);
+}
+
+function normalizeShdId(value) {
+  const raw = String(value ?? '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!raw) return '';
+  return raw.startsWith('SHD') ? raw : `SHD${raw}`;
 }
 
 function formatLinkedList(rows) {

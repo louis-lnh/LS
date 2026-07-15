@@ -66,6 +66,7 @@ public final class ShdLifestealClientMod implements ModInitializer {
             modReportResendTicks--;
             if (modReportResendTicks % MOD_REPORT_RETRY_INTERVAL_TICKS == 0 && ClientPlayNetworking.canSend(ModReportPayload.ID)) {
                 ClientPlayNetworking.send(modReport());
+                modReportResendTicks = 0;
             }
         });
     }

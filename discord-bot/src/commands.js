@@ -101,10 +101,23 @@ export const commands = [
             .setRequired(true)
             .addChoices(
               { name: 'Appeal', value: 'appeal' },
-              { name: 'Join', value: 'join' }
+              { name: 'Join', value: 'join' },
+              { name: 'Support', value: 'support' }
             )
         )
     ),
+  new SlashCommandBuilder()
+    .setName('whatsmyid')
+    .setDescription('Show your SHD Lifesteal ID'),
+  new SlashCommandBuilder()
+    .setName('whoisid')
+    .setDescription('Staff: look up a Lifesteal SHD ID')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+    .addStringOption((option) => option.setName('id').setDescription('SHD ID, for example SHD1234').setRequired(true)),
+  new SlashCommandBuilder()
+    .setName('confirm')
+    .setDescription('Staff: confirm a Lifesteal join ticket')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
   new SlashCommandBuilder()
     .setName('discord-rules-panel')
     .setDescription('Post the Discord rules acceptance panel in this channel')
