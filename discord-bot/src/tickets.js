@@ -42,9 +42,18 @@ export async function handlePanelCommand(interaction) {
       .setTitle('SHD Lifesteal Support')
       .setColor(0x35b87f)
       .setDescription([
-        'Choose the ticket type you need.',
+        'Choose the ticket type you need. The bot will collect the required information before opening the thread so staff can start with the right context.',
         '',
-        'The bot will collect the required IDs before opening the thread so staff can start with the right context.'
+        '**Apply / Join Lifesteal**',
+        'Enter your Minecraft username. Staff will review the ticket and can confirm your access from there.',
+        '',
+        '**Ban Appeal**',
+        'Enter your ban ID and Minecraft username. Use the ticket to explain what happened and share evidence if available.',
+        '',
+        '**Report Player**',
+        'Enter the Minecraft username of the player you want to report. Staff will ask for details, evidence, and timing in the ticket.',
+        '',
+        'You will receive an SHD ID, which is your Lifesteal support identity for future appeals, reports, events, and staff lookups.'
       ].join('\n'));
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
