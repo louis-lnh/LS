@@ -1439,7 +1439,11 @@ function upsertHistory(table, keys, row) {
 
 function sameMinecraftUuid(left, right) {
   if (!left || !right) return false;
-  return String(left).toLowerCase().replaceAll('-', '') === String(right).toLowerCase().replaceAll('-', '');
+  return normalizeMinecraftUuid(left) === normalizeMinecraftUuid(right);
+}
+
+function normalizeMinecraftUuid(value) {
+  return String(value ?? '').trim().toLowerCase().replaceAll('-', '');
 }
 
 function normalizeShdId(value) {
