@@ -64,6 +64,7 @@ const staffCommands = new Set([
 client.once(Events.ClientReady, (readyClient) => {
   console.log(`Logged in as ${readyClient.user.tag}`);
   startWebServer(client);
+  startSolvedTicketAutoArchive(client);
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
@@ -517,6 +518,17 @@ async function handleConfirmTicket(interaction) {
     acceptedAt: now,
     source: 'ticket_confirm'
   });
+  statements.updateTicketThread.run({
+    threadId: ticket.thread_id,
+    answers: {
+      ...(ticket.answers ?? {}),
+      confirmedAt: now,
+      solvedAt: now,
+      autoCloseAt: now + 12 * 60 * 60 * 1000,
+      confirmedBy: interaction.user.id,
+      confirmation: 'lifesteal_join'
+    }
+  });
 
   const whitelistResult = await optionalSideEffect(client, {
     type: 'minecraft.whitelist_add',
@@ -561,7 +573,8 @@ async function handleConfirmTicket(interaction) {
     `<@${ticket.discord_id}> your Lifesteal signup was confirmed.`,
     `SHD ID: **${identity.id}**`,
     `Minecraft: **${ticket.minecraft_name}**`,
-    whitelistResult.ok ? 'Minecraft access is prepared.' : 'Staff will finish Minecraft access manually if needed.'
+    whitelistResult.ok ? 'Minecraft access is prepared.' : 'Staff will finish Minecraft access manually if needed.',
+    'This ticket will automatically close after 12 hours.'
   ].join('\n')).catch(() => null);
 
   return interaction.editReply(whitelistResult.ok
@@ -1731,6 +1744,44 @@ function addCase(action, targetDiscordId, targetMinecraftUuid, moderatorId, reas
     reason,
     createdAt: Date.now()
   });
+}
+
+function startSolvedTicketAutoArchive(client) {
+  const run = () => archiveDueSolvedTickets(client).catch((error) => console.error('Solved ticket auto-archive failed', error));
+  run();
+  setInterval(run, 5 * 60 * 1000);
+}
+
+async function archiveDueSolvedTickets(client) {
+  const now = Date.now();
+  const tickets = (statements.snapshot.get().ticket_threads ?? [])
+    .filter((ticket) => ticket.status === 'open')
+    .filter((ticket) => Number(ticket.answers?.autoCloseAt ?? 0) > 0)
+    .filter((ticket) => Number(ticket.answers.autoCloseAt) <= now);
+
+  for (const ticket of tickets) {
+    const channel = await client.channels.fetch(ticket.thread_id).catch(() => null);
+    statements.closeTicketThread.run(ticket.thread_id);
+    audit('ticket.auto_closed', {
+      discordId: ticket.discord_id,
+      minecraftUuid: ticket.minecraft_uuid,
+      data: {
+        type: ticket.type,
+        threadId: ticket.thread_id,
+        reason: 'Solved ticket auto-closed after 12 hours.'
+      }
+    });
+
+    if (channel?.isThread?.()) {
+      await channel.send('Ticket auto-closed 12 hours after confirmation.').catch(() => null);
+      await channel.setArchived(true, 'Solved ticket auto-closed after 12 hours.').catch(() => null);
+    }
+    await modLog(client, 'Ticket Auto Closed', [
+      { name: 'Type', value: ticket.type, inline: true },
+      { name: 'User', value: ticket.discord_id ? `<@${ticket.discord_id}>` : 'Unknown', inline: true },
+      { name: 'Thread', value: `<#${ticket.thread_id}>`, inline: true }
+    ]).catch(() => null);
+  }
 }
 
 async function confirmAction(interaction, { title, body, confirmLabel }) {

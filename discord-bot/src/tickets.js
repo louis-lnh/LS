@@ -148,7 +148,7 @@ export async function handleTicketInteraction(interaction) {
       return showSupportReportModal(interaction);
     }
     if (interaction.customId === CLOSE_BUTTON_ID) {
-      return showCloseTicketModal(interaction);
+      return handleCloseTicketButton(interaction);
     }
     if (interaction.customId === CLAIM_BUTTON_ID) {
       return claimTicket(interaction);
@@ -352,9 +352,21 @@ function supportApplicationFields(application, extra = []) {
   ].filter(Boolean);
 }
 
-function showCloseTicketModal(interaction) {
+async function handleCloseTicketButton(interaction) {
   if (!hasTicketStaffAccess(interaction)) {
     return interaction.reply({ content: 'Only staff can close tickets.', ephemeral: true });
+  }
+  if (!interaction.channel?.isThread?.()) {
+    return interaction.reply({ content: 'This can only be used inside a ticket thread.', ephemeral: true });
+  }
+
+  const ticket = statements.findTicketByThread.get(interaction.channel.id);
+  if (!ticket) {
+    return interaction.reply({ content: 'No open ticket record found for this thread.', ephemeral: true });
+  }
+  if (ticketSolved(ticket)) {
+    await interaction.deferReply({ ephemeral: true });
+    return closeTicketRecord(interaction, ticket, 'Solved ticket closed by staff.', 'Ticket closed.');
   }
 
   const modal = new ModalBuilder()
@@ -386,7 +398,10 @@ async function closeTicket(interaction) {
     return interaction.editReply('No open ticket record found for this thread.');
   }
 
-  const reason = interaction.fields.getTextInputValue('reason').trim();
+  return closeTicketRecord(interaction, ticket, interaction.fields.getTextInputValue('reason').trim(), 'Ticket closed.');
+}
+
+async function closeTicketRecord(interaction, ticket, reason, replyText) {
   statements.closeTicketThread.run(interaction.channel.id);
   audit('ticket.closed', {
     discordId: ticket.discord_id,
@@ -412,7 +427,11 @@ async function closeTicket(interaction) {
 
   await interaction.channel.send(`Ticket closed by <@${interaction.user.id}>: ${reason}`);
   await interaction.channel.setArchived(true, reason).catch(() => null);
-  await interaction.editReply('Ticket closed.');
+  await interaction.editReply(replyText);
+}
+
+function ticketSolved(ticket) {
+  return Boolean(ticket?.answers?.solvedAt || ticket?.answers?.confirmedAt);
 }
 
 async function claimTicket(interaction) {
