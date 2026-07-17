@@ -2465,6 +2465,150 @@ button.admin-queue-row:focus-visible {
   color: #ffb5aa;
 }
 
+.admin-event-form-page {
+  display: grid;
+  gap: 1rem;
+}
+
+.admin-event-form-page > header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid rgba(255, 89, 89, 0.18);
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(255, 89, 89, 0.12), transparent 24rem),
+    rgba(13, 12, 11, 0.86);
+  box-shadow: 0 24px 68px rgba(0, 0, 0, 0.28);
+}
+
+.admin-event-form-page > header h1 {
+  margin: 0;
+  color: #fff7e7;
+  font-size: clamp(2.2rem, 5vw, 4rem);
+  line-height: 0.95;
+}
+
+.admin-event-form-page > header span {
+  display: block;
+  max-width: 680px;
+  margin-top: 0.6rem;
+  color: #c9c1b2;
+  line-height: 1.5;
+}
+
+.admin-event-form-page > header button {
+  min-height: 38px;
+  padding: 0 0.8rem;
+  border: 1px solid rgba(255, 89, 89, 0.18);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.26);
+  color: #f7f3ea;
+  cursor: pointer;
+  font-weight: 850;
+}
+
+.admin-event-form-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.42fr);
+  gap: 1rem;
+}
+
+.admin-event-form-panel {
+  padding: 1rem;
+  border: 1px solid rgba(255, 89, 89, 0.16);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(255, 89, 89, 0.08), transparent 24rem),
+    rgba(13, 12, 11, 0.82);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.22);
+}
+
+.admin-event-form-panel h2 {
+  margin: 0 0 0.9rem;
+  color: #fff7e7;
+  font-size: 1.05rem;
+}
+
+.admin-event-feed-note {
+  margin-top: 0.85rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(255, 89, 89, 0.13);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.admin-event-feed-note strong {
+  color: #fff7e7;
+}
+
+.admin-event-feed-note p {
+  margin: 0.4rem 0 0;
+  color: #c9c1b2;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.admin-event-form-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.85rem;
+}
+
+.admin-event-form-section-head h2 {
+  margin-bottom: 0;
+}
+
+.admin-event-edit-schedule {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.admin-event-edit-schedule article {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 0.8rem;
+  border: 1px solid rgba(255, 89, 89, 0.13);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.admin-event-edit-schedule article > span {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 89, 89, 0.18);
+  border-radius: 8px;
+  color: #ffb5aa;
+  font-weight: 950;
+}
+
+.admin-event-edit-schedule .admin-event-description {
+  grid-column: 2;
+  margin-top: 0;
+}
+
+.admin-event-description.compact textarea {
+  min-height: 82px;
+}
+
+.admin-event-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  padding: 1rem;
+  border: 1px solid rgba(255, 89, 89, 0.14);
+  border-radius: 8px;
+  background: rgba(13, 12, 11, 0.82);
+}
+
 .admin-user-search {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -4558,6 +4702,9 @@ button.admin-queue-row:focus-visible {
   .admin-events-table-row,
   .admin-event-detail-grid,
   .admin-event-schedule-list article,
+  .admin-event-form-page > header,
+  .admin-event-form-shell,
+  .admin-event-edit-schedule article,
   .admin-event-form-grid,
   .admin-event-toggles,
   .admin-event-feed-grid,

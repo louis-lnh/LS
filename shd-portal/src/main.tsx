@@ -1256,6 +1256,183 @@ function AdminEventDetailPage({ event }: {
   )
 }
 
+function AdminEventFormPage({ mode, event }: {
+  mode: 'create' | 'edit'
+  event?: {
+    id: string
+    title: string
+    category: string
+    parent: string
+    status: string
+    date: string
+    owner: string
+    consumers: string[]
+    description: string
+    childEvents: Array<{ date: string; time: string; type: string; title: string; description: string }>
+  }
+}) {
+  const isEdit = mode === 'edit'
+  const title = isEdit ? `EDIT ${event?.id || 'EVENT'}` : 'CREATE EVENT'
+  const childEvents = event?.childEvents.length ? event.childEvents : [
+    { date: '20 July 2026', time: '18:00 CEST', type: 'Server Start', title: 'Event Start', description: 'The server opens for the first public Season 1 session.' },
+  ]
+
+  return (
+    <section className="page admin-page admin-events-page">
+      <section className="admin-event-form-page">
+        <header>
+          <div>
+            <p className="eyebrow">Admin / Events</p>
+            <h1>{title}</h1>
+            <span>{isEdit ? 'Update the event record and decide what gets synced again.' : 'Create a structured event record for websites, Discord bots and event servers.'}</span>
+          </div>
+          <button type="button" onClick={() => navigate(isEdit && event ? `/admin/events/${event.id}` : '/admin/events')}>{isEdit ? 'Back to Event' : 'Back to Events'}</button>
+        </header>
+
+        <div className="admin-event-form-shell">
+          <section className="admin-event-form-panel">
+            <div>
+              <p className="eyebrow">Core Record</p>
+              <h2>Main Event Details</h2>
+            </div>
+            <div className="admin-event-form-grid">
+              <label>
+                Event name
+                <input defaultValue={event?.title || 'New SHD Event'} />
+              </label>
+              <label>
+                Event ID
+                <input defaultValue={event?.id || 'Auto-generated after save'} disabled={!isEdit} />
+              </label>
+              <label>
+                Parent event / workspace
+                <CustomSelect
+                  ariaLabel="Parent event or workspace"
+                  value={event?.parent === 'SHD Lifesteal Beta Season' ? 'lifesteal-beta' : 'shd-global'}
+                  options={[
+                    { value: 'shd-global', label: 'SHD Global' },
+                    { value: 'lifesteal-beta', label: 'SHD Lifesteal Beta Season' },
+                    { value: 'valorant', label: 'Valorant Workspace' },
+                  ]}
+                  onChange={() => null}
+                />
+              </label>
+              <label>
+                Category
+                <CustomSelect
+                  ariaLabel="Event category"
+                  value={(event?.category || 'Minecraft').toLowerCase()}
+                  options={[
+                    { value: 'minecraft', label: 'Minecraft' },
+                    { value: 'community', label: 'Community' },
+                    { value: 'valorant', label: 'Valorant' },
+                    { value: 'esports', label: 'Esports' },
+                  ]}
+                  onChange={() => null}
+                />
+              </label>
+              <label>
+                Status
+                <CustomSelect
+                  ariaLabel="Event status"
+                  value={(event?.status || 'Draft').toLowerCase()}
+                  options={[
+                    { value: 'draft', label: 'Draft' },
+                    { value: 'published', label: 'Published' },
+                    { value: 'archived', label: 'Archived' },
+                  ]}
+                  onChange={() => null}
+                />
+              </label>
+              <label>
+                Date / time
+                <input defaultValue={event?.date || 'TBA'} />
+              </label>
+              <label>
+                Owner
+                <input defaultValue={event?.owner || 'PrimeLuigi'} />
+              </label>
+              <label>
+                Public link
+                <input defaultValue="https://lifesteal.shd-esports.com" />
+              </label>
+            </div>
+            <label className="admin-event-description">
+              Public description
+              <textarea defaultValue={event?.description || 'Describe what users and downstream websites should display for this event.'} />
+            </label>
+          </section>
+
+          <aside className="admin-event-form-panel">
+            <div>
+              <p className="eyebrow">Publishing</p>
+              <h2>Distribution Targets</h2>
+            </div>
+            <div className="admin-event-toggles">
+              <span>Portal event page</span>
+              <span>Lifesteal website</span>
+              <span>Discord bot notification</span>
+              <span>Event API feed</span>
+              <span>Minecraft server sync</span>
+              <span>Staff preview only</span>
+            </div>
+            <div className="admin-event-feed-note">
+              <strong>Archive behavior</strong>
+              <p>Archived events stop publishing to websites and API feeds. Discord messages can be marked outdated, but not truly revoked from user history.</p>
+            </div>
+          </aside>
+        </div>
+
+        <section className="admin-event-form-panel">
+          <div className="admin-event-form-section-head">
+            <div>
+              <p className="eyebrow">Nested Events</p>
+              <h2>Schedule Entries</h2>
+            </div>
+            <button className="secondary-action" type="button">Add Schedule Entry</button>
+          </div>
+          <div className="admin-event-edit-schedule">
+            {childEvents.map((child, index) => (
+              <article key={`${child.date}-${child.time}-${child.title}`}>
+                <span>{String(index + 1).padStart(2, '0')}</span>
+                <div className="admin-event-form-grid">
+                  <label>
+                    Date
+                    <input defaultValue={child.date} />
+                  </label>
+                  <label>
+                    Time
+                    <input defaultValue={child.time} />
+                  </label>
+                  <label>
+                    Type
+                    <input defaultValue={child.type} />
+                  </label>
+                  <label>
+                    Title
+                    <input defaultValue={child.title} />
+                  </label>
+                </div>
+                <label className="admin-event-description compact">
+                  Description
+                  <textarea defaultValue={child.description} />
+                </label>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <div className="admin-event-form-actions">
+          <button className="secondary-action danger" type="button">Archive</button>
+          <button className="secondary-action" type="button">Save draft</button>
+          <button className="secondary-action" type="button">Preview feed</button>
+          <button className="primary-action" type="button" onClick={() => navigate(isEdit && event ? `/admin/events/${event.id}` : '/admin/events/EVT-2005')}>Publish Event</button>
+        </div>
+      </section>
+    </section>
+  )
+}
+
 function AdminUserProfileCard({ user, onClose }: { user: { section: string; name: string; username: string; shdId: string; joined: string; discordId: string; minecraft: string; minecraftUuid: string; status: string; event: string; open: string; archived: string; riskAlerts: string }; onClose: () => void }) {
   return (
     <div className="admin-user-profile-overlay" role="dialog" aria-modal="true" aria-labelledby="admin-user-profile-title">

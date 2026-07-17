@@ -886,6 +886,10 @@ main {
   justify-content: center;
 }
 
+.locked-action {
+  margin-top: 0.25rem;
+}
+
 .locked-status {
   display: inline-flex;
   align-items: center;

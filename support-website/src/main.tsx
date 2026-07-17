@@ -82,6 +82,8 @@ type SupportIntakeResponse = {
   requiresTicket?: boolean
 }
 
+const discordInviteUrl = 'https://discord.gg/EnBa5xhTwa'
+
 const primarySections: Array<{ id: SectionId; label: string; title: string }> = [
   { id: 'minecraft', label: 'Minecraft', title: 'Minecraft Support' },
   { id: 'info', label: 'Info', title: 'SHD Info' },
@@ -310,7 +312,7 @@ function App() {
         {page === 'info' && <SectionPage section="info" onNavigate={navigate} />}
         {page === 'signup' && <SignupPage onNavigate={navigate} />}
         {page === 'minecraft-support' && <MinecraftIntakeForm formId="minecraft-support" onNavigate={navigate} />}
-        {page === 'general-support' && <ConstructionPage title="Support" label="General Support" detail="General SHD support tickets will open after the Lifesteal launch pass." backTo="support" onNavigate={navigate} />}
+        {page === 'general-support' && <ConstructionPage title="Support" label="General Support" detail="General SHD support tickets will open after the Lifesteal launch pass." backTo="support" actionHref={discordInviteUrl} actionLabel="Join Discord" onNavigate={navigate} />}
         {page === 'ban-appeal' && <MinecraftIntakeForm formId="ban-appeal" onNavigate={navigate} />}
         {page === 'player-report' && <MinecraftIntakeForm formId="player-report" onNavigate={navigate} />}
         {page === 'status' && <ConstructionPage title="Status" label="System Status" detail="Live API health, Minecraft sync health, and known incidents will be shown here." />}
@@ -1072,7 +1074,23 @@ function TextArea({ label, value, onChange, placeholder, required = false }: { l
   )
 }
 
-function ConstructionPage({ title, label, detail, backTo, onNavigate }: { title: string; label: string; detail: string; backTo?: PageId; onNavigate?: (page: PageId) => void }) {
+function ConstructionPage({
+  title,
+  label,
+  detail,
+  backTo,
+  actionHref,
+  actionLabel,
+  onNavigate,
+}: {
+  title: string
+  label: string
+  detail: string
+  backTo?: PageId
+  actionHref?: string
+  actionLabel?: string
+  onNavigate?: (page: PageId) => void
+}) {
   return (
     <section className="content-page page-frame">
       <PageIntro label={label} title={title} backTo={backTo} onNavigate={onNavigate}>{detail}</PageIntro>
@@ -1080,17 +1098,38 @@ function ConstructionPage({ title, label, detail, backTo, onNavigate }: { title:
         eyebrow="Planned Workflow"
         title="Under Construction"
         detail="This workflow is reserved so the portal can launch with clean navigation while staff tools are connected behind it."
+        actionHref={actionHref}
+        actionLabel={actionLabel}
       />
     </section>
   )
 }
 
-function LockedPanel({ eyebrow, title, detail, compact = false }: { eyebrow: string; title: string; detail: string; compact?: boolean }) {
+function LockedPanel({
+  eyebrow,
+  title,
+  detail,
+  compact = false,
+  actionHref,
+  actionLabel,
+}: {
+  eyebrow: string
+  title: string
+  detail: string
+  compact?: boolean
+  actionHref?: string
+  actionLabel?: string
+}) {
   return (
     <div className={compact ? 'locked-panel compact' : 'locked-panel'}>
       <span className="locked-eyebrow">{eyebrow}</span>
       <strong>{title}</strong>
       <p>{detail}</p>
+      {actionHref && actionLabel && (
+        <a className="primary-action locked-action" href={actionHref} rel="noreferrer" target="_blank">
+          {actionLabel}
+        </a>
+      )}
       <span className="locked-status"><i aria-hidden="true" /> Access locked</span>
     </div>
   )
