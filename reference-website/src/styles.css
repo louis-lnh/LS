@@ -681,6 +681,76 @@ th {
   display: block;
 }
 
+.players-redesign-page .page-intro {
+  opacity: 0.72;
+}
+
+.players-redesign-lock {
+  position: relative;
+  min-height: 28rem;
+  margin-top: 2rem;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.75rem;
+}
+
+.players-redesign-content {
+  min-height: 28rem;
+  opacity: 0.08;
+  filter: blur(14px);
+  pointer-events: none;
+  user-select: none;
+}
+
+.players-redesign-content * {
+  color: transparent !important;
+  text-shadow: 0 0 1.2rem rgba(255, 255, 255, 0.36);
+}
+
+.players-redesign-lock::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    linear-gradient(180deg, rgba(4, 8, 13, 0.58), rgba(4, 8, 13, 0.88)),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 10px);
+  backdrop-filter: blur(5px);
+}
+
+.players-redesign-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  padding: 2rem;
+  text-align: center;
+}
+
+.players-redesign-overlay span {
+  color: var(--cyan);
+  font-size: 0.75rem;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.players-redesign-overlay strong {
+  margin-top: 0.6rem;
+  font: 800 clamp(1.8rem, 5vw, 4rem) "Space Grotesk", sans-serif;
+  line-height: 0.95;
+  text-transform: uppercase;
+}
+
+.players-redesign-overlay p {
+  max-width: 32rem;
+  margin: 1rem 0 0;
+  color: var(--muted);
+  font-size: clamp(0.95rem, 2vw, 1.15rem);
+}
+
 .pre-season-table {
   overflow: hidden;
 }

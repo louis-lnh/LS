@@ -177,23 +177,22 @@ public final class AntiCheatSettings {
     private Set<String> clientDisallowedChannels = Set.of();
     private boolean clientRequireModReport = true;
     private Set<String> clientSuspiciousModIds = Set.of(
-            "xaerominimap",
-            "xaeroworldmap",
-            "journeymap",
-            "voxelmap",
-            "baritone"
+            "baritone",
+            "litematica-printer",
+            "litematica_printer"
     );
     private Set<String> clientBlockedModIds = Set.of(
             "advanced-xray",
             "advancedxray",
             "advanced_xray",
             "freecam",
-            "fullbrightnesstoggle",
-            "litematica",
-            "litematica-enderchest-materials",
+            "journeymap",
             "meteorclient",
-            "xray",
             "meteor-client",
+            "voxelmap",
+            "xaerominimap",
+            "xaeroworldmap",
+            "xray",
             "wurst"
     );
     private boolean lifestealChecksEnabled = true;

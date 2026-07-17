@@ -1427,30 +1427,39 @@ function PlayersPage({ liveHealth, liveLoaded, liveObjectives, livePlayers, live
 
   if (!seasonStarted) {
     return (
-      <section className="content-page page-frame">
+      <section className="content-page page-frame players-redesign-page">
         <PageIntro label="Players" title="Registered Players">
           Take a look at all registered players for the beta season. Want to be part of the beta? Sign up now. More information can be found on the Apply page or through the SHD Support Portal.
         </PageIntro>
-        <div className="leaderboard-tools pre-season-tools">
-          <div>
-            <span>Beta Roster</span>
-            <strong>{liveLoaded ? `${players.length} Public Roster Entries` : 'Loading Public Roster'}</strong>
-            <div className="leaderboard-counts" aria-label="Beta player counts">
-              <span>{players.filter((player) => preSeasonStatus(player) === 'Whitelisted').length} Whitelisted</span>
-              <span>{players.filter((player) => preSeasonStatus(player) === 'Registered').length} Registered</span>
-              <span>{players.filter((player) => preSeasonStatus(player) === 'Applied').length} Applied</span>
-              {!liveLoaded && <span>Connecting to public API</span>}
-              {liveLoaded && players.length === 0 && <span>No public players registered yet</span>}
-              {players.length > 0 && <span>Updated {relativeTime(liveUpdatedAt)}</span>}
+        <div className="players-redesign-lock">
+          <div className="players-redesign-content" aria-hidden="true">
+            <div className="leaderboard-tools pre-season-tools">
+              <div>
+                <span>Beta Roster</span>
+                <strong>{liveLoaded ? `${players.length} Public Roster Entries` : 'Loading Public Roster'}</strong>
+                <div className="leaderboard-counts" aria-label="Beta player counts">
+                  <span>{players.filter((player) => preSeasonStatus(player) === 'Whitelisted').length} Whitelisted</span>
+                  <span>{players.filter((player) => preSeasonStatus(player) === 'Registered').length} Registered</span>
+                  <span>{players.filter((player) => preSeasonStatus(player) === 'Applied').length} Applied</span>
+                  {!liveLoaded && <span>Connecting to public API</span>}
+                  {liveLoaded && players.length === 0 && <span>No public players registered yet</span>}
+                  {players.length > 0 && <span>Updated {relativeTime(liveUpdatedAt)}</span>}
+                </div>
+              </div>
+              <label className="player-search">
+                <span>Search Players</span>
+                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search players..." type="search" tabIndex={-1} />
+              </label>
+            </div>
+            <div className="pre-season-roster">
+              <PreSeasonRosterTable players={preSeasonPlayers} emptyText={liveLoaded ? 'No registered public players found.' : 'Loading registered players...'} />
             </div>
           </div>
-          <label className="player-search">
-            <span>Search Players</span>
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search players..." type="search" />
-          </label>
-        </div>
-        <div className="pre-season-roster">
-          <PreSeasonRosterTable players={preSeasonPlayers} emptyText={liveLoaded ? 'No registered public players found.' : 'Loading registered players...'} />
+          <div className="players-redesign-overlay" role="status" aria-live="polite">
+            <span>Player List</span>
+            <strong>Design Update In Progress</strong>
+            <p>The beta roster is temporarily hidden while we rework this page.</p>
+          </div>
         </div>
       </section>
     )

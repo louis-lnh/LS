@@ -35,9 +35,11 @@ import com.shd.lifesteal.impl.ui.LifestealUiSettings;
 import com.shd.lifesteal.impl.ui.TimeText;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Date;
 import net.minecraft.command.CommandSource;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.item.ItemStack;
+import net.minecraft.server.BannedPlayerEntry;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.PlayerConfigEntry;
@@ -387,6 +389,23 @@ public final class LifestealCommandRegistrar {
                                 context.getSource(),
                                 IntegerArgumentType.getInteger(context, "amount")
                         ))));
+        dispatcher.register(CommandManager.literal("tempban")
+                .requires(CommandManager.requirePermissionLevel(CommandManager.GAMEMASTERS_CHECK))
+                .then(playerArgument("player")
+                        .then(CommandManager.argument("duration", StringArgumentType.word())
+                                .executes(context -> tempBan(
+                                        context.getSource(),
+                                        WhitelistedPlayerArgumentType.getPlayer(context, "player", playerResolver),
+                                        StringArgumentType.getString(context, "duration"),
+                                        "Temporarily suspended by staff"
+                                ))
+                                .then(CommandManager.argument("reason", StringArgumentType.greedyString())
+                                        .executes(context -> tempBan(
+                                                context.getSource(),
+                                                WhitelistedPlayerArgumentType.getPlayer(context, "player", playerResolver),
+                                                StringArgumentType.getString(context, "duration"),
+                                                StringArgumentType.getString(context, "reason")
+                                        ))))));
     }
 
     private RequiredArgumentBuilder<ServerCommandSource, String> playerArgument(String name) {
@@ -441,6 +460,84 @@ public final class LifestealCommandRegistrar {
                 state.eliminated() ? " and is eliminated" : ""
         ) + combatText), false);
         return state.hearts();
+    }
+
+    private int tempBan(ServerCommandSource source, ResolvedPlayer player, String durationInput, String reason) {
+        Duration duration = parseTempBanDuration(durationInput);
+        if (duration == null) {
+            source.sendError(Text.literal("Invalid tempban duration. Use values like 30m, 12h, 7d, or 1w."));
+            return 0;
+        }
+
+        Instant now = Instant.now();
+        Instant expiresAt = now.plus(duration);
+        String cleanReason = cleanBanReason(reason);
+        PlayerConfigEntry entry = new PlayerConfigEntry(player.playerId(), player.name());
+        BannedPlayerEntry ban = new BannedPlayerEntry(
+                entry,
+                Date.from(now),
+                source.getName(),
+                Date.from(expiresAt),
+                cleanReason
+        );
+        source.getServer().getPlayerManager().getUserBanList().add(ban);
+        player.onlinePlayer().ifPresent(onlinePlayer -> onlinePlayer.networkHandler.disconnect(Text.literal(
+                "You are temporarily suspended from playing on this server\nReason: %s\nSuspension ends: %s".formatted(cleanReason, expiresAt)
+        )));
+        auditLog.log("tempban", "player=%s uuid=%s duration=%s expires=%s source=%s reason=%s".formatted(
+                player.name(),
+                player.playerId(),
+                durationInput,
+                expiresAt,
+                source.getName(),
+                cleanReason
+        ));
+        source.sendFeedback(() -> Text.literal("Temporarily banned %s for %s until %s.".formatted(
+                player.name(),
+                durationInput,
+                expiresAt
+        )), true);
+        return 1;
+    }
+
+    private Duration parseTempBanDuration(String input) {
+        if (input == null || input.length() < 2) {
+            return null;
+        }
+        String trimmed = input.trim().toLowerCase(java.util.Locale.ROOT);
+        char unit = trimmed.charAt(trimmed.length() - 1);
+        long amount;
+        try {
+            amount = Long.parseLong(trimmed.substring(0, trimmed.length() - 1));
+        } catch (NumberFormatException exception) {
+            return null;
+        }
+        if (amount <= 0) {
+            return null;
+        }
+        try {
+            return switch (unit) {
+                case 's' -> Duration.ofSeconds(amount);
+                case 'm' -> Duration.ofMinutes(amount);
+                case 'h' -> Duration.ofHours(amount);
+                case 'd' -> Duration.ofDays(amount);
+                case 'w' -> Duration.ofDays(Math.multiplyExact(amount, 7L));
+                default -> null;
+            };
+        } catch (ArithmeticException exception) {
+            return null;
+        }
+    }
+
+    private String cleanBanReason(String reason) {
+        String clean = String.valueOf(reason == null ? "" : reason)
+                .replace('\r', ' ')
+                .replace('\n', ' ')
+                .trim();
+        if (clean.isBlank()) {
+            return "Temporarily suspended by staff";
+        }
+        return clean.length() > 180 ? clean.substring(0, 180) : clean;
     }
 
     private int giveMace(ServerCommandSource source, String key, ResolvedPlayer target, boolean trackable) throws CommandSyntaxException {
