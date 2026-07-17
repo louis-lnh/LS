@@ -8,8 +8,6 @@
       name="description"
       content="The SHD Support portal is temporarily paused while the new support and ticket workflows are being rebuilt."
     />
-    <link rel="icon" type="image/png" href="/favicon.png" />
-    <link rel="apple-touch-icon" href="/favicon.png" />
     <title>SHD Support Redesign</title>
     <style>
       :root {
@@ -167,6 +165,36 @@
         padding: 0.55rem 0.8rem;
       }
 
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        justify-content: center;
+        margin-top: 1.75rem;
+      }
+
+      .discord-button {
+        align-items: center;
+        background: var(--accent);
+        border: 1px solid var(--accent);
+        border-radius: 6px;
+        color: #09090b;
+        display: inline-flex;
+        font-size: 0.82rem;
+        font-weight: 700;
+        justify-content: center;
+        letter-spacing: 0.08em;
+        min-height: 2.9rem;
+        padding: 0.85rem 1.2rem;
+        text-decoration: none;
+        text-transform: uppercase;
+      }
+
+      .discord-button:hover {
+        background: #ffe6aa;
+        border-color: #ffe6aa;
+      }
+
       .staff-note {
         color: rgba(250, 247, 240, 0.52);
         font-size: 0.82rem;
@@ -197,7 +225,7 @@
     <main class="site">
       <section class="hero" aria-labelledby="page-title">
         <div class="hero__content">
-          <img src="/favicon.png" alt="SHD Logo" class="logo" />
+          <img src="../support-website/public/favicon.png" alt="SHD Logo" class="logo" />
           <p class="eyebrow">SHD Support</p>
 
           <h1 id="page-title">Under Redesign</h1>
@@ -210,6 +238,10 @@
             <span>Apply / Join</span>
             <span>Ban Appeals</span>
             <span>Player Reports</span>
+          </div>
+
+          <div class="actions">
+            <a class="discord-button" href="https://discord.gg/EnBa5xhTwa" rel="noreferrer" target="_blank">Join Discord</a>
           </div>
 
           <div class="status">
