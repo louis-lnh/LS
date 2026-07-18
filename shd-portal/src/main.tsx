@@ -43,7 +43,7 @@ import {
   type PortalUser,
 } from './api'
 
-type RouteId = 'home' | 'support' | 'events' | 'supportMinecraft' | 'supportMinecraftApply' | 'supportMinecraftAppeal' | 'supportMinecraftReport' | 'supportMinecraftGeneral' | 'settings' | 'account' | 'dashboard' | 'chat' | 'admin' | 'adminSupportReview' | 'adminUsers' | 'adminEvents' | 'adminChat'
+type RouteId = 'home' | 'support' | 'events' | 'supportMinecraft' | 'supportMinecraftApply' | 'supportMinecraftAppeal' | 'supportMinecraftReport' | 'supportMinecraftGeneral' | 'settings' | 'account' | 'dashboard' | 'chat' | 'admin' | 'adminSupportReview' | 'adminUsers' | 'adminEvents' | 'adminSystems' | 'adminChat'
 type SessionState =
   | { status: 'loading'; user: null; error: null }
   | { status: 'anonymous'; user: null; error: string | null }
@@ -117,6 +117,7 @@ const routes: Record<RouteId, string> = {
   adminSupportReview: '/admin/support',
   adminUsers: '/admin/users',
   adminEvents: '/admin/events',
+  adminSystems: '/admin/systems',
   adminChat: '/admin/chat',
 }
 
@@ -258,6 +259,7 @@ function routeFromPath(pathname = window.location.pathname): RouteId {
   if (pathname.startsWith('/admin/support')) return 'adminSupportReview'
   if (pathname.startsWith('/admin/users')) return 'adminUsers'
   if (pathname.startsWith('/admin/events')) return 'adminEvents'
+  if (pathname.startsWith('/admin/systems')) return 'adminSystems'
   if (pathname.startsWith('/admin/chat')) return 'adminChat'
   if (pathname.startsWith('/admin')) return 'admin'
   if (pathname.startsWith('/chat')) return 'chat'
@@ -356,7 +358,7 @@ function App() {
     { id: 'events' as const, label: 'Events', icon: CalendarDays, visible: true },
     { id: 'chat' as const, label: 'Chat', icon: MessageSquare, visible: true },
   ].filter((item) => item.visible), [user])
-  const adminMode = route === 'admin' || route === 'adminSupportReview' || route === 'adminUsers' || route === 'adminEvents' || route === 'adminChat'
+  const adminMode = route === 'admin' || route === 'adminSupportReview' || route === 'adminUsers' || route === 'adminEvents' || route === 'adminSystems' || route === 'adminChat'
   const activeNavItems = adminMode
     ? [
         { id: 'admin' as const, label: 'Main Menu', icon: Home, visible: true },
@@ -569,6 +571,7 @@ function App() {
         {route === 'adminSupportReview' ? <AdminSupportReviewPage user={user} currentPath={currentPath} /> : null}
         {route === 'adminUsers' ? <AdminUsersPage user={user} /> : null}
         {route === 'adminEvents' ? <AdminEventsPage user={user} currentPath={currentPath} /> : null}
+        {route === 'adminSystems' ? <AdminSystemsPage user={user} currentPath={currentPath} /> : null}
         {route === 'adminChat' ? <ChatPage user={user} notifications={notifications} mode="admin" /> : null}
         {route === 'home' ? <Landing /> : null}
         {route === 'events' ? <EventsPage /> : null}
@@ -785,11 +788,11 @@ function AdminMainPage({ user }: { user: PortalUser | null }) {
           <h2>Events</h2>
           <p>Event registrations, event status, rules and public event visibility.</p>
         </button>
-        <section className="admin-main-card">
+        <button className="admin-main-card" type="button" onClick={() => navigate('/admin/systems')}>
           <ServerCog size={22} />
           <h2>Systems</h2>
           <p>Server agent, health checks, logs, deployments and infrastructure actions.</p>
-        </section>
+        </button>
       </div>
       <section className="admin-overview">
         <header>
@@ -1427,6 +1430,219 @@ function AdminEventFormPage({ mode, event }: {
           <button className="secondary-action" type="button">Save draft</button>
           <button className="secondary-action" type="button">Preview feed</button>
           <button className="primary-action" type="button" onClick={() => navigate(isEdit && event ? `/admin/events/${event.id}` : '/admin/events/EVT-2005')}>Publish Event</button>
+        </div>
+      </section>
+    </section>
+  )
+}
+
+function AdminSystemsPage({ user, currentPath }: { user: PortalUser | null; currentPath: string }) {
+  const systemMetrics = [
+    ['Healthy', '11'],
+    ['Warning', '3'],
+    ['Critical', '1'],
+    ['Monitored', '15'],
+  ]
+  const systemGroups = [
+    {
+      title: 'Infrastructure',
+      icon: ServerCog,
+      items: [
+        { name: 'VPS - Bot Backend', type: 'VPS', status: 'Healthy', meta: '100.97.84.90 / Tailscale', health: 'CPU 22% / RAM 48% / SSD 61%' },
+        { name: 'VPS - Public Gateway', type: 'VPS', status: 'Warning', meta: 'Domain tunnel / reverse proxy', health: 'CPU 31% / RAM 67% / SSD 72%' },
+      ],
+    },
+    {
+      title: 'Discord Bots',
+      icon: MessageSquare,
+      items: [
+        { name: 'Lifesteal Bot', type: 'Discord bot', status: 'Healthy', meta: 'Tickets, IDs, role sync, whitelist bridge', health: 'Heartbeat 12s ago' },
+        { name: 'Main SHD Bot', type: 'Discord bot', status: 'Healthy', meta: 'Main guild workflows and portal bridge', health: 'Heartbeat 18s ago' },
+      ],
+    },
+    {
+      title: 'Backends',
+      icon: Database,
+      items: [
+        { name: 'Support API', type: 'Backend', status: 'Warning', meta: 'Portal support workflow backend', health: 'Queue latency 340ms' },
+        { name: 'Identity API', type: 'Backend', status: 'Healthy', meta: 'SHD ID, Discord, Minecraft links', health: 'P95 82ms' },
+        { name: 'Anti-Cheat Record API', type: 'Backend', status: 'Healthy', meta: 'Appeal IDs, evidence IDs, mod reports', health: 'P95 96ms' },
+      ],
+    },
+    {
+      title: 'Websites',
+      icon: Activity,
+      items: [
+        { name: 'SHD Portal', type: 'Website', status: 'Healthy', meta: 'support.shd-esports.com', health: '200 OK / 148ms' },
+        { name: 'Lifesteal Website', type: 'Website', status: 'Healthy', meta: 'lifesteal.shd-esports.com', health: '200 OK / 132ms' },
+        { name: 'Admin Portal', type: 'Website', status: 'Warning', meta: 'admin.shd-esports.com', health: 'Maintenance preview' },
+      ],
+    },
+    {
+      title: 'Game Servers',
+      icon: Gamepad2,
+      items: [
+        { name: 'Lifesteal Minecraft Server', type: 'Minecraft', status: 'Critical', meta: 'G17 laptop via Tailscale', health: 'RCON reachable / TPS warning' },
+        { name: 'SHD Agent', type: 'Server agent', status: 'Healthy', meta: 'Local server bridge and health collector', health: 'Heartbeat 8s ago' },
+      ],
+    },
+  ]
+  const activeSystemId = currentPath.match(/\/admin\/systems\/([^/]+)/)?.[1] || null
+  const allSystems = systemGroups.flatMap((group) => group.items.map((item) => ({
+    ...item,
+    id: item.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
+    group: group.title,
+  })))
+  const activeSystem = allSystems.find((item) => item.id === activeSystemId)
+
+  if (!user) {
+    return (
+      <section className="page admin-page">
+        <PageHeader eyebrow="Admin / Systems" title="LOGIN REQUIRED" copy="Sign in with a staff account to access systems overview." />
+        <div className="support-login-card">
+          <LockKeyhole size={24} />
+          <button className="primary-action" type="button" onClick={() => beginPortalLogin('/admin/systems')}>Login</button>
+        </div>
+      </section>
+    )
+  }
+
+  if (!canOpenAdmin(user)) {
+    return (
+      <section className="page admin-page">
+        <PageHeader eyebrow="Admin / Systems" title="ACCESS DENIED" copy="This area is only available for staff with systems access." />
+      </section>
+    )
+  }
+
+  if (activeSystem) {
+    return <AdminSystemDetailPage system={activeSystem} />
+  }
+
+  return (
+    <section className="page admin-page admin-systems-page">
+      <PageHeader eyebrow="Admin / Systems" title="SYSTEMS" copy="Operational overview for VPS nodes, Discord bots, backend services, websites, Minecraft servers and server agents." />
+      <section className="admin-review-overview">
+        <header>
+          <ServerCog size={18} />
+          <h2>System Health</h2>
+          <span>Preview data</span>
+        </header>
+        <div className="admin-review-grid">
+          {systemMetrics.map(([label, value]) => (
+            <div className={label === 'Critical' ? 'danger' : label === 'Healthy' ? 'primary' : ''} key={label}>
+              <span>{label}</span>
+              <strong>{value}</strong>
+            </div>
+          ))}
+        </div>
+      </section>
+      <section className="admin-systems-grid">
+        {systemGroups.map((group) => {
+          const Icon = group.icon
+          return (
+            <article className="admin-system-group" key={group.title}>
+              <header>
+                <Icon size={18} />
+                <h2>{group.title}</h2>
+                <span>{group.items.length}</span>
+              </header>
+              <div className="admin-system-list">
+                {group.items.map((item) => (
+                  <button className="admin-system-row" type="button" key={item.name} onClick={() => navigate(`/admin/systems/${item.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`)}>
+                    <div>
+                      <span className={`system-dot ${item.status.toLowerCase()}`} />
+                      <strong>{item.name}</strong>
+                      <small>{item.type}</small>
+                    </div>
+                    <p>{item.meta}</p>
+                    <span>{item.health}</span>
+                    <b className={`system-status ${item.status.toLowerCase()}`}>{item.status}</b>
+                  </button>
+                ))}
+              </div>
+            </article>
+          )
+        })}
+      </section>
+      <section className="admin-systems-footer">
+        <article>
+          <strong>Next detail pages</strong>
+          <p>Each system will get its own page for logs, deployments, restarts, health history, linked environment values and incident notes.</p>
+        </article>
+        <article>
+          <strong>Data source plan</strong>
+          <p>SHD Agent reports server health, bots report heartbeats, backends expose pings, and websites provide uptime checks.</p>
+        </article>
+      </section>
+    </section>
+  )
+}
+
+function AdminSystemDetailPage({ system }: { system: { id: string; name: string; type: string; status: string; meta: string; health: string; group: string } }) {
+  const healthStats = [
+    { label: 'CPU', value: 72, unit: '%' },
+    { label: 'RAM', value: 64, unit: '%' },
+    { label: 'SSD', value: 58, unit: '%' },
+    { label: 'TPS', value: 91, unit: '%' },
+  ]
+  const checks = [
+    ['RCON', 'Reachable', '12s ago'],
+    ['Tailscale', 'Connected', '15s ago'],
+    ['Whitelist File', 'Synced', '1m ago'],
+    ['Anti-Cheat API', 'Reporting', '2m ago'],
+  ]
+
+  return (
+    <section className="page admin-page admin-systems-page">
+      <section className="admin-system-detail">
+        <header>
+          <div>
+            <p className="eyebrow">{system.group} / {system.type}</p>
+            <h1>{system.name}</h1>
+            <span>{system.meta}</span>
+          </div>
+          <button type="button" onClick={() => navigate('/admin/systems')}>Back to Systems</button>
+        </header>
+        <div className="admin-system-detail-status">
+          <b className={`system-status ${system.status.toLowerCase()}`}>{system.status}</b>
+          <p>{system.health}</p>
+        </div>
+        <section className="admin-health-panel admin-system-detail-health">
+          {healthStats.map((stat) => <AdminHealthSegment key={stat.label} label={stat.label} value={stat.value} unit={stat.unit} />)}
+        </section>
+        <div className="admin-system-detail-grid">
+          <section>
+            <p className="eyebrow">Recent Checks</p>
+            <h2>Health Signals</h2>
+            <div className="admin-system-check-list">
+              {checks.map(([name, status, time]) => (
+                <article key={name}>
+                  <span className="system-dot" />
+                  <strong>{name}</strong>
+                  <p>{status}</p>
+                  <small>{time}</small>
+                </article>
+              ))}
+            </div>
+          </section>
+          <section>
+            <p className="eyebrow">Linked Services</p>
+            <h2>Connected Workflows</h2>
+            <div className="admin-system-service-list">
+              <span>Lifesteal Discord Bot</span>
+              <span>SHD Agent</span>
+              <span>Anti-Cheat Record API</span>
+              <span>Support Review</span>
+              <span>Whitelist Bridge</span>
+            </div>
+          </section>
+        </div>
+        <div className="admin-system-detail-actions">
+          <button className="secondary-action" type="button">View Logs</button>
+          <button className="secondary-action" type="button">Refresh Health</button>
+          <button className="secondary-action" type="button">Open Agent</button>
+          <button className="primary-action" type="button">Create Incident Note</button>
         </div>
       </section>
     </section>
