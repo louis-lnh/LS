@@ -227,7 +227,7 @@ const rankMoveLifetimeMs = 24 * 60 * 60 * 1000
 const liveDataRefreshMs = 5000
 const backgroundLiveDataRefreshMs = 30000
 const seasonStarted = false
-const seasonStartTimestamp = Date.UTC(2026, 6, 20, 16, 0, 0)
+const seasonStartTimestamp = Date.UTC(2026, 6, 23, 16, 0, 0)
 
 const prestigeBadges: Record<PrestigeBadgeId, { label: string; shortLabel: string; image?: string }> = {
   owner: { label: 'Owner', shortLabel: 'OWN', image: ownerBadge },
@@ -1925,7 +1925,7 @@ function WorldPage() {
       <div className="world-event-strip">
         <span>Beta Starts In</span>
         <strong>{eventCountdown}</strong>
-        <p>July 20, 2026 - 18:00 CEST. The beta season launch is scheduled for this date.</p>
+        <p>July 23, 2026 - 18:00 CEST. The beta season launch is scheduled for this date.</p>
       </div>
     </section>
   )
