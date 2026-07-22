@@ -5,11 +5,10 @@
     "B": "minecraft:beacon",
     "D": "minecraft:diamond_block",
     "H": "shd-lifesteal:heart",
-    "N": "minecraft:nether_star",
-    "T": "minecraft:totem_of_undying"
+    "N": "minecraft:nether_star"
   },
   "pattern": [
-    "HTH",
+    "HNH",
     "DBD",
     "HNH"
   ],
