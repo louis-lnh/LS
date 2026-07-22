@@ -154,6 +154,10 @@ public final class LifestealCommandRegistrar {
                                                 context.getSource(),
                                                 WhitelistedPlayerArgumentType.getPlayer(context, "player", playerResolver)
                                         )))))
+                .then(CommandManager.literal("start")
+                        .requires(CommandManager.requirePermissionLevel(CommandManager.GAMEMASTERS_CHECK))
+                        .then(CommandManager.literal("event")
+                                .executes(context -> startServerEvent(context.getSource()))))
                 .then(CommandManager.literal("grace")
                         .then(CommandManager.literal("status")
                                 .executes(context -> graceStatus(context.getSource())))
@@ -648,6 +652,16 @@ public final class LifestealCommandRegistrar {
     private int startGrace(ServerCommandSource source) {
         gracePeriodService.start(Instant.now());
         source.sendFeedback(() -> Text.literal("Grace period started: %s remaining".formatted(TimeText.compact(gracePeriodService.snapshot().remaining()))), true);
+        return 1;
+    }
+
+    private int startServerEvent(ServerCommandSource source) {
+        source.getServer().getOverworld().getWorldBorder().setSize(10_000D);
+        gracePeriodService.start(Instant.now());
+        auditLog.log("event_start", "%s started the server event: world border set to 10,000 blocks and grace period started."
+                .formatted(source.getName()));
+        source.sendFeedback(() -> Text.literal("Event started: world border set to 10,000 blocks; grace period started for %s."
+                .formatted(TimeText.compact(gracePeriodService.snapshot().remaining()))), true);
         return 1;
     }
 

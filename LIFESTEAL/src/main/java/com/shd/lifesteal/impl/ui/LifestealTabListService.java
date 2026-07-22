@@ -34,7 +34,7 @@ public final class LifestealTabListService {
     private static final Instant BETA_START = ZonedDateTime.of(
             2026,
             7,
-            20,
+            22,
             18,
             0,
             0,
