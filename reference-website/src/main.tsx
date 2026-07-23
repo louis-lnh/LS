@@ -1424,7 +1424,8 @@ function PlayersPage({ liveHealth, liveLoaded, liveObjectives, livePlayers, live
       window.removeEventListener('keydown', onKeyDown)
     }
   }, [selectedPlayer])
-
+  
+  {/*
   if (!seasonStarted) {
     return (
       <section className="content-page page-frame players-redesign-page">
@@ -1455,15 +1456,17 @@ function PlayersPage({ liveHealth, liveLoaded, liveObjectives, livePlayers, live
               <PreSeasonRosterTable players={preSeasonPlayers} emptyText={liveLoaded ? 'No registered public players found.' : 'Loading registered players...'} />
             </div>
           </div>
-          <div className="players-redesign-overlay" role="status" aria-live="polite">
-            <span>Player List</span>
-            <strong>Design Update In Progress</strong>
-            <p>The beta roster is temporarily hidden while we rework this page.</p>
-          </div>
+            <div className="players-redesign-overlay" role="status" aria-live="polite">
+              <span>Player List</span>
+              <strong>Design Update In Progress</strong>
+              <p>The beta roster is temporarily hidden while we rework this page.</p>
+            </div>
         </div>
       </section>
+  
     )
   }
+  */}
 
   return (
     <section className="content-page page-frame">

@@ -24,9 +24,22 @@ public abstract class ItemStackMixin {
         MaceLimitRules.retireMace((ItemStack) (Object) this, "item entity destroyed at " + entity.getBlockPos().toShortString());
     }
 
-    @Inject(method = "damage(ILnet/minecraft/server/world/ServerWorld;Lnet/minecraft/server/network/ServerPlayerEntity;Ljava/util/function/Consumer;)V", at = @At("HEAD"))
-    private void shd$retireMaceBeforeServerPlayerBreak(int amount, ServerWorld world, ServerPlayerEntity player, Consumer<Item> breakCallback, CallbackInfo ci) {
-        retireIfBreaking(amount, "broke while used by " + player.getName().getString());
+    @Inject(
+        method = "damage(ILnet/minecraft/server/world/ServerWorld;Lnet/minecraft/server/network/ServerPlayerEntity;Ljava/util/function/Consumer;)V",
+        at = @At("HEAD")
+    )
+    private void shd$retireMaceBeforeServerPlayerBreak(
+            int amount,
+            ServerWorld world,
+            ServerPlayerEntity player,
+            Consumer<Item> breakCallback,
+            CallbackInfo ci
+    ) {
+        String reason = player != null
+                ? "broke while used by " + player.getName().getString()
+                : "broke without a player";
+
+        retireIfBreaking(amount, reason);
     }
 
     @Inject(method = "damage(ILnet/minecraft/entity/player/PlayerEntity;)V", at = @At("HEAD"))

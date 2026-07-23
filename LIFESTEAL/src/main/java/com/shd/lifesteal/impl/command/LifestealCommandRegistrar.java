@@ -658,9 +658,9 @@ public final class LifestealCommandRegistrar {
     private int startServerEvent(ServerCommandSource source) {
         source.getServer().getOverworld().getWorldBorder().setSize(10_000D);
         gracePeriodService.start(Instant.now());
-        auditLog.log("event_start", "%s started the server event: world border set to 10,000 blocks and grace period started."
+        auditLog.log("event_start", "%s started the server event: time reset, time/weather enabled, normal difficulty, locator bar disabled, world border set to 10,000 blocks, and grace period started."
                 .formatted(source.getName()));
-        source.sendFeedback(() -> Text.literal("Event started: world border set to 10,000 blocks; grace period started for %s."
+        source.sendFeedback(() -> Text.literal("Event started: time reset, time/weather enabled, normal difficulty, locator bar disabled, world border set to 10,000 blocks; grace period started for %s."
                 .formatted(TimeText.compact(gracePeriodService.snapshot().remaining()))), true);
         return 1;
     }
