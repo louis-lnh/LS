@@ -48,6 +48,7 @@ type Player = {
   maceIdentity?: 'M1' | 'M2' | null
   dragonEggGlowExpiresAt?: string | null
   playtime: string
+  playtime_seconds?: number | null
   status?: string
   move: Move
   previousRank: number
@@ -92,6 +93,7 @@ type PublicPlayer = {
   dragon_egg_glow_expires_at?: string | null
   dragon_egg_glow_remaining_seconds?: number | null
   playtime?: string
+  playtime_seconds?: number | null
   status?: string | null
   eliminated?: boolean
   source_updated_at?: number
@@ -413,6 +415,7 @@ function publicPlayerToPlayer(player: PublicPlayer, index: number, rankMoves: Ra
     maceIdentity,
     dragonEggGlowExpiresAt: player.dragon_egg_glow_expires_at ?? null,
     playtime: player.playtime ?? 'Hidden',
+    playtime_seconds: player.playtime_seconds ?? null,
     status,
     move,
     previousRank,
@@ -1344,7 +1347,11 @@ function PlayersPage({ liveHealth, liveLoaded, liveObjectives, livePlayers, live
   const dragonEggHolder = players.find((player) => player.prestige.includes('dragon-egg'))
   const maceWielders = players.filter((player) => player.prestige.includes('mace-1') || player.prestige.includes('mace-2'))
   const mostKills = [...players].sort((first, second) => second.kills - first.kills)[0]
-  const mostPlaytime = [...players].sort((first, second) => second.playtime.localeCompare(first.playtime))[0]
+  const mostPlaytime = [...players]
+    .filter((player): player is Player & { playtime_seconds: number } => 
+      player.playtime_seconds != null
+    )
+    .sort((a, b) => b.playtime_seconds - a.playtime_seconds)[0];
   const twentyHeartPlayers = usingLiveObjectives
     ? liveObjectives?.twenty_hearts?.count ?? 0
     : players.filter((player) => player.hearts >= 20).length
